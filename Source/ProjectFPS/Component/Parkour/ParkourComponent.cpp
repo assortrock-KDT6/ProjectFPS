@@ -1,7 +1,6 @@
-#include "ParkourComponent.h"
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
+#include "ParkourComponent.h"
 #include "Component/Parkour/ParkourComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "DrawDebugHelpers.h"
@@ -10,11 +9,7 @@
 // Sets default values for this component's properties
 UParkourComponent::UParkourComponent()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
 	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
 }
 
 void UParkourComponent::TryParkour()
@@ -26,6 +21,37 @@ void UParkourComponent::TryParkour()
 	if (bCollision)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green, FString::Printf(TEXT("Front Block : %s"), *GetNameSafe(FrontHit.GetActor())));
+
+		FHitResult TopHit;
+		
+		float BlockHeight = 0.0f;
+
+		const bool bTopCollision = CheckTopBlock(FrontHit, TopHit, BlockHeight);
+
+		if (bTopCollision)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Magenta, FString::Printf(TEXT("Top Surface : Found / Height : %.1f cm"), BlockHeight));
+
+			FHitResult BackHit;
+			
+			float BlockDepth = 0.0f;
+
+			const bool bBackCollision = CheckBackBlock(FrontHit, TopHit, BackHit, BlockDepth);
+
+			if (bBackCollision)
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Blue, FString::Printf(TEXT("Back Point : Found / Depth : %.1f cm"), BlockDepth));
+			}
+			else
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Back Point : None")));
+			}
+		}
+		else
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Orange, FString::Printf(TEXT("Top Surface : None")));
+		}
+
 	}
 	else
 	{
@@ -70,14 +96,7 @@ bool UParkourComponent::CheckFrontBlock(FHitResult& OutHit) const
 		return false;
 	}
 
-	const bool bCollision = GetWorld()->SweepSingleByChannel(
-		OutHit,
-		Start,
-		End,
-		FQuat::Identity,
-		TraceChannel.GetValue(),
-		CheckShape,
-		QueryParams);
+	const bool bCollision = GetWorld()->SweepSingleByChannel(OutHit, Start, End, FQuat::Identity, TraceChannel.GetValue(), CheckShape, QueryParams);
 
 	if (bDrawDebug)
 	{
@@ -106,8 +125,10 @@ bool UParkourComponent::CheckFrontBlock(FHitResult& OutHit) const
 	return bCollision;
 }
 
-bool UParkourComponent::CheckTopSurface(const FHitResult& FrontHit, FHitResult& OutHit) const
+bool UParkourComponent::CheckTopBlock(const FHitResult& FrontHit, FHitResult& OutHit, float& OutHeight) const
 {
+	OutHeight = 0.0f;
+
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
 	if (false == IsValid(Owner))
 	{
@@ -165,6 +186,11 @@ bool UParkourComponent::CheckTopSurface(const FHitResult& FrontHit, FHitResult& 
 
 	const bool bCollision = GetWorld()->LineTraceSingleByChannel(OutHit, Start, End, TraceChannel.GetValue(), QueryParams);
 
+	if (bCollision)
+	{
+		OutHeight = FVector::DotProduct(OutHit.ImpactPoint - CharacterBottom, UpVector);
+	}
+
 	if (bDrawDebug)
 	{
 		const FVector DebugEnd = bCollision ? OutHit.ImpactPoint : End;
@@ -179,4 +205,87 @@ bool UParkourComponent::CheckTopSurface(const FHitResult& FrontHit, FHitResult& 
 	}
 
 	return bCollision;
+}
+
+bool UParkourComponent::CheckBackBlock(const FHitResult& FrontHit, FHitResult& TopHit, FHitResult& OutBackHit, float& OutDepth) const
+{
+	OutDepth = 0.0f;
+
+	ACharacter* Owner = Cast<ACharacter>(GetOwner());
+	if (false == IsValid(Owner))
+	{
+		return false;
+	}
+
+	if (false == FrontHit.bBlockingHit || false == TopHit.bBlockingHit)		// 앞에서도 위에서도 맞는게 없으면 굳이 뒤에서 검사할 필요가 X
+	{
+		return false;
+	}
+
+	if (MaxVaultDepth <= 0.0f)
+	{
+		return false;
+	}
+
+	if (nullptr == GetWorld())
+	{
+		return false;
+	}
+
+	const FVector UpVector = Owner->GetActorUpVector();
+
+	// Front ImpactNormal 의 반대 방향이 장애물 안쪽의 방향. 
+	// - 를 붙이면 반대(안쪽으로)로감 --> ImpactPoint는 라인트레이스의 충돌지점이고 Normal은 해당 면이 수직으로 바라보는 방향 이걸로 장애물의 기울기를 얻을 수 있다.
+	// VectorPlaneProjet() : 주어진 벡터값을 평면위에 투영하는 함수 UpVector(여기선 평면의 법선 방향)를 통해 x,z 평면에 투영한다.
+	// GetSafeNormal()     : 투영한 벡터의 길이를 1로 만든다. 사용하는 이유는 다음 계산에서 정확히 TopCheckInset 만큼 이동하기 위해서 
+	const FVector IntoBlock = FVector::VectorPlaneProject(-FrontHit.ImpactNormal, UpVector).GetSafeNormal(); 
+
+	if (IntoBlock.IsNearlyZero())	// IsNearZero : 유효한 수평 방향인지 0의 근사값으로 판단하기 위해서 사용
+	{
+		return false;
+	}
+
+	// 앞면 충돌점과 같은 수평 위치를 윗면 높이까지 올린다.
+	const float TopHeightFromFront = FVector::DotProduct(TopHit.ImpactPoint - FrontHit.ImpactPoint, UpVector);
+
+	const FVector FrontPointAtTopHeight = FrontHit.ImpactPoint + UpVector * TopHeightFromFront;
+
+	// 윗면보다 조금 아래에서 뒷면을 검사한다. 
+	const FVector CheckLocation = FrontPointAtTopHeight - UpVector * BackCheckHeightOffset;
+	
+	// 장애물 너머에서 시작하여 앞면 방향으로 역방향 Line Trace 를 쏜다.
+	const FVector Start = CheckLocation + IntoBlock * MaxVaultDepth;
+
+	const FVector End = CheckLocation + IntoBlock * TopCheckInset;
+	
+	FCollisionQueryParams QueryParams;
+
+	QueryParams.AddIgnoredActor(Owner);
+
+	const bool bCollision = GetWorld()->LineTraceSingleByChannel(OutBackHit, Start, End, TraceChannel.GetValue(), QueryParams);
+	
+	// 앞면과 뒷면이 같은 장애물인지 확인
+	const bool bBackPoint = bCollision && OutBackHit.GetActor() == FrontHit.GetActor();
+
+	if (bBackPoint)
+	{
+		// 앞면부터 뒷면까지 진행 방향으로 떨어진 거리를 구한다.
+		OutDepth = FVector::DotProduct(OutBackHit.ImpactPoint - FrontHit.ImpactPoint, IntoBlock);
+	}
+	
+	if (bDrawDebug)
+	{
+		const FVector DebugEnd = bCollision ? OutBackHit.ImpactPoint : End;
+
+		const FColor DebugColor = bBackPoint ? FColor::Emerald : FColor::Red;
+
+		DrawDebugLine(GetWorld(), Start, DebugEnd, DebugColor, false, 2.0f, 0, 2.0f);
+
+		if (bBackPoint)
+		{
+			DrawDebugSphere(GetWorld(), OutBackHit.ImpactPoint, 8.0f, 12, FColor::Blue, false, 2.0f);
+		}
+	}
+	
+	return bBackPoint;
 }
