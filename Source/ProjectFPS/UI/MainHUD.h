@@ -17,7 +17,24 @@ class PROJECTFPS_API AMainHUD : public AHUD
 	GENERATED_BODY()
 
 protected:
-	
 
+	// 현재 선택되어 화면에 출력되고 있는 위젯
+	UPROPERTY()
+	TObjectPtr<UUserWidget> _CurrentScreen;
+
+protected:
+	// 선택된 위젯 제거 후 새 화면에 위젯 생성 및 표시
+	UUserWidget* ShowScreen(TSubclassOf<UUserWidget> ScreenClass);
+
+	// 현재 화면 위젯 제거 
+	void RemoveCurrentScreen();
+
+	// 오버레이 토글 : 있으면 제거, 없으면 생성 HUD위에 얹음. (위젯만, 참조, 레이어 순서 Z축)
+	void ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<UUserWidget>& OverlayPtr, int32 ZOrder = 10);
+
+	// UI 조작용 커서와 게임중에는 안나오게 구분 
+	void ApplyInputMode(bool bUIMode);
+
+	
 	
 };
