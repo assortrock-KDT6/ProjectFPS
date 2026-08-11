@@ -20,9 +20,12 @@ public:
 	void TryParkour();
 
 private:
-	bool CheckFrontBlock(FHitResult& OutHit) const;
+	bool CheckFrontBlock(FHitResult& OutHit) const;										// 장애물의 앞면 검사 결과를 입력
+	
+	bool CheckTopSurface(const FHitResult& FrontHit, FHitResult& OutHit) const;			// 검출한 윗면 정보를 돌려줌 -> 반환값 : 유효한 윗면을 찾았는지 알려줌
 
 protected:
+	// Front
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check", meta = (ClampMin = "0.0"))
 	float FrontCheckDistance = 150.0f;
 
@@ -34,6 +37,18 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check", meta = (ClampMin = "0.0"))
 	float FrontCheckHalfHeight = 50.0f;
+
+
+	// Top
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check", meta = (ClampMin = "0.0"))
+	float TopCheckInset = 10.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check", meta = (ClampMin = "0.0"))
+	float MinParkourHeight = 30.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check", meta = (ClampMin = "0.0"))
+	float MaxParkourHeight = 250.0f;
+
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check")
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_Visibility;
