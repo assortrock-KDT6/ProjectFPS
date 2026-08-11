@@ -17,7 +17,7 @@ class PROJECTFPS_API AMainHUD : public AHUD
 	GENERATED_BODY()
 
 protected:
-	UPROPERTY()
+	
 
 	
 };
