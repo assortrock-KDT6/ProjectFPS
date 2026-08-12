@@ -22,8 +22,8 @@ class PROJECTFPS_API UGameDefines : public UObject
 UENUM(BlueprintType)
 enum class EMatchPhase : uint8
 {
-	DropShip,	// 비행선 대기
-	InProgress	// 게임 플레이
+	Waiting,	// 대기화면
+	GamePlay	// 게임 플레이
 
 };
 
