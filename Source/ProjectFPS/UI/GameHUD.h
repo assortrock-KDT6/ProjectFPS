@@ -44,4 +44,5 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleInventory();
 
+	
 };

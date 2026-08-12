@@ -5,9 +5,21 @@
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/PlayerController.h"
 
+bool AMainHUD::IsLocalHUD() const
+{
+    APlayerController* PC = GetOwningPlayerController();
+    return PC && PC->IsLocalController();
+}
+
 
 UUserWidget* AMainHUD::ShowScreen(TSubclassOf<UUserWidget> ScreenClass)
 {
+    // 체크
+    if (!IsLocalHUD() || !ScreenClass)
+    {
+        return nullptr;
+    }
+
     // 기존 화면 제거
     RemoveCurrentScreen();
 
@@ -71,7 +83,7 @@ void AMainHUD::ApplyInputMode(bool bUIMode)
     }
 }
 
-void AMainHUD::TOggleSettings()
+void AMainHUD::ToggleSettings()
 {
     ToggleOverlay(SettingWidgetClass, SettingWidget);
 }

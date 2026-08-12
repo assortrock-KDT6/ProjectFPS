@@ -5,6 +5,8 @@
 
 void AGameHUD::SwitchTo(EMatchPhase Phase)
 {
+	// 서버 체크 하고 
+
 	TSubclassOf<UUserWidget> ClassToShow = nullptr;	// 출력 위젯을 담을 변수
 	bool bUIMode = false;							// 입력 모드를 담을 변수
 

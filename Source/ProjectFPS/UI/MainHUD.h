@@ -42,9 +42,11 @@ protected:
 	// UI 조작용 커서와 게임중에는 안나오게 구분 
 	void ApplyInputMode(bool bUIMode);
 
+	bool IsLocalHUD() const;
+
 protected:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
-	void TOggleSettings();	// 로비, 게임 둘다 상속.
+	void ToggleSettings();	// 로비, 게임 둘다 상속.
 
 
 	
