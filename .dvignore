@@ -1,0 +1,75 @@
+# dv-ignore-version: 1
+
+# ============================================
+# Unreal Engine - Generated Files
+# ============================================
+
+# Compiled binaries
+Binaries/
+**/Binaries/
+
+# Intermediate build files
+Intermediate/
+**/Intermediate/
+
+# Derived Data Cache
+DerivedDataCache/
+**/DerivedDataCache/
+
+# Saved / Logs / Autosaves
+Saved/
+**/Saved/
+
+
+# ============================================
+# Visual Studio
+# ============================================
+
+.vs/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+
+# ============================================
+# JetBrains Rider
+# ============================================
+
+.idea/
+
+
+# ============================================
+# VS Code
+# ============================================
+
+.vscode/
+
+
+# ============================================
+# Temporary Files
+# ============================================
+
+*.tmp
+*.temp
+*.log
+*.bak
+
+
+# ============================================
+# OS Generated Files
+# ============================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+# ============================================
+# Python Cache
+# ============================================
+
+__pycache__/
+*.pyc
