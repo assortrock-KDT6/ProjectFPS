@@ -22,6 +22,13 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> _CurrentScreen;
 
+	// 공용 오버레이 - 환경설정(로비, 게임)
+	UPROPERTY(EditAnywhere, Category = "HUD|Overlays")
+	TSubclassOf<UUserWidget> SettingWidgetClass;
+	UPROPERTY()
+	TObjectPtr<UUserWidget> SettingWidget;
+
+
 protected:
 	// 선택된 위젯 제거 후 새 화면에 위젯 생성 및 표시
 	UUserWidget* ShowScreen(TSubclassOf<UUserWidget> ScreenClass);
@@ -34,6 +41,13 @@ protected:
 
 	// UI 조작용 커서와 게임중에는 안나오게 구분 
 	void ApplyInputMode(bool bUIMode);
+
+	bool IsLocalHUD() const;
+
+protected:
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void ToggleSettings();	// 로비, 게임 둘다 상속.
+
 
 	
 	

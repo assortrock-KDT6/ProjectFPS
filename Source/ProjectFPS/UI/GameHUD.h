@@ -22,6 +22,18 @@ private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> _InventoryWidget;
 
+protected:
+
+	// 각 위젯별 화면 BP_GameHUD -> 디테일에서 지정.
+	UPROPERTY(EditAnywhere, Category = "HUD|Screens")	
+	TSubclassOf<UUserWidget> _WaitingWidgetClass;		// 대기화면
+
+	UPROPERTY(EditAnywhere, Category = "HUD|Screens")
+	TSubclassOf<UUserWidget> _GameplayWidgetClass;		// 인게임 내 화면
+
+	UPROPERTY(EditAnywhere, Category = "HUD|Overlays")	// HUD 그룹 안에 Overlays 하위 그룹(계층)
+	TSubclassOf<UUserWidget> _InventoryWidgetClass;		// 인벤토리
+
 public:
 
 	// 매치 단계에 맞는 화면으로 전환 (로비, 게임화면)
@@ -32,14 +44,5 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleInventory();
 
-protected:
-	// 각 위젯별 화면 BP_GameHUD -> 디테일에서 지정.
-
-
-
-	UPROPERTY(EditAnywhere, Category = "HUD|Overlays") // HUD 그룹 안에 Overlays 하위 그룹(계층)
-	TSubclassOf<UUserWidget> _InventoryWidgetClass;
-
-
-
+	
 };
