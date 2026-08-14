@@ -9,6 +9,7 @@
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
 #include "Component/Parkour/ParkourComponent.h"
+#include "UI/GameHUD.h"
 
 
 ACharacterPlayer::ACharacterPlayer()
@@ -113,6 +114,8 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_MouseLook, ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
 	InputComp->BindAction(_DefaultInput->_MouseZoom, ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
 	InputComp->BindAction(_DefaultInput->_Parkour,   ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
+	InputComp->BindAction(_DefaultInput->_Inventory, ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
+	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -170,5 +173,25 @@ void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
 	if (IsValid(_ParkourComponent))
 	{
 		_ParkourComponent->TryParkour();
+	}
+}
+
+void ACharacterPlayer::ToggleInventoryAction(const FInputActionValue& value)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (AGameHUD* HUD = Cast<AGameHUD>(PC->GetHUD()))
+			HUD->ToggleInventory();
+	}
+
+}
+
+void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
+{
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (AGameHUD* HUD = Cast<AGameHUD>(PC->GetHUD()))
+			HUD->ToggleMap();
+		
 	}
 }

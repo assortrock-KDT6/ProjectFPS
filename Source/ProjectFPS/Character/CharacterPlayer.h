@@ -47,6 +47,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UParkourComponent> _ParkourComponent;
 
+	
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -75,4 +77,12 @@ protected:
 
 	UFUNCTION()
 	virtual void ParkourAction(const struct FInputActionValue& Value);
+
+	UFUNCTION()
+	void ToggleInventoryAction(const FInputActionValue& value);
+	
+	UFUNCTION()
+	void ToggleMapAction(const FInputActionValue& value);
+
+
 };
