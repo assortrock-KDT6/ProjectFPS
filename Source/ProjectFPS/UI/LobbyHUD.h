@@ -13,32 +13,13 @@ UCLASS()
 class PROJECTFPS_API ALobbyHUD : public AMainHUD
 {
 	GENERATED_BODY()
-private:
-	UPROPERTY() 
-	TObjectPtr<UUserWidget> _ShowWidget;
-
-	UPROPERTY()
-	TObjectPtr<UUserWidget> FriendsWidget;
-
-
 protected:
-	virtual void BeginPlay() override;
+	
 
 	// 로비 메인 화면
 	UPROPERTY(EditAnywhere, Category = "HUD|Screens")
 	TSubclassOf<UUserWidget> _LobbyWidgetClass;
 
-	// 오버레이 창
-	 
-	// 상점 화면
-	UPROPERTY(EditAnywhere, Category = "HUD|Overlays")
-	TSubclassOf<UUserWidget> _ShopWidgetClass;
-	
-	// 친구창 화면
-	UPROPERTY(EditAnywhere, Category = "HUD|Overlays")
-	TSubclassOf<UUserWidget> _FriendsWidgetClass;
-
-public:
-	UFUNCTION(BlueprintCallable, Category = "HUD") void ToggleShop();
-	UFUNCTION(BlueprintCallable, Category = "HUD") void ToggleFriends();
+protected:
+	virtual void BeginPlay() override;
 };

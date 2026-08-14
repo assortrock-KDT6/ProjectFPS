@@ -42,4 +42,17 @@ UDefaultInput::UDefaultInput()
 	{
 		_Parkour = ParkourAction.Object;
 	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> InventoryAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Inventory.IA_Inventory'"));
+	if (InventoryAction.Succeeded())
+	{
+		_Inventory = InventoryAction.Object;
+	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> MapAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Map.IA_Map'"));
+	if (MapAction.Succeeded())
+	{
+		_Map = MapAction.Object;
+	}
+
 }

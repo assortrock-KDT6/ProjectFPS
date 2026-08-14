@@ -10,12 +10,3 @@ void ALobbyHUD::BeginPlay()
 	ApplyInputMode(true);			// 로비 = UI 모드 + 커서 -> 로비에서 버튼을 눌러야하기 때문에
 }
 
-void ALobbyHUD::ToggleShop()
-{
-	ToggleOverlay(_ShopWidgetClass, _ShowWidget);
-}
-
-void ALobbyHUD::ToggleFriends()
-{
-	ToggleOverlay(_FriendsWidgetClass, FriendsWidget);
-}

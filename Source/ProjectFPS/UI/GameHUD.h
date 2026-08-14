@@ -22,6 +22,9 @@ private:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> _InventoryWidget;
 
+	UPROPERTY()
+	TObjectPtr<UUserWidget> _MapWidget;
+
 protected:
 
 	// 각 위젯별 화면 BP_GameHUD -> 디테일에서 지정.
@@ -34,6 +37,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "HUD|Overlays")	// HUD 그룹 안에 Overlays 하위 그룹(계층)
 	TSubclassOf<UUserWidget> _InventoryWidgetClass;		// 인벤토리
 
+	UPROPERTY(EditAnywhere, Category = "HUD|Overlays")	// 지도 열기
+	TSubclassOf<UUserWidget> _MapWidgetClass;
+
 public:
 
 	// 매치 단계에 맞는 화면으로 전환 (로비, 게임화면)
@@ -43,6 +49,10 @@ public:
 	// 인벤토리 오버레이
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleInventory();
+
+	// 지도 오버레이
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void ToggleMap();
 
 	
 };

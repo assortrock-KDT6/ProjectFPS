@@ -37,7 +37,7 @@ protected:
 	void RemoveCurrentScreen();
 
 	// 오버레이 토글 : 있으면 제거, 없으면 생성 HUD위에 얹음. (위젯만, 참조, 레이어 순서 Z축)
-	void ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<UUserWidget>& OverlayPtr, int32 ZOrder = 10);
+	bool ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<UUserWidget>& OverlayPtr, int32 ZOrder = 10);
 
 	// UI 조작용 커서와 게임중에는 안나오게 구분 
 	void ApplyInputMode(bool bUIMode);
@@ -47,6 +47,10 @@ protected:
 protected:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleSettings();	// 로비, 게임 둘다 상속.
+
+protected:
+	void CloseOverlay(TObjectPtr<UUserWidget>& OverlayPtr);
+	
 
 
 	

@@ -34,4 +34,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UInputAction> _Parkour;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Inventory;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Map;
 };
