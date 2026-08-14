@@ -46,6 +46,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SwitchTo(EMatchPhase Phase);
 
+
+	// TODO : 개선 
+	// void Toggle(enum Type);
+
 	// 인벤토리 오버레이
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleInventory();
