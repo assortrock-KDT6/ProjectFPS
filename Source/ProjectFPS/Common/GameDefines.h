@@ -30,4 +30,15 @@ enum class EMatchPhase : uint8
 
 // 
 
+UENUM(BlueprintType)
+enum class EFPSOnlineSessionState : uint8
+{
+	Idle,
+	Destroying,
+	Creating,
+	Finding,
+	Joining,
+	Traveling
+};
+
 
