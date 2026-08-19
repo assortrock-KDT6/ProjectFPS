@@ -45,5 +45,27 @@ struct FFPSOnlineSessionInfo
 	bool _IsLan = false;
 };
 
+/* 방 만들 때 쓰이는 옵션 구조체. */
+USTRUCT(BlueprintType)
+struct FFPSSessionCreateOptions
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	int32 _MaxPlayers = 4;
+
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	bool _AllowJoinProgress = true;
+
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	FString _MapId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	FString _DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	FString _GameModeId;
+};
+
 #pragma endregion
 
