@@ -44,7 +44,16 @@ enum class EFPSOnlineOperationState : uint8
 UENUM(BlueprintType)
 enum class EFPSOnlineConnectionState : uint8
 {
+	None = 0		UMETA(DisplayName = "NONE"),
+	Hosting			UMETA(DisplayName = "HOSTING"),
+	Joined			UMETA(DisplayName = "JOINED"),
+	CleanupFailed	UMETA(DisplayName = "CLEANUP_FAILED")
+};
+
+// World 이동 상태.
+UENUM(BlueprintType)
+enum class EFPSOnlineTravelState : uint8
+{
 	None = 0	UMETA(DisplayName = "NONE"),
-	Hosting		UMETA(DisplayName = "HOSTING"),
-	Joined		UMETA(DisplayName = "JOINED")
+	Traveling	UMETA(DisplayName = "TRAVELING")
 };

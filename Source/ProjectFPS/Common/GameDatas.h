@@ -51,19 +51,19 @@ struct FFPSSessionCreateOptions
 {
 	GENERATED_BODY()
 	
-	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OnlineSession", meta = (ClampMin = "1"))
 	int32 _MaxPlayers = 4;
 
-	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OnlineSession")
 	bool _AllowJoinProgress = true;
 
-	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OnlineSession")
 	FString _MapId;
 
-	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OnlineSession")
 	FString _DisplayName;
 
-	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OnlineSession")
 	FString _GameModeId;
 };
 
