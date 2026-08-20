@@ -16,6 +16,12 @@ class PROJECTFPS_API UInventoryWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
-protected:
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UTileView> _ItemTileView;
 
+protected:
+	virtual void NativeConstruct() override;
+
+public:
+	void Refresh();
 };
