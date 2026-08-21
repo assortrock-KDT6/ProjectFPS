@@ -28,7 +28,8 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> StartButton;
 
-	// 이동할 게임 레벨 (에디터에서 드롭다운 선택). Host가 될 경우 Listen Server로 열린다.
+	// 이동할 게임 레벨 (에디터에서 드롭다운 선택). *확인좀 해보고 변경예정.
+	// Host가 될 경우 Listen Server로 열린다.
 	UPROPERTY(EditAnywhere, Category ="Travel")
 	TSoftObjectPtr<UWorld> GameLevel;
 
