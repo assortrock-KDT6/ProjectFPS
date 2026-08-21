@@ -8,15 +8,16 @@
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
+#include "Common/FPSOnlineSessionKeys.h"
 
 DEFINE_LOG_CATEGORY(LogFPSOnlineSession);
 
-#pragma region FILE_HELPER_FUNCTION
-
-// 언리얼은 Unity 빌드를 실행해서 namespace로 묶어두지 않으면
-// 전체 클래스에서 동일한 함수명을 사용하는 함수가 발생시
-// 오류가 난다.
-namespace
+ /** 
+ * 언리얼은 Unity 빌드를 실행해서 namespace로 묶어두지 않으면
+ * 전체 클래스에서 동일한 함수명을 사용하는 함수가 발생시
+ * 오류가 난다.
+ */
+namespace OnlineSessionSubsystemUtils
 {
 	FString JoinResultToError(EOnJoinSessionCompleteResult::Type Result)
 	{
@@ -40,9 +41,26 @@ namespace
 		const IOnlineSubsystem* Subsystem = Online::GetSubsystem(World);
 		return Subsystem && Subsystem->GetSubsystemName() == NULL_SUBSYSTEM;
 	}
-}
-#pragma endregion
 
+	bool IsFatalHostNetworkFailure(ENetworkFailure::Type FailureType)
+	{
+		switch (FailureType)
+		{
+			case ENetworkFailure::NetDriverAlreadyExists:
+			case ENetworkFailure::NetDriverCreateFailure:
+			case ENetworkFailure::NetDriverListenFailure:
+			{
+				// Listen Server 자체가 접속을 받을 수 없는 경우에만 해당한다.
+				return true;
+			}
+			default:
+			{
+				// 개별 Client 연결 실패로 Host 세션을 내리지 않는다.
+				return false;
+			}
+		}
+	}
+}
 
 void UFPSOnlineSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -113,22 +131,28 @@ void UFPSOnlineSessionSubsystem::Deinitialize()
 	}
 	if (nullptr != GetGameInstance())
 	{
-		GetGameInstance()->GetTimerManager().ClearTimer(_TravelWatchdogHandle);
+		FTimerManager& TimerManager = GetGameInstance()->GetTimerManager();
+
+		TimerManager.ClearTimer(_TravelWatchdogHandle);
+		TimerManager.ClearTimer(_OperationWatchdogHandle);
 	}
 
-	// 델리게이트 해제 전에, 남아있는 세션이 있으면 파괴 요청만 보낸다.
+	// 비동기 완료 Callback이 종료 중인 Subsystem으로 돌아오지않게 먼저 해제한다.
+	ClearOnlineSessionDelegates();
+
 	// 종료 중이므로 비동기 콜백을 기다리지 않는다.
 	if (true == _SessionInterface.IsValid() && nullptr != _SessionInterface->GetNamedSession(NAME_GameSession))
 	{
 		_SessionInterface->DestroySession(NAME_GameSession);
 	}
 
-	ClearOnlineSessionDelegates();
 	_SessionSearch.Reset();
 	_SessionInterface.Reset();
+	_PendingMatchMapPath.Reset();
+	_RecoveryPending = false;
 
 	ResetPendingCreate();
-
+	ResetAutoMatch();
 	_PendingJoinError.Reset();
 
 	_DestroyIntent		= EFPSSessionDestroyIntent::None;
@@ -145,7 +169,7 @@ bool UFPSOnlineSessionSubsystem::CreateSession(const FFPSSessionCreateOptions& O
 	FString ErrorMessage;
 	if (false == RequireIdle(TEXT("CreateSession"), ErrorMessage))
 	{
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 
@@ -153,24 +177,26 @@ bool UFPSOnlineSessionSubsystem::CreateSession(const FFPSSessionCreateOptions& O
 		EFPSOnlineConnectionState::CleanupFailed == _ConnectionState)
 	{
 		ErrorMessage = TEXT("Clean up the current local session before creating a session.");
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 
 	if (Options._MaxPlayers <= 0)
 	{
 		ErrorMessage = TEXT("PublicConnections must be greater than zero.");
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 
 
 	FFPSSessionCreateOptions ValidatedOptions = Options;
 	ValidatedOptions._MapId.TrimStartAndEndInline();
+	ValidatedOptions._DisplayName.TrimStartAndEndInline();
+	ValidatedOptions._GameModeId.TrimStartAndEndInline();
 
 	if (false == CanServerTravel(ValidatedOptions._MapId, ErrorMessage))
 	{
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 
@@ -179,7 +205,7 @@ bool UFPSOnlineSessionSubsystem::CreateSession(const FFPSSessionCreateOptions& O
 	{
 		ErrorMessage = TEXT("Online Session interface unavailable.");
 		ResetPendingCreate();
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 
@@ -226,37 +252,71 @@ bool UFPSOnlineSessionSubsystem::StartMatch(const FString& MapPath)
 		return false;
 	}
 
-	FString TravelError;
-	const bool Started = TravelHostToGame(PendingMapPath, EFPSSessionTravelIntent::Host, TravelError);
-	if (false == Started)
+	const FNamedOnlineSession* NamedSession = _SessionInterface->GetNamedSession(NAME_GameSession);
+
+	if (nullptr == NamedSession)
 	{
-		_OnTravelFailed.Broadcast(TravelError);
-		_OnMatchStarted.Broadcast(false, TravelError);
+		ErrorMessage = TEXT("The hosted session no longer exists.");
+		SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnMatchStarted.Broadcast(false, ErrorMessage);
 		return false;
 	}
 
-	// 트래블이 확정된 뒤에 매치 시작을 알린다.
-	if (true == _SessionInterface.IsValid())
+	if (EOnlineSessionState::InProgress == NamedSession->SessionState)
 	{
-		if (true == _StartSessionCompleteHandle.IsValid())
+		const bool Started = TravelHostToGame(PendingMapPath, EFPSSessionTravelIntent::Host, ErrorMessage);
+		if (false == Started)
 		{
-			_SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(_StartSessionCompleteHandle);
+			_OnTravelFailed.Broadcast(ErrorMessage);
+			_OnMatchStarted.Broadcast(false, ErrorMessage);
 		}
-		_StartSessionCompleteHandle.Reset();
-
-		_StartSessionCompleteHandle = _SessionInterface->AddOnStartSessionCompleteDelegate_Handle(
-			FOnStartSessionCompleteDelegate::CreateUObject(this, &ThisClass::HandleStartSessionComplete));
-
-		if (false == _SessionInterface->StartSession(NAME_GameSession))
-		{
-			_SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(_StartSessionCompleteHandle);
-			_StartSessionCompleteHandle.Reset();
-
-			UE_LOG(LogFPSOnlineSession, Error, TEXT("StartSession request could not be started. Join-in-progress control will not work."));
-		}
+		return Started;
 	}
 
-	return true;
+	if (EOnlineSessionState::Pending != NamedSession->SessionState && EOnlineSessionState::Ended != NamedSession->SessionState)
+	{
+		ErrorMessage = FString::Printf(TEXT("Session cannot start from state %s."), EOnlineSessionState::ToString(NamedSession->SessionState));
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnMatchStarted.Broadcast(false, ErrorMessage);
+		return false;
+	}
+
+	if (true == _StartSessionCompleteHandle.IsValid())
+	{
+		_SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(_StartSessionCompleteHandle);
+		_StartSessionCompleteHandle.Reset();
+	}
+
+	/**
+	* NULL OSS는 완료 Delegate를 StartSession() 내부에서 동기 발화한다.
+	* 따라서 Pending 데이터와 State를 요청 전에 모두 확정해두어야한다.
+	*/
+
+	_PendingMatchMapPath = MoveTemp(PendingMapPath);
+	_StartSessionCompleteHandle = _SessionInterface->AddOnStartSessionCompleteDelegate_Handle(
+		FOnStartSessionCompleteDelegate::CreateUObject(this, &ThisClass::HandleStartSessionComplete));
+	SetOperationState(EFPSOnlineOperationState::Starting);
+
+	const bool RequestStarted = _SessionInterface->StartSession(NAME_GameSession);
+	if (false == RequestStarted && true == _StartSessionCompleteHandle.IsValid())
+	{
+		/**
+		* 일부 OSS(Online Subsystem)는 false를 반환하면서 동기 Callback을 이미 방송했다.
+		* Handle이 아직 유효할 때만 *Callback이 오지 않은 시작실패*로 보고 직접 정리한다.
+		*/
+
+		_SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(_StartSessionCompleteHandle);
+		_StartSessionCompleteHandle.Reset();
+		_PendingMatchMapPath.Reset();
+		SetOperationState(EFPSOnlineOperationState::Idle);
+
+		ErrorMessage = TEXT("StartSession request could not be started.");
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnMatchStarted.Broadcast(false, ErrorMessage);
+	}
+
+	return RequestStarted;
 }
 
 bool UFPSOnlineSessionSubsystem::StartCreateSession()
@@ -266,7 +326,7 @@ bool UFPSOnlineSessionSubsystem::StartCreateSession()
 		const FString ErrorMessage = TEXT("Session interface before CreateSession.");
 		ResetPendingCreate();
 		SetOperationState(EFPSOnlineOperationState::Idle);
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 
@@ -277,8 +337,11 @@ bool UFPSOnlineSessionSubsystem::StartCreateSession()
 	Settings.bAllowJoinViaPresence = true;
 	Settings.bUsesPresence = true;
 	Settings.bUseLobbiesIfAvailable = true;
-	Settings.bIsLANMatch = IsNullSubsystem(GetWorld());
+	Settings.bIsLANMatch = OnlineSessionSubsystemUtils::IsNullSubsystem(GetWorld());
 	Settings.Set(SETTING_MAPNAME, _PendingCreateOptions._MapId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(SETTING_FPS_DISPLAYNAME, _PendingCreateOptions._DisplayName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(SETTING_GAMEMODE, _PendingCreateOptions._GameModeId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	
 
 	if (_CreateSessionCompleteHandle.IsValid())
 	{
@@ -303,7 +366,7 @@ bool UFPSOnlineSessionSubsystem::StartCreateSession()
 		SetOperationState(EFPSOnlineOperationState::Idle);
 
 		const FString ErrorMessage = TEXT("CreateSession request could not be started.");
-		_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastCreateCompleted(false, ErrorMessage);
 		return false;
 	}
 	return true;
@@ -322,10 +385,29 @@ void UFPSOnlineSessionSubsystem::HandleStartSessionComplete(FName SessionName, b
 	}
 	_StartSessionCompleteHandle.Reset();
 
+	FString MapPath = MoveTemp(_PendingMatchMapPath);
+	_PendingMatchMapPath.Reset();
+
 	if (false == WasSuccessful)
 	{
-		UE_LOG(LogFPSOnlineSession, Error, TEXT("StartSession failed. Session stays in Pending state."));
+		SetOperationState(EFPSOnlineOperationState::Idle);
+
+		const FString ErrorMessage = TEXT("Online subsystem failed to start the session.");
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnMatchStarted.Broadcast(false, ErrorMessage);
 		return;
+	}
+
+	UpdateAdvertisedMap(MapPath);
+
+	FString ErrorMessage;
+	const bool Started = TravelHostToGame(MapPath, EFPSSessionTravelIntent::Host, ErrorMessage);
+	SetOperationState(EFPSOnlineOperationState::Idle);
+
+	if (false == Started)
+	{
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnMatchStarted.Broadcast(false, ErrorMessage);
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -355,7 +437,7 @@ void UFPSOnlineSessionSubsystem::HandleCreateSessionComplete(FName SessionName, 
 	if (false == WasSuccessful)
 	{
 		ResetPendingCreate();
-		_OnCreateSessionCompleted.Broadcast(false, TEXT("Online subsystem failed to create the session."));
+		BroadcastCreateCompleted(false, TEXT("Online subsystem failed to create the session."));
 		return;
 	}
 		
@@ -372,12 +454,22 @@ void UFPSOnlineSessionSubsystem::HandleCreateSessionComplete(FName SessionName, 
 
 	ResetPendingCreate();
 
-	_OnCreateSessionCompleted.Broadcast(Started, Started ? FString() : TravelError);
-	
 	if (false == Started)
 	{
+		/**
+		* 광고만 되고 접속을 받을 서버가 없는 상태이므로 세션을 즉시 회수한다.
+		* 실패 알림보다 정리를 먼저 시작해 Destroying 동안 리스너의 새 요청을 막는다.
+		* 단, 동기 완료하는 OSS(Null)에서는 이 시점에 이미 Idle이므로 차단이 성립되지 않는다. 
+		* UI는 이벤트만 믿지 말고 OperationState도 확인해야한다.
+		*/
+		StartDestroySession(EFPSSessionDestroyIntent::HostLobbyRollback);
+		BroadcastCreateCompleted(false, TravelError);
 		_OnTravelFailed.Broadcast(TravelError);
+		_OnLobbyReady.Broadcast(false, TravelError);
+		return;
 	}
+
+	BroadcastCreateCompleted(true, FString());
 }
 
 bool UFPSOnlineSessionSubsystem::CanServerTravel(const FString& MapPath, FString& OutErrorMessage) const
@@ -393,6 +485,12 @@ bool UFPSOnlineSessionSubsystem::CanServerTravel(const FString& MapPath, FString
 	if (NM_Client == World->GetNetMode())
 	{
 		OutErrorMessage = TEXT("Client cannot call ServerTravel.");
+		return false;
+	}
+
+	if (false == World->NextURL.IsEmpty() || true == World->IsInSeamlessTravel())
+	{
+		OutErrorMessage = TEXT("Another world travel is already in progress.");
 		return false;
 	}
 
@@ -474,7 +572,7 @@ bool UFPSOnlineSessionSubsystem::FindSessions(int32 MaxResults)
 
 	if (false == RequireIdle(TEXT("FindSessions"), ErrorMessage))
 	{
-		_OnFindSessionCompleted.Broadcast(false, EmptySessions, ErrorMessage);
+		BroadcastFindCompleted(false, EmptySessions, ErrorMessage);
 		return false;
 	}
 
@@ -488,13 +586,13 @@ bool UFPSOnlineSessionSubsystem::FindSessions(int32 MaxResults)
 		{
 			ErrorMessage = TEXT("Online Session interface is unavailable.");
 		}
-		_OnFindSessionCompleted.Broadcast(false, EmptySessions, ErrorMessage);
+		BroadcastFindCompleted(false, EmptySessions, ErrorMessage);
 		return false;
 	}
 
 	_SessionSearch = MakeShared<FOnlineSessionSearch>();
 	_SessionSearch->MaxSearchResults = MaxResults;
-	_SessionSearch->bIsLanQuery = IsNullSubsystem(GetWorld());
+	_SessionSearch->bIsLanQuery = OnlineSessionSubsystemUtils::IsNullSubsystem(GetWorld());
 	_SessionSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
 
 	if (_FindSessionCompleteHandle.IsValid())
@@ -513,7 +611,7 @@ bool UFPSOnlineSessionSubsystem::FindSessions(int32 MaxResults)
 		_FindSessionCompleteHandle.Reset();
 		SetOperationState(EFPSOnlineOperationState::Idle);
 		ErrorMessage = TEXT("FindSessions request could not be started.");
-		_OnFindSessionCompleted.Broadcast(false, EmptySessions, ErrorMessage);
+		BroadcastFindCompleted(false, EmptySessions, ErrorMessage);
 		return false;
 	}
 	return true;
@@ -531,7 +629,7 @@ void UFPSOnlineSessionSubsystem::HandleFindSessionComplete(bool WasSuccessful)
 	TArray<FFPSOnlineSessionInfo> Sessions;
 	if (false == WasSuccessful || false == _SessionSearch.IsValid())
 	{
-		_OnFindSessionCompleted.Broadcast(false, Sessions, TEXT("Online subsystem failed to find sessions."));
+		BroadcastFindCompleted(false, Sessions, TEXT("Online subsystem failed to find sessions."));
 		return;
 	}
 
@@ -548,9 +646,18 @@ void UFPSOnlineSessionSubsystem::HandleFindSessionComplete(bool WasSuccessful)
 		Information._MaxPlayers = Result.Session.SessionSettings.NumPublicConnections;
 		Information._CurrentPlayers = FMath::Clamp(Information._MaxPlayers - Result.Session.NumOpenPublicConnections, 0, Information._MaxPlayers);
 		Information._IsLan = Result.Session.SessionSettings.bIsLANMatch;
+
+		Result.Session.SessionSettings.Get(SETTING_FPS_DISPLAYNAME, Information._DisplayName);
+		Result.Session.SessionSettings.Get(SETTING_GAMEMODE, Information._GameModeId);
+
+		// 표시 이름이 비어 있으면 소유자 이름으로 대체한다.
+		if (true == Information._DisplayName.IsEmpty())
+		{
+			Information._DisplayName = Information._SessionOwnerName;
+		}
 	}
 
-	_OnFindSessionCompleted.Broadcast(true, Sessions, FString());
+	BroadcastFindCompleted(true, Sessions, FString());
 }
 
 
@@ -560,14 +667,14 @@ bool UFPSOnlineSessionSubsystem::JoinSessionByIndex(int32 ResultIndex)
 
 	if (false == RequireIdle(TEXT("JoinSession"), ErrorMessage))
 	{
-		_OnJoinSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastJoinCompleted(false, ErrorMessage);
 		return false;
 	}
 
 	if (EFPSOnlineConnectionState::None != _ConnectionState)
 	{
 		ErrorMessage = TEXT("JoinSession requires a disconnected state.");
-		_OnJoinSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastJoinCompleted(false, ErrorMessage);
 		return false;
 	}
 
@@ -576,14 +683,14 @@ bool UFPSOnlineSessionSubsystem::JoinSessionByIndex(int32 ResultIndex)
 		false == _SessionSearch->SearchResults[ResultIndex].IsValid())
 	{
 		ErrorMessage = TEXT("The selected session result is invalid");
-		_OnJoinSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastJoinCompleted(false, ErrorMessage);
 		return false;
 	}
 
 	if (false == RefreshSessionInterface())
 	{
 		ErrorMessage = TEXT("Online Session interface is unavailable.");
-		_OnJoinSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastJoinCompleted(false, ErrorMessage);
 		return false;
 	}
 
@@ -604,13 +711,144 @@ bool UFPSOnlineSessionSubsystem::JoinSessionByIndex(int32 ResultIndex)
 		SetOperationState(EFPSOnlineOperationState::Idle);
 
 		ErrorMessage = TEXT("JoinSession request could not be started.");
-		_OnJoinSessionCompleted.Broadcast(false, ErrorMessage);
+		BroadcastJoinCompleted(false, ErrorMessage);
 		return false;
 	}
 
 	return true;
 }
-/*
+
+bool UFPSOnlineSessionSubsystem::EndMatch(const FString& LobbyMapPath)
+{
+	FString ErrorMessage;
+	
+	if (false == RequireIdle(TEXT("EndMatch"), ErrorMessage))
+	{
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+		return false;
+	}
+
+	if (EFPSOnlineConnectionState::Hosting != _ConnectionState)
+	{
+		ErrorMessage = TEXT("Only the host can end the match.");
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+		return false;
+	}
+
+	if (false == RefreshSessionInterface())
+	{
+		ErrorMessage = TEXT("Online Session interface is unavailable.");
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+		return false;
+	}
+
+	FString PendingMapPath = LobbyMapPath;
+	PendingMapPath.TrimStartAndEndInline();
+
+	if (false == CanServerTravel(PendingMapPath, ErrorMessage))
+	{
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+		return false;
+	}
+
+	const FNamedOnlineSession* NamedSession = _SessionInterface->GetNamedSession(NAME_GameSession);
+	if (nullptr == NamedSession)
+	{
+		ErrorMessage = TEXT("The hosted session no longer exists.");
+		SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+		return false;
+	}
+
+	// 이미 매치가 끝난 상태면 로비 복귀 Travel만 수행한다.
+	if (EOnlineSessionState::InProgress != NamedSession->SessionState)
+	{
+		const bool Started = TravelHostToGame(PendingMapPath, EFPSSessionTravelIntent::HostLobby, ErrorMessage);
+		if (false == Started)
+		{
+			_OnTravelFailed.Broadcast(ErrorMessage);
+			_OnLobbyReady.Broadcast(false, ErrorMessage);
+		}
+		return Started;
+	}
+
+	if (true == _EndSessionCompleteHandle.IsValid())
+	{
+		_SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(_EndSessionCompleteHandle);
+		_EndSessionCompleteHandle.Reset();
+	}
+
+	_PendingMatchMapPath = MoveTemp(PendingMapPath);
+	_EndSessionCompleteHandle = _SessionInterface->AddOnEndSessionCompleteDelegate_Handle(
+		FOnEndSessionCompleteDelegate::CreateUObject(this, &ThisClass::HandleEndSessionComplete));
+	SetOperationState(EFPSOnlineOperationState::Ending);
+
+	const bool RequestStarted = _SessionInterface->EndSession(NAME_GameSession);
+	if (false == RequestStarted && true == _EndSessionCompleteHandle.IsValid())
+	{
+		_SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(_EndSessionCompleteHandle);
+		_EndSessionCompleteHandle.Reset();
+		_PendingMatchMapPath.Reset();
+		SetOperationState(EFPSOnlineOperationState::Idle);
+
+		ErrorMessage = TEXT("EndSession request could not be started.");
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+	}
+	
+	return RequestStarted;
+}
+
+void UFPSOnlineSessionSubsystem::HandleEndSessionComplete(FName SessionName, bool WasSuccessful)
+{
+	if (NAME_GameSession != SessionName)
+	{
+		return;
+	}
+
+	if (true == _SessionInterface.IsValid() && true == _EndSessionCompleteHandle.IsValid())
+	{
+		_SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(_EndSessionCompleteHandle);
+	}
+	_EndSessionCompleteHandle.Reset();
+
+	FString MapPath = MoveTemp(_PendingMatchMapPath);
+	_PendingMatchMapPath.Reset();
+
+	if (false == WasSuccessful)
+	{
+		SetOperationState(EFPSOnlineOperationState::Idle);
+
+		/**
+		* 세션이 InProgress로 남아 있으므로 로비로 돌아가도록 난입 잠금이 풀리지 않는다.
+		* 이동하지 않고 실패를 알려 EndMatch 재시도로 이어지게 한다.
+		*/
+		const FString ErrorMessage = TEXT("Online subsystem failed to end the session.");
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+		return;
+	}
+
+	UpdateAdvertisedMap(MapPath);
+
+	FString ErrorMessage;
+	const bool Started = TravelHostToGame(MapPath, EFPSSessionTravelIntent::HostLobby, ErrorMessage);
+	
+	SetOperationState(EFPSOnlineOperationState::Idle);
+
+	if (false == Started)
+	{
+		_OnTravelFailed.Broadcast(ErrorMessage);
+		_OnLobbyReady.Broadcast(false, ErrorMessage);
+	}
+}
+
+/**
 * JoinSession 성공은 OnlineSubsystem상의 Session 참가가 완료되었다는 뜻이다.
 * 실제 게임 서버로 이동한 것은 아니다.
 * 
@@ -636,7 +874,7 @@ void UFPSOnlineSessionSubsystem::HandleJoinSessionComplete(FName SessionName, EO
 	if (EOnJoinSessionCompleteResult::Success != Result)
 	{
 		SetOperationState(EFPSOnlineOperationState::Idle);
-		_OnJoinSessionCompleted.Broadcast(false, JoinResultToError(Result));
+		BroadcastJoinCompleted(false, OnlineSessionSubsystemUtils::JoinResultToError(Result));
 		return;
 	}
 	TravelClientToSession(SessionName);
@@ -679,7 +917,25 @@ void UFPSOnlineSessionSubsystem::RollbackJoinedSession(const FString& ErrorMessa
 	_PendingJoinError = ErrorMessage;
 	_TravelIntent = EFPSSessionTravelIntent::None;
 
-	if (true == _SessionInterface.IsValid() && _SessionInterface->GetNamedSession(NAME_GameSession))
+	if (false == _SessionInterface.IsValid() && false == RefreshSessionInterface())
+	{
+		/**
+		* 로컬 세션이 남아 있는지 확인할 수 없다.
+		* None으로 확정하면 남은 세션을 영원히 정리하지 못하므로 CleanupFailed로 표시한다.
+		*/
+
+		SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+		SetOperationState(EFPSOnlineOperationState::Idle);
+		SetTravelState(EFPSOnlineTravelState::None);
+
+		const FString JoinError = FString::Printf(TEXT("%s Local joined-session cleanup could not be verified: "
+			"the session interface is unavailable."), *_PendingJoinError);
+		_PendingJoinError.Reset();
+		BroadcastJoinCompleted(false, JoinError);
+		return;
+	}
+
+	if (nullptr != _SessionInterface->GetNamedSession(NAME_GameSession))
 	{
 		if (true == StartDestroySession(EFPSSessionDestroyIntent::JoinRollback))
 		{
@@ -690,13 +946,11 @@ void UFPSOnlineSessionSubsystem::RollbackJoinedSession(const FString& ErrorMessa
 
 	SetConnectionState(EFPSOnlineConnectionState::None);
 	SetOperationState(EFPSOnlineOperationState::Idle);
-
 	SetTravelState(EFPSOnlineTravelState::None);
 
 	FString JoinError = MoveTemp(_PendingJoinError);
 	_PendingJoinError.Reset();
-
-	_OnJoinSessionCompleted.Broadcast(false, JoinError);
+	BroadcastJoinCompleted(false, JoinError);
 }
 
 bool UFPSOnlineSessionSubsystem::LeaveSession()
@@ -730,8 +984,8 @@ bool UFPSOnlineSessionSubsystem::LeaveSession()
 	}
 
 	/*
-	* OnlineSubsystem에서는 Client의 Local NamedSession 정리도 DestorySession API를 통해 수행한다.
-	* 여기서 Destory는 Host의 방 자체를 없앤다는 의미가 아니라, 현재 Local User가 가지고 있는 Session 상태를 정리하는 의미로 사용한다.
+	* OnlineSubsystem에서는 Client의 Local NamedSession 정리도 DestroySession API를 통해 수행한다.
+	* 여기서 Destroy는 Host의 방 자체를 없앤다는 의미가 아니라, 현재 Local User가 가지고 있는 Session 상태를 정리하는 의미로 사용한다.
 	* 실제 목적은 DestroyIntent::Leave로 구분한다.
 	*/
 	return StartDestroySession(EFPSSessionDestroyIntent::Leave);
@@ -822,13 +1076,19 @@ void UFPSOnlineSessionSubsystem::HandleDestroySessionComplete(FName SessionName,
 			JoinError = TEXT("Joined session was rolled back before travel.");
 		}
 
-		_OnJoinSessionCompleted.Broadcast(false, JoinError);
+		BroadcastJoinCompleted(false, JoinError);
+	}
+	else if (EFPSSessionDestroyIntent::HostLobbyRollback == CompletedIntent)
+	{
+		// 실패는 이미 _OnCreateSessionCompleted / _OnLobbyReady로 알렸다.
+		// 정리 완료는 ConnectionState(None)과 OperationState(Idle)로 관찰한다.
+		SetOperationState(EFPSOnlineOperationState::Idle);
 	}
 	else if (EFPSSessionDestroyIntent::DisconnectRecovery == CompletedIntent)
 	{
 		SetOperationState(EFPSOnlineOperationState::Idle);
-		// 정리가 끝났음을 알려서 리스너가 메인 메뉴로 돌아갈 수 있게 한다.
-		_OnLeaveSessionCompleted.Broadcast(true, FString());
+		// _OnConnectionLost와 ConnectionState(None)가 이미 결과를 전달한다.
+		// 명시적인 LeaveSession 요청이 아니므로 _OnLeaveSessionCompleted는 방송하지 않는다.
 	}
 	else
 	{
@@ -846,10 +1106,30 @@ void UFPSOnlineSessionSubsystem::HandlePostLoadMapWithWorld(UWorld* LoadedWorld)
 	}
 
 	const EFPSSessionTravelIntent CompletedIntent = _TravelIntent;
+	const ENetMode LoadedNetMode = LoadedWorld->GetNetMode();
 
 	if (EFPSSessionTravelIntent::Join == CompletedIntent &&
-		NM_Client != LoadedWorld->GetNetMode())
+		NM_Client != LoadedNetMode)
 	{
+		return;
+	}
+
+	/**
+	* Host Travel의 목적은 ?listen 옵션으로 Listen Server를 여는 것이다.
+	* NetDriver 생성이나 Port Binding에 실패하면 World가 Standalone으로 열리는데,
+	* 이때 Session은 광고되지만 아무도 접속할 수 없는 상태가 된다.
+	* NetMode를 확인하지 않고 성공으로 통지하면 Host는 정상으로 보이고 참가자만 전부 실패한다.
+	*/
+	if ((EFPSSessionTravelIntent::HostLobby == CompletedIntent || EFPSSessionTravelIntent::Host == CompletedIntent) &&
+		NM_ListenServer != LoadedNetMode && NM_DedicatedServer != LoadedNetMode)
+	{
+		const FString ErrorMessage = FString::Printf(
+			TEXT("Host travel finished without a listen server (NetMode = %d)."), static_cast<int32>(LoadedNetMode));
+
+		UE_LOG(LogFPSOnlineSession, Error, TEXT("%s"), *ErrorMessage);
+
+		// HostLobby면 광고만 되는 Session을 회수하고, 두 경우 모두 실패를 통지한다.
+		HandleHostTravelFailure(CompletedIntent, ErrorMessage);
 		return;
 	}
 
@@ -866,7 +1146,7 @@ void UFPSOnlineSessionSubsystem::HandlePostLoadMapWithWorld(UWorld* LoadedWorld)
 	{
 		// 참가에 사용한 검색 결과는 더 이상 유효하지 않다. 재입장 시 반드시 다시 검색하게 한다.
 		_SessionSearch.Reset();
-		_OnJoinSessionCompleted.Broadcast(true, FString());
+		BroadcastJoinCompleted(true, FString());
 	}
 	else if (EFPSSessionTravelIntent::HostLobby == CompletedIntent)
 	{
@@ -880,18 +1160,29 @@ void UFPSOnlineSessionSubsystem::HandlePostLoadMapWithWorld(UWorld* LoadedWorld)
 
 void UFPSOnlineSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorMessage)
 {
-	if (EFPSOnlineTravelState::Traveling != _TravelState)
-	{
-		return;
-	}
-
 	if (true == IsValid(World) && World->GetGameInstance() != GetGameInstance())
 	{
 		return;
 	}
 
 	const FString TravelError = FString::Printf(TEXT("Travel failure [%d]: %s"), static_cast<int32>(FailureType), *ErrorMessage);
-	
+
+	if (EFPSOnlineTravelState::Traveling != _TravelState)
+	{
+		/**
+		* Host가 StartMatch / EndMatch로 ServerTravel하면 Client도 따라 이동하지만,
+		* Client는 자신이 Travel을 시작한 것이 아니므로 _TravelState가 Traveling이 아니다.
+		* 이 경우를 그냥 무시하면 이동에 실패해도 ConnectionState가 Joined로 남아
+		* 실제로는 Host와 끊긴 Player가 다시 Session에 참가할 수 없게 된다.
+		*/
+		if (EFPSOnlineConnectionState::Joined == _ConnectionState)
+		{
+			UE_LOG(LogFPSOnlineSession, Error, TEXT("Travel failed while following the host: %s"), *TravelError);
+			BeginDisconnectRecovery(TravelError);
+		}
+		return;
+	}
+
 	if (EFPSSessionTravelIntent::Join == _TravelIntent)
 	{
 		HandleJoinTravelFailure(TravelError);
@@ -929,7 +1220,7 @@ void UFPSOnlineSessionSubsystem::HandleHostTravelFailure(EFPSSessionTravelIntent
 		* 아래 Broadcast를 받은 리스너가 새 작업을 시작하지 못한다.
 		*/
 
-		StartDestroySession(EFPSSessionDestroyIntent::Destroy);
+		StartDestroySession(EFPSSessionDestroyIntent::HostLobbyRollback);
 		_OnTravelFailed.Broadcast(ErrorMessage);
 		_OnLobbyReady.Broadcast(false, ErrorMessage);
 		return;
@@ -940,11 +1231,59 @@ void UFPSOnlineSessionSubsystem::HandleHostTravelFailure(EFPSSessionTravelIntent
 
 }
 
+bool UFPSOnlineSessionSubsystem::IsTravelStillInProgress() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	if (nullptr != GameInstance)
+	{
+		const FWorldContext* WorldContext = GameInstance->GetWorldContext();
+		if (nullptr != WorldContext && nullptr != WorldContext->PendingNetGame)
+		{
+			// Client가 아직 Host에 접속 중이거나 Map을 내려받는 중이다.
+			return true;
+		}
+	}
+
+	const UWorld* World = GetWorld();
+	if (true == IsValid(World))
+	{
+		if (false == World->NextURL.IsEmpty() || true == World->IsInSeamlessTravel())
+		{
+			// ServerTravel이 예약되었으나 아직 수행되지 않았다.
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void UFPSOnlineSessionSubsystem::HandleTravelTimeout()
 {
 	if (EFPSOnlineTravelState::Traveling != _TravelState)
 	{
 		return;
+	}
+
+	/**
+	* 대형 Map 로딩이나 접속 협상은 정상적인 경우에도 Watchdog 시간을 넘길 수 있다.
+	* 아직 진행 중이라는 근거가 있으면 실패로 확정하지 않고 감시 시간을 연장한다.
+	* 무한 대기를 막기 위해 연장 횟수는 _MaxTravelWatchdogExtensions로 제한한다.
+	*/
+	if (true == IsTravelStillInProgress() && _TravelWatchdogExtensions < _MaxTravelWatchdogExtensions)
+	{
+		UGameInstance* GameInstance = GetGameInstance();
+		if (true == IsValid(GameInstance))
+		{
+			++_TravelWatchdogExtensions;
+
+			UE_LOG(LogFPSOnlineSession, Warning,
+				TEXT("Travel watchdog extended (%d/%d): travel is still in progress."),
+				_TravelWatchdogExtensions, _MaxTravelWatchdogExtensions);
+
+			GameInstance->GetTimerManager().SetTimer(
+				_TravelWatchdogHandle, this, &ThisClass::HandleTravelTimeout, _TravelTimeoutSeconds, false);
+			return;
+		}
 	}
 
 	const FString ErrorMessage = TEXT("Travel timed out without any completion or failure event.");
@@ -962,11 +1301,78 @@ void UFPSOnlineSessionSubsystem::HandleTravelTimeout()
 	}
 }
 
+void UFPSOnlineSessionSubsystem::HandleOperationTimeout()
+{
+	const EFPSOnlineOperationState TimedOutState = _OperationState;
+	if (EFPSOnlineOperationState::Idle == TimedOutState)
+	{
+		return;
+	}
+
+	UE_LOG(LogFPSOnlineSession, Error, TEXT("Online operation timed out (State = %d). Forcing Idle."), static_cast<int32>(TimedOutState));
+
+	/**
+	* 뒤늦게 도착하는 Callback이 이미 정리된 상태를 다시 건드리지 않도록 등록된 Session Delegate를 모두 해제한다.
+	*/
+	ClearOnlineSessionDelegates();
+
+	const EFPSSessionDestroyIntent TimeOutIntent = _DestroyIntent;
+	_DestroyIntent = EFPSSessionDestroyIntent::None;
+	_PendingMatchMapPath.Reset();
+
+	SetOperationState(EFPSOnlineOperationState::Idle);
+
+	const FString ErrorMessage = TEXT("Online subsystem did not respond in time.");
+	
+	switch (TimedOutState)
+	{
+		case EFPSOnlineOperationState::Destroying:
+		{
+			BroadcastDestroyFailure(TimeOutIntent, ErrorMessage);
+			break;
+		}
+		case EFPSOnlineOperationState::Creating:
+		{
+			ResetPendingCreate();
+			BroadcastCreateCompleted(false, ErrorMessage);
+			break;
+		}
+		case EFPSOnlineOperationState::Finding:
+		{
+			TArray<FFPSOnlineSessionInfo> EmptySessions;
+			BroadcastFindCompleted(false, EmptySessions, ErrorMessage);
+			break;
+		}
+		case EFPSOnlineOperationState::Joining:
+		{
+			SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+			_PendingJoinError.Reset();
+			BroadcastJoinCompleted(false, ErrorMessage);
+			break;
+		}
+		case EFPSOnlineOperationState::Starting:
+		{
+			_OnTravelFailed.Broadcast(ErrorMessage);
+			_OnMatchStarted.Broadcast(false, ErrorMessage);
+			break;
+		}
+		case EFPSOnlineOperationState::Ending:
+		{
+			_OnTravelFailed.Broadcast(ErrorMessage);
+			_OnLobbyReady.Broadcast(false, ErrorMessage);
+			break;
+		}
+	}
+}
+
 void UFPSOnlineSessionSubsystem::BeginDisconnectRecovery(const FString& ErrorMessage)
 {
 	if (EFPSOnlineOperationState::Idle != _OperationState)
 	{
 		UE_LOG(LogFPSOnlineSession, Warning, TEXT("Disconnect recovery deferred: operation in progress"));
+
+		// Operation 이 Idle로 돌아오는 시점에 SetOperationState가 재시도를 예약한다.
+		_RecoveryPending = true;
 		SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
 		_OnConnectionLost.Broadcast(ErrorMessage);
 		return;
@@ -991,9 +1397,73 @@ void UFPSOnlineSessionSubsystem::BeginDisconnectRecovery(const FString& ErrorMes
 	_OnConnectionLost.Broadcast(ErrorMessage);
 }
 
+void UFPSOnlineSessionSubsystem::RetryDisconnectRecovery()
+{
+	/**
+	* 이미 정리가 끝났거나(_RecoveryPending == false) 다른 Operation이 진행 중이면 아무것도 하지 않는다.
+	* SetOperationState가 Idle 전환마다 예약하므로 이 함수는 중복 예약될 수 있다.
+	* 여기서 상태를 건드리면 이미 None으로 정리된 ConnectionState를 되돌리게 된다.
+	* Operation이 진행 중인 경우에는 _RecoveryPending을 유지해 다음 Idle 전환에서 다시 시도한다.
+	*/
+	if (false == _RecoveryPending || EFPSOnlineOperationState::Idle != _OperationState)
+	{
+		return;
+	}
+
+	_RecoveryPending = false;
+
+	if (false == RefreshSessionInterface())
+	{
+		SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+		return;
+	}
+
+	if (nullptr != _SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		StartDestroySession(EFPSSessionDestroyIntent::DisconnectRecovery);
+		return;
+	}
+
+	SetConnectionState(EFPSOnlineConnectionState::None);
+}
+
+void UFPSOnlineSessionSubsystem::UpdateAdvertisedMap(const FString& MapPath)
+{
+	if (false == _SessionInterface.IsValid())
+	{
+		return;
+	}
+
+	FOnlineSessionSettings* Settings = _SessionInterface->GetSessionSettings(NAME_GameSession);
+	
+	if (nullptr == Settings)
+	{
+		return;
+	}
+
+	Settings->Set(SETTING_MAPNAME, MapPath, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
+	/**
+	* 실패해도 게임 진행에는 영향이 없고 광고 정보만 낡은 채로 남는다.
+	* 별도 완료 Callback을 처리하지 않고 결과만 기록한다.
+	*/
+	if (false == _SessionInterface->UpdateSession(NAME_GameSession, *Settings, true))
+	{
+		UE_LOG(LogFPSOnlineSession, Warning, TEXT("Failed to update the advertised map name: %s"), *MapPath);
+	}
+}
+
 void UFPSOnlineSessionSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorMessage)
 {
 	if (true == IsValid(World) && World->GetGameInstance() != GetGameInstance())
+	{
+		return;
+	}
+	
+	/**
+	* Beacon 등 GameNetDriver가 아닌 실패는 Session 상태와 무관하다.
+	*/
+	if (nullptr != NetDriver && NAME_GameNetDriver != NetDriver->NetDriverName)
 	{
 		return;
 	}
@@ -1013,8 +1483,24 @@ void UFPSOnlineSessionSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver*
 		return;
 	}
 
+	/**
+	* 이미 세션 정리가 진행 중이면 같은 실패를 중복 처리하지 않는다.
+	*/
+
+	if (EFPSOnlineOperationState::Destroying == _OperationState)
+	{
+		return;
+	}
+
 	if (EFPSOnlineConnectionState::Joined == _ConnectionState)
 	{
+		BeginDisconnectRecovery(NetworkError);
+	}
+	else if (EFPSOnlineConnectionState::Hosting == _ConnectionState && true == OnlineSessionSubsystemUtils::IsFatalHostNetworkFailure(FailureType))
+	{
+		/**
+		* 접속 받을 수 없는 Listen Server가 세션만 광고하는 상태를 막는다.
+		*/
 		BeginDisconnectRecovery(NetworkError);
 	}
 }
@@ -1068,7 +1554,7 @@ void UFPSOnlineSessionSubsystem::BroadcastDestroyFailure(EFPSSessionDestroyInten
 		case EFPSSessionDestroyIntent::Recreate:
 		{
 			ResetPendingCreate();
-			_OnCreateSessionCompleted.Broadcast(false, ErrorMessage);
+			BroadcastCreateCompleted(false, ErrorMessage);
 			break;
 		}
 		case EFPSSessionDestroyIntent::JoinRollback:
@@ -1089,12 +1575,18 @@ void UFPSOnlineSessionSubsystem::BroadcastDestroyFailure(EFPSSessionDestroyInten
 			}
 
 			_PendingJoinError.Reset();
-			_OnJoinSessionCompleted.Broadcast(false, JoinError);
+			BroadcastJoinCompleted(false, JoinError);
 			break;
 		}
 		case EFPSSessionDestroyIntent::Leave:
 		{
 			_OnLeaveSessionCompleted.Broadcast(false, ErrorMessage);
+			break;
+		}
+		case EFPSSessionDestroyIntent::HostLobbyRollback:
+		{
+			SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+			UE_LOG(LogFPSOnlineSession, Error, TEXT("Failed to clean up a session after lobby travel failure:%s"), *ErrorMessage);
 			break;
 		}
 		case EFPSSessionDestroyIntent::Destroy:
@@ -1151,7 +1643,26 @@ void UFPSOnlineSessionSubsystem::SetOperationState(EFPSOnlineOperationState NewS
 	}
 
 	_OperationState = NewState;
+
+	// 레벨 전환을 넘어 유지되는 GameInstance의 TimerManager를 사용한다.
+	UGameInstance* GameInstance = GetGameInstance();
+	if (true == IsValid(GameInstance))
+	{
+		FTimerManager& TimerManager = GameInstance->GetTimerManager();
+		TimerManager.ClearTimer(_OperationWatchdogHandle);
+
+		if (EFPSOnlineOperationState::Idle != NewState)
+		{
+			TimerManager.SetTimer(_OperationWatchdogHandle, this, &ThisClass::HandleOperationTimeout, _OperationTimeoutSeconds, false);
+		}
+	}
 	_OnOperationStateChanged.Broadcast(NewState);
+
+	// 보류된 Disconnect 정리가 있으면 현재 Callback 스택을 벗어난 뒤 재시도한다.
+	if (EFPSOnlineOperationState::Idle == NewState && true == _RecoveryPending && true == IsValid(GameInstance))
+	{
+		GameInstance->GetTimerManager().SetTimerForNextTick(this, &ThisClass::RetryDisconnectRecovery);
+	}
 }
 
 void UFPSOnlineSessionSubsystem::SetConnectionState(EFPSOnlineConnectionState NewState)
@@ -1173,6 +1684,9 @@ void UFPSOnlineSessionSubsystem::SetTravelState(EFPSOnlineTravelState NewState)
 	}
 	
 	_TravelState = NewState;
+
+	// 새로운 Travel이 시작되거나 끝났으므로 Watchdog 연장 횟수를 초기화한다.
+	_TravelWatchdogExtensions = 0;
 
 	// 레벨 전환을 넘어 유지되는 GameInstance의 TimerManager를 사용한다.
 	UGameInstance* GameInstance = GetGameInstance();
@@ -1218,6 +1732,10 @@ void UFPSOnlineSessionSubsystem::ClearOnlineSessionDelegates()
 		{
 			_SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(_DestroySessionCompleteHandle);
 		}
+		if (true == _EndSessionCompleteHandle.IsValid())
+		{
+			_SessionInterface->ClearOnEndSessionCompleteDelegate_Handle(_EndSessionCompleteHandle);
+		}
 	}
 
 	_CreateSessionCompleteHandle.Reset();
@@ -1225,6 +1743,7 @@ void UFPSOnlineSessionSubsystem::ClearOnlineSessionDelegates()
 	_FindSessionCompleteHandle.Reset();
 	_JoinSessionCompleteHandle.Reset();
 	_DestroySessionCompleteHandle.Reset();
+	_EndSessionCompleteHandle.Reset();
 }
 
 void UFPSOnlineSessionSubsystem::ResetPendingCreate()
@@ -1232,6 +1751,214 @@ void UFPSOnlineSessionSubsystem::ResetPendingCreate()
 	_PendingCreateOptions = FFPSSessionCreateOptions{};
 }
 
+#pragma region AutoMatch
 
+void UFPSOnlineSessionSubsystem::BroadcastCreateCompleted(bool WasSuccessful, const FString& ErrorMessage)
+{
+	_OnCreateSessionCompleted.Broadcast(WasSuccessful, ErrorMessage);
 
+	if (EFPSSessionAutoMatchStage::Hosting == _AutoMatchStage)
+	{
+		FinishAutoMatch(WasSuccessful, true, ErrorMessage);
+	}
+}
 
+void UFPSOnlineSessionSubsystem::BroadcastFindCompleted(bool WasSuccessful, const TArray<FFPSOnlineSessionInfo>& Sessions, const FString& ErrorMessage)
+{
+	_OnFindSessionCompleted.Broadcast(WasSuccessful, Sessions, ErrorMessage);
+
+	if (EFPSSessionAutoMatchStage::Finding == _AutoMatchStage)
+	{
+		ContinueAutoMatchAfterFind(WasSuccessful, Sessions);
+	}
+}
+
+void UFPSOnlineSessionSubsystem::BroadcastJoinCompleted(bool WasSuccessful, const FString& ErrorMessage)
+{
+	if (EFPSSessionAutoMatchStage::Joining == _AutoMatchStage && false == WasSuccessful)
+	{
+		/**
+		* 자동 매치 중의 개별 참가 실패는 다음 후보 또는 Host 전환으로 이어지는 중간 과정이다.
+		* UI에 실패로 알리면 최종적으로 성공하는 흐름에서도 에러가 표시되므로 통지하지 않는다.
+		*/
+		AdvanceAutoMatchAfterJoinFailure(ErrorMessage);
+		return;
+	}
+
+	_OnJoinSessionCompleted.Broadcast(WasSuccessful, ErrorMessage);
+
+	if (EFPSSessionAutoMatchStage::Joining == _AutoMatchStage)
+	{
+		FinishAutoMatch(true, false, FString());
+	}
+}
+
+bool UFPSOnlineSessionSubsystem::AutoJoinOrHost(const FFPSSessionCreateOptions& HostOptions, int32 MaxResults)
+{
+	FString ErrorMessage;
+
+	if (false == RequireIdle(TEXT("AutoJoinOrHost"), ErrorMessage))
+	{
+		_OnAutoMatchCompleted.Broadcast(false, false, ErrorMessage);
+		return false;
+	}
+
+	if (EFPSOnlineConnectionState::None != _ConnectionState)
+	{
+		ErrorMessage = TEXT("AutoJoinOrHost requires a disconnected state.");
+		_OnAutoMatchCompleted.Broadcast(false, false, ErrorMessage);
+		return false;
+	}
+
+	if (HostOptions._MaxPlayers <= 0)
+	{
+		ErrorMessage = TEXT("PublicConnections must be greater than zero.");
+		_OnAutoMatchCompleted.Broadcast(false, false, ErrorMessage);
+		return false;
+	}
+
+	FFPSSessionCreateOptions ValidatedOptions = HostOptions;
+	ValidatedOptions._MapId.TrimStartAndEndInline();
+	ValidatedOptions._DisplayName.TrimStartAndEndInline();
+	ValidatedOptions._GameModeId.TrimStartAndEndInline();
+
+	/**
+	* Host로 전환될 가능성이 있으므로 Map 유효성을 검색 전에 미리 확인한다.
+	* 검색이 끝난 뒤에야 Map 문제로 실패하면 대기 시간만 낭비된다.
+	*/
+	if (false == CanServerTravel(ValidatedOptions._MapId, ErrorMessage))
+	{
+		_OnAutoMatchCompleted.Broadcast(false, false, ErrorMessage);
+		return false;
+	}
+
+	ResetAutoMatch();
+	_AutoMatchHostOptions = MoveTemp(ValidatedOptions);
+	_AutoMatchStage = EFPSSessionAutoMatchStage::Finding;
+
+	UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch: searching for a joinable session."));
+
+	/**
+	* FindSessions가 시작에 실패하더라도 완료 통지(BroadcastFindCompleted)가 동기적으로 호출되어
+	* ContinueAutoMatchAfterFind가 Host 전환까지 처리한다. 여기서 중복 처리하지 않는다.
+	*/
+	FindSessions(MaxResults);
+	return true;
+}
+
+void UFPSOnlineSessionSubsystem::ContinueAutoMatchAfterFind(bool WasSuccessful, const TArray<FFPSOnlineSessionInfo>& Sessions)
+{
+	if (EFPSSessionAutoMatchStage::Finding != _AutoMatchStage)
+	{
+		return;
+	}
+
+	_AutoMatchCandidates.Reset();
+	_AutoMatchCandidateCursor = 0;
+
+	if (true == WasSuccessful)
+	{
+		// 자리가 남아 있는 Session만 참가 후보로 사용한다.
+		for (const FFPSOnlineSessionInfo& Information : Sessions)
+		{
+			if (INDEX_NONE != Information._ResultIndex &&
+				Information._CurrentPlayers < Information._MaxPlayers)
+			{
+				_AutoMatchCandidates.Add(Information._ResultIndex);
+			}
+		}
+	}
+
+	if (0 == _AutoMatchCandidates.Num())
+	{
+		UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch: no joinable session found. Hosting instead."));
+		StartAutoMatchHost();
+		return;
+	}
+
+	UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch: %d joinable session(s) found. Trying to join."), _AutoMatchCandidates.Num());
+
+	_AutoMatchStage = EFPSSessionAutoMatchStage::Joining;
+	JoinSessionByIndex(_AutoMatchCandidates[_AutoMatchCandidateCursor]);
+}
+
+void UFPSOnlineSessionSubsystem::AdvanceAutoMatchAfterJoinFailure(const FString& ErrorMessage)
+{
+	if (EFPSSessionAutoMatchStage::Joining != _AutoMatchStage)
+	{
+		return;
+	}
+
+	UE_LOG(LogFPSOnlineSession, Warning, TEXT("AutoMatch: join candidate failed. %s"), *ErrorMessage);
+
+	/**
+	* 참가 실패 후 Local Session 정리까지 실패하면 ConnectionState가 CleanupFailed로 남는다.
+	* 이 상태에서는 새 참가도 생성도 허용되지 않으므로 자동 매치를 중단한다.
+	*/
+	if (EFPSOnlineConnectionState::None != _ConnectionState)
+	{
+		FinishAutoMatch(false, false,
+			FString::Printf(TEXT("%s Auto match aborted: the local session could not be cleaned up."), *ErrorMessage));
+		return;
+	}
+
+	++_AutoMatchCandidateCursor;
+
+	if (true == _AutoMatchCandidates.IsValidIndex(_AutoMatchCandidateCursor))
+	{
+		/**
+		* 이 호출이 동기적으로 실패하면 BroadcastJoinCompleted를 통해 이 함수가 다시 호출되어
+		* 다음 후보로 넘어간다. 따라서 여기서 반복문을 돌리지 않는다.
+		*/
+		JoinSessionByIndex(_AutoMatchCandidates[_AutoMatchCandidateCursor]);
+		return;
+	}
+
+	UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch: every join candidate failed. Hosting instead."));
+	StartAutoMatchHost();
+}
+
+bool UFPSOnlineSessionSubsystem::StartAutoMatchHost()
+{
+	_AutoMatchStage = EFPSSessionAutoMatchStage::Hosting;
+	_AutoMatchCandidates.Reset();
+	_AutoMatchCandidateCursor = 0;
+
+	/**
+	* CreateSession은 실패 시 완료 통지를 동기적으로 발생시키고,
+	* 그 경로에서 FinishAutoMatch -> ResetAutoMatch가 _AutoMatchHostOptions를 비운다.
+	* 인자로 넘긴 참조가 그 사이에 무효화되지 않도록 복사본을 사용한다.
+	*/
+	const FFPSSessionCreateOptions HostOptions = _AutoMatchHostOptions;
+	return CreateSession(HostOptions);
+}
+
+void UFPSOnlineSessionSubsystem::FinishAutoMatch(bool WasSuccessful, bool IsHost, const FString& ErrorMessage)
+{
+	if (EFPSSessionAutoMatchStage::None == _AutoMatchStage)
+	{
+		return;
+	}
+
+	ResetAutoMatch();
+
+	UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch finished. Successful = %d, IsHost = %d, %s"),
+		WasSuccessful ? 1 : 0, IsHost ? 1 : 0, *ErrorMessage);
+
+	_OnAutoMatchCompleted.Broadcast(WasSuccessful, IsHost, ErrorMessage);
+}
+
+void UFPSOnlineSessionSubsystem::ResetAutoMatch()
+{
+	_AutoMatchStage = EFPSSessionAutoMatchStage::None;
+	_AutoMatchCandidates.Reset();
+	_AutoMatchCandidateCursor = 0;
+	_AutoMatchHostOptions = FFPSSessionCreateOptions{};
+}
+
+bool UFPSOnlineSessionSubsystem::IsAutoMatchInProgress() const
+{
+	return EFPSSessionAutoMatchStage::None != _AutoMatchStage;
+}
+
+#pragma endregion

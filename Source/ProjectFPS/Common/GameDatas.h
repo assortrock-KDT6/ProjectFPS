@@ -43,6 +43,12 @@ struct FFPSOnlineSessionInfo
 
 	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
 	bool _IsLan = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	FString	_DisplayName;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "OnlineSession")
+	FString _GameModeId;
 };
 
 /* 방 만들 때 쓰이는 옵션 구조체. */

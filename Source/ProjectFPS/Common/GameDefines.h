@@ -27,8 +27,6 @@ enum class EMatchPhase : uint8
 
 };
 
-
-
 // 현재 실행 중인 비동기 작업 상태.
 UENUM(BlueprintType)
 enum class EFPSOnlineOperationState : uint8
@@ -37,7 +35,9 @@ enum class EFPSOnlineOperationState : uint8
 	Destroying	UMETA(DisplayName = "DESTROYING"),
 	Creating	UMETA(DisplayName = "CREATING"),
 	Finding		UMETA(DisplayName = "FINDING"),
-	Joining		UMETA(DisplayName = "JOINING")
+	Joining		UMETA(DisplayName = "JOINING"),
+	Starting	UMETA(DisplayName = "STARTING"),
+	Ending		UMETA(DisplayName = "ENDING")
 };
 
 // 현재 세션 접속 상태.
@@ -57,3 +57,11 @@ enum class EFPSOnlineTravelState : uint8
 	None = 0	UMETA(DisplayName = "NONE"),
 	Traveling	UMETA(DisplayName = "TRAVELING")
 };
+
+// OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.
+namespace FCharacterStateUtils
+{
+	const TCHAR* ToString(EFPSOnlineOperationState Type);
+	const TCHAR* ToString(EFPSOnlineConnectionState Type);
+	const TCHAR* ToString(EFPSOnlineTravelState Type);
+}
