@@ -8,7 +8,10 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
+#include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/ParkourComponent.h"
+//#include "Component/Parkour/HangingComponent.h
+#include "Component/Parkour/MantleComponent.h"
 #include "UI/GameHUD.h"
 
 
@@ -68,7 +71,10 @@ ACharacterPlayer::ACharacterPlayer()
 #pragma endregion
 
 	// Parkour
-	_ParkourComponent = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
+	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
+	_ParkourComponent     = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
+	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
+	_MantleComponent    = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
 }
 
@@ -172,6 +178,14 @@ void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
 
 	if (IsValid(_ParkourComponent))
 	{
+		if (_ParkourComponent->TryParkour())
+		{
+			return;
+		}
+	}
+	if (IsValid(_MantleComponent))
+	{
+		_MantleComponent->TryMantle();
 		_ParkourComponent->TryParkour();
 	}
 }
