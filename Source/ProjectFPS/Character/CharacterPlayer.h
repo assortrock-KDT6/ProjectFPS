@@ -45,7 +45,13 @@ protected:
 	TObjectPtr<UDefaultInput> _DefaultInput;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
+	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UParkourComponent> _ParkourComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
+	TObjectPtr<class UMantleComponent> _MantleComponent;
 
 	
 
