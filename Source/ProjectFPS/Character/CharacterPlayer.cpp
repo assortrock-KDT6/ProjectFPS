@@ -39,7 +39,7 @@ ACharacterPlayer::ACharacterPlayer()
 
 #pragma endregion
 
-	_SprintArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
+	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
 	_CameraComponent	= CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 
 #pragma region ROTATION_SETTING
@@ -47,15 +47,15 @@ ACharacterPlayer::ACharacterPlayer()
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
 	if (IsValid(CapsuleComp))
 	{
-		_SprintArmComponent->SetupAttachment(CapsuleComp);
-		_CameraComponent->SetupAttachment(_SprintArmComponent);
+		_SpringArmComponent->SetupAttachment(CapsuleComp);
+		_CameraComponent->SetupAttachment(_SpringArmComponent);
 
-		_SprintArmComponent->TargetArmLength = 400.f;
-		_SprintArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
-
-		_SprintArmComponent->bUsePawnControlRotation = true;
-		_SprintArmComponent->bInheritPitch	= true;
-		_SprintArmComponent->bInheritYaw	= true;
+		_SpringArmComponent->TargetArmLength = 0.f;
+		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
+		
+		_SpringArmComponent->bUsePawnControlRotation = true;
+		_SpringArmComponent->bInheritPitch	= true;
+		_SpringArmComponent->bInheritYaw	= true;
 
 		_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
@@ -81,6 +81,11 @@ ACharacterPlayer::ACharacterPlayer()
 void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
+}
+
+void ACharacterPlayer::Jump()
+{
+	Super::Jump();
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)
@@ -116,12 +121,12 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
 
 	InputComp->BindAction(_DefaultInput->_Move,      ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
-	InputComp->BindAction(_DefaultInput->_Jump,      ETriggerEvent::Triggered, this, &ACharacterPlayer::JumpAction);
+	InputComp->BindAction(_DefaultInput->_Jump,      ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
 	InputComp->BindAction(_DefaultInput->_MouseLook, ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
 	InputComp->BindAction(_DefaultInput->_MouseZoom, ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
 	InputComp->BindAction(_DefaultInput->_Parkour,   ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
 	InputComp->BindAction(_DefaultInput->_Inventory, ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
-	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
+	InputComp->BindAction(_DefaultInput->_Map,		ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -143,11 +148,6 @@ void ACharacterPlayer::MoveAction(const FInputActionValue& Value)
 	AddMovementInput(Right, Axis.Y);
 }
 
-void ACharacterPlayer::JumpAction(const FInputActionValue& Value)
-{
-	Jump();
-}
-
 void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 {
 	FVector2D Aim = Value.Get<FVector2D>();
@@ -161,14 +161,14 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 
 void ACharacterPlayer::CharacterMouseZoomAction(const FInputActionValue& Value)
 {
-	if (IsValid(_SprintArmComponent))
-	{
-		const float ZoomValue = Value.Get<float>() * _ZoomSensitivity;
-		const float Length = _SprintArmComponent->TargetArmLength;
-
-		// [Todo] : 최대 거리, 최소 거리 변수로 분리할 것.
-		_SprintArmComponent->TargetArmLength = FMath::Clamp(_SprintArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
-	}
+	// if (IsValid(_SpringArmComponent))
+	// {
+	// 	const float ZoomValue = Value.Get<float>() * _ZoomSensitivity;
+	// 	//const float Length = _SprintArmComponent->TargetArmLength;
+	//
+	// 	// [Todo] : 최대 거리, 최소 거리 변수로 분리할 것.
+	// 	//_SprintArmComponent->TargetArmLength = FMath::Clamp(_SprintArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
+	// }
 }
 
 void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
