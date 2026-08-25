@@ -8,6 +8,7 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
+#include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/ParkourComponent.h"
 //#include "Component/Parkour/HangingComponent.h
