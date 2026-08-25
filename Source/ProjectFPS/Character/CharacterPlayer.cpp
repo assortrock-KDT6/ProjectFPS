@@ -209,3 +209,9 @@ void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
 		
 	}
 }
+
+void ACharacterPlayer::InteractAction(const FInputActionValue& value)
+{
+	if (_InteractionComponent)
+		_InteractionComponent->TryInteract();
+}

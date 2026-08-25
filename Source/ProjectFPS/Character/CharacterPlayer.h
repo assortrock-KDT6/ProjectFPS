@@ -53,6 +53,11 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UMantleComponent> _MantleComponent;
 
+	UPROPERTY(VisibleAnywhere, Category = "Interact")
+	TObjectPtr<class UInteractionComponent> _InteractionComponent;
+
+
+
 	
 
 protected:
@@ -90,5 +95,7 @@ protected:
 	UFUNCTION()
 	void ToggleMapAction(const FInputActionValue& value);
 
+	UFUNCTION()
+	void InteractAction(const FInputActionValue& value);
 
 };

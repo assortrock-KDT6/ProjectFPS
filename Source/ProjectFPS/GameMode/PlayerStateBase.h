@@ -14,6 +14,7 @@ class PROJECTFPS_API APlayerStateBase : public APlayerState
 {
 	GENERATED_BODY()
 	
+	// 지워질 예정? (보류)
 	// 시작 아이템
 	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
 	TMap<FName, int32> _StartItems; 
@@ -21,6 +22,7 @@ class PROJECTFPS_API APlayerStateBase : public APlayerState
 	// 현재 보유 (TID -> 개수)
 	UPROPERTY()
 	TMap<FName, int32> _Items;
+
 	
 public:
 	virtual void BeginPlay() override;
@@ -32,6 +34,5 @@ public:
 	{
 		return _Items;
 	}
-
 
 };
