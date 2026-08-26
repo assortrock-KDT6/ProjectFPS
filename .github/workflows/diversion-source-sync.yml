@@ -31,12 +31,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Export Diversion Cloud branches
+      - name: Export Diversion Cloud branches with official CLI
         env:
+          USER_POOL_CLIENT_ID: j084768v4hd6j1pf8df4h4c47
           DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
           DIVERSION_REPO_ID: dv.repo.aafecadc-62dd-47fa-a91c-c5b3b358c8a8
           DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
           MANUAL_BRANCH: ${{ inputs.branch }}
         run: |
+          set -euo pipefail
+
+          curl -fsSL https://get.diversion.dev/unix | bash
+          export PATH="$HOME/.diversion/bin:$PATH"
+
+          dv --agent --bkg
+          sleep 2
+          dv authenticate "$DIVERSION_API_TOKEN"
+
           export REQUESTED_BRANCH="${DISPATCH_BRANCH:-${MANUAL_BRANCH:-*}}"
           node .github/scripts/export-diversion-cloud.mjs
