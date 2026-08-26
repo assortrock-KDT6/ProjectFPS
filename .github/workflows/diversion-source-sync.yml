@@ -23,8 +23,6 @@ jobs:
     name: Export Config and Source
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    env:
-      USER_POOL_CLIENT_ID: j084768v4hd6j1pf8df4h4c47
 
     steps:
       - name: Check out GitHub repository
@@ -40,11 +38,5 @@ jobs:
           DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
           MANUAL_BRANCH: ${{ inputs.branch }}
         run: |
-          curl -fsSL https://get.diversion.dev/unix -o "$RUNNER_TEMP/install-diversion.sh"
-          bash "$RUNNER_TEMP/install-diversion.sh"
-          export PATH="$HOME/.diversion/bin:$PATH"
-          "$HOME/.diversion/bin/dv" --agent --bkg
-          sleep 2
-          "$HOME/.diversion/bin/dv" authenticate "$DIVERSION_API_TOKEN"
           export REQUESTED_BRANCH="${DISPATCH_BRANCH:-${MANUAL_BRANCH:-*}}"
           node .github/scripts/export-diversion-cloud.mjs
