@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const API_BASE_URL = "https://api.diversion.dev/v0";
@@ -162,6 +163,36 @@ async function downloadFile(refId, entry, stagingRoot) {
   }
 
   if (expectedSize !== undefined && bytes.length !== expectedSize) {
+    const existingPath = path.resolve(
+      gitWorkspace,
+      ...repositoryPath.split("/"),
+    );
+    const expectedWorkspacePrefix = `${gitWorkspace}${path.sep}`;
+    if (!existingPath.startsWith(expectedWorkspacePrefix)) {
+      throw new Error(`Refusing to read outside Git workspace: ${existingPath}`);
+    }
+
+    try {
+      const existingBytes = await readFile(existingPath);
+      const existingSha = createHash("sha1").update(existingBytes).digest("hex");
+      if (
+        existingBytes.length === expectedSize &&
+        typeof blob.sha === "string" &&
+        existingSha === blob.sha.toLowerCase()
+      ) {
+        console.warn(
+          `Diversion returned an empty blob for ${repositoryPath}; preserving the byte-identical GitHub file.`,
+        );
+        bytes = existingBytes;
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  if (expectedSize !== undefined && bytes.length !== expectedSize) {
     throw new Error(
       `Diversion file size mismatch for ${repositoryPath}: expected ${expectedSize}, received ${bytes.length}.`,
     );
@@ -242,8 +273,8 @@ function checkoutGitBranch(branchName) {
 async function exportBranch(branch) {
   console.log(`::group::Exporting Diversion Cloud branch '${branch.branch_name}'`);
   try {
-    const { stagingRoot, fileCount } = await stageBranch(branch);
     checkoutGitBranch(branch.branch_name);
+    const { stagingRoot, fileCount } = await stageBranch(branch);
     await mirrorIncludedRoots(stagingRoot);
 
     git(["add", "-A", "--", ...INCLUDED_ROOTS]);

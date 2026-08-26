@@ -27,6 +27,9 @@ Open GitHub Actions, select **Export Diversion source branches**, choose
 GitHub's hosted runner reads the branch list and file tree directly from the
 Diversion Cloud API. It downloads only files under `Config/` and `Source/`,
 commits only when those folders changed, and pushes to the matching branch.
+A Diversion download that unexpectedly returns an empty file is accepted only
+when the existing file on the target GitHub branch has the exact size and SHA-1
+reported by Diversion; otherwise the run fails before committing.
 A Diversion branch that does not exist on GitHub is created from `develop`
 before its source snapshot is added. GitHub branches are not automatically
 deleted when a Diversion branch is deleted.
