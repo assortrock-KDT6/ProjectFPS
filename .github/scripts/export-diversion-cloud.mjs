@@ -55,31 +55,31 @@ async function checkoutDiversionBranch(branchName) {
       force: true,
     });
 
+    // Diversion 공식 CI 문서와 동일하게 옵션을 앞에 둔다.
     diversionCli([
       "clone",
+      "-new-workspace",
       repoName,
       diversionWorkspace,
-      "--new-workspace",
-      "--ref",
-      branchName,
     ]);
 
     diversionWorkspaceReady = true;
-  } else {
-    diversionCli(
-      [
-        "checkout",
-        branchName,
-        "--discard-changes",
-        "--ignore-shelf",
-      ],
-      { cwd: diversionWorkspace },
-    );
   }
 
-  diversionCli(["status"], {
-    cwd: diversionWorkspace,
-  });
+  // clone 옵션의 ref 처리 대신 명시적으로 브랜치를 전환한다.
+  diversionCli(
+    [
+      "checkout",
+      branchName,
+    ],
+    { cwd: diversionWorkspace },
+  );
+
+  // 모든 파일이 내려올 때까지 대기한다.
+  diversionCli(
+    ["status"],
+    { cwd: diversionWorkspace },
+  );
 }
 
 async function diversionFetch(apiPath) {
