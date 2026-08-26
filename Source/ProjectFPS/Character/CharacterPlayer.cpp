@@ -8,6 +8,7 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
+#include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/ParkourComponent.h"
 //#include "Component/Parkour/HangingComponent.h
@@ -76,6 +77,9 @@ ACharacterPlayer::ACharacterPlayer()
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent    = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
+	//Interaction
+	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
+
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -126,7 +130,8 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_MouseZoom, ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
 	InputComp->BindAction(_DefaultInput->_Parkour,   ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
 	InputComp->BindAction(_DefaultInput->_Inventory, ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
-	InputComp->BindAction(_DefaultInput->_Map,		ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
+	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
+	InputComp->BindAction(_DefaultInput->_Interact,  ETriggerEvent::Started,    this, &ACharacterPlayer::InteractAction);
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -220,4 +225,13 @@ void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
 			HUD->ToggleMap();
 		
 	}
+}
+
+void ACharacterPlayer::InteractAction(const FInputActionValue& value)
+{
+	if (nullptr == _InteractionComponent)
+		GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, TEXT("Error")); // 에러 명칭 정확하게 작성할것.
+
+	if (_InteractionComponent)
+		_InteractionComponent->TryInteract();
 }
