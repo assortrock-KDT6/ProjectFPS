@@ -46,9 +46,10 @@ jobs:
           curl -fsSL https://get.diversion.dev/unix | bash
           export PATH="$HOME/.diversion/bin:$PATH"
 
-          dv --agent --bkg
-          sleep 2
           dv authenticate "$DIVERSION_API_TOKEN"
+
+          dv --agent --bkg
+          sleep 5
 
           dv repo
 
