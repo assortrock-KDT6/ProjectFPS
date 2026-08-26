@@ -7,32 +7,27 @@
 #include "PlayerStateBase.generated.h"
 
 /**
- * 
+ * *인벤토리 -> 컴포넌트로 이동예정	
  */
 UCLASS()
 class PROJECTFPS_API APlayerStateBase : public APlayerState
 {
 	GENERATED_BODY()
-	
-	// 지워질 예정? (보류)
-	// 시작 아이템
-	UPROPERTY(EditDefaultsOnly, Category = "Inventory")
-	TMap<FName, int32> _StartItems; 
 
-	// 현재 보유 (TID -> 개수)
-	UPROPERTY()
-	TMap<FName, int32> _Items;
+public:
+	APlayerStateBase();
+
+private:
+
+	// 인벤 컴포넌트 부착
+	UPROPERTY(VisibleAnywhere)
+	TObjectPtr<class UInventoryComponent> _InventoryComponent;
 
 	
 public:
-	virtual void BeginPlay() override;
 	
-	void AddItem(FName TID, int32 Count = 1);
-
-public:
-	const TMap<FName, int32>& GetItems() const 
-	{
-		return _Items;
-	}
+	//void AddItem(FName TID, int32 Count = 1);
+	UInventoryComponent* GetInventory() const { return _InventoryComponent; }
+	
 
 };

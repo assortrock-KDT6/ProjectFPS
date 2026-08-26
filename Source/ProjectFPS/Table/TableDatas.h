@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Engine/DataTable.h"
+#include "Common/GameDefines.h"
 #include "TableDatas.generated.h"
 
 
@@ -33,7 +34,6 @@ struct FTablePathRow : public FTableRowBase
 };
 
 // 아이템 테이블 행
-// 언리얼 Struct 
 USTRUCT(BlueprintType)
 struct FItemData  : public  FTableRowBase
 {
@@ -50,7 +50,11 @@ struct FItemData  : public  FTableRowBase
 	// 메시 정보 
 	UPROPERTY(EditAnyWhere, BlueprintReadOnly)
 	TObjectPtr<UStaticMesh> _WorldMesh = nullptr;
-	
+
+	// 아이템 종류
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	EItemType _ItemType = EItemType::Consumable;
+
 	//  *나중에 지울예정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 _Count = 1;
@@ -61,7 +65,7 @@ struct FStartItemRow : public FTableRowBase
 {
 	GENERATED_BODY()
 
-	// 시작 아이템 수량.
+	// *시작 아이템 수량. -> 삭제예정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 _Count = 1;				
 };

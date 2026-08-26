@@ -23,5 +23,6 @@ class PROJECTFPS_API IInteractable
 
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
-	virtual void Interact(AActor* Interactor) = 0;	// 상호작용시 여기서 사용.
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
+	void Interact(AActor* Interactor);	// 상호작용시 여기서 사용.
 };

@@ -12,7 +12,7 @@ UInteractionComponent::UInteractionComponent()
 	PrimaryComponentTick.bCanEverTick = true; // 하이라이트용
 }
 
-void UInteractionComponent::TryInteract()
+void UInteractionComponent::TryInteract() // -> *TraceInteract
 {
 	AActor* Owner = GetOwner();
 	if (nullptr == Owner)
@@ -22,7 +22,7 @@ void UInteractionComponent::TryInteract()
 	UCameraComponent* Camera = Owner->FindComponentByClass<UCameraComponent>();
 	if (nullptr == Camera)
 		return;
-
+	
 	const FVector Start = Camera->GetComponentLocation();
 
 	// 카메라와 캐릭터 거리만큼 사거리 연장(3인칭 보정)
@@ -39,11 +39,17 @@ void UInteractionComponent::TryInteract()
 		if (FVector::Dist(Owner->GetActorLocation(), Hit.ImpactPoint) > _InteractDistance)
 			return;
 
-		// 맞은게 "상호작용 가능" 종류가 뭐든 Interact
-		if (IInteractable* Target = Cast<IInteractable>(Hit.GetActor()))
-			Target->Interact(Owner);
+		AActor* HitActor = Hit.GetActor();
+
+		if (HitActor && HitActor->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+			IInteractable::Execute_Interact(HitActor, Owner);	
+
+		
 	}
 	
+	// 라인 트레이서
+
+	// 스페어 트레이서
+
 }
 
- 

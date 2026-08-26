@@ -23,7 +23,11 @@ class PROJECTFPS_API UItemSlotWidget : public UUserWidget, public IUserObjectLis
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UTextBlock> CountText;
 	
+
+
 	// 함수 선언
 protected:
 	virtual void NativeOnListItemObjectSet(UObject* ListItemObject) override;
+public:
+	void SetSlot(FName TID);
 };

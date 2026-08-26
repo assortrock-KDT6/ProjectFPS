@@ -3,6 +3,8 @@
 
 #include "Item/ItemPickUp.h"
 #include "Components/StaticMeshComponent.h"
+#include "Component/Inventory/InventoryComponent.h"
+#include "Common/GameDefines.h"
 #include "Gamemode/PlayerStateBase.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
@@ -30,7 +32,7 @@ void AItemPickUp::BeginPlay()
 		_Mesh->SetStaticMesh(Row->_WorldMesh);
 }
 
-void AItemPickUp::Interact(AActor* Interactor)
+void AItemPickUp::Interact_Implementation(AActor* Interactor)
 {
 	APawn* Pawn = Cast<APawn>(Interactor);
 	if (nullptr == Pawn)
@@ -45,7 +47,20 @@ void AItemPickUp::Interact(AActor* Interactor)
 		return;
 
 	// 상호작용 추가 예정
-	PS->AddItem(_TID, _Count);	// 보유에 추가
+	UInventoryComponent* Inv = PS->GetInventory();
+	if (nullptr == Inv)
+		return;
+	
+	// 테이블에서 타입 조회 
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	const FItemData* Row = Sub ? Sub->FindTableRow<FItemData>(TEXT("ItemTable"), _TID) : nullptr;
+
+	// 타입 분기 : 무기 -> 장비슬롯, 그 외 아이템 슬롯
+	if (Row && Row->_ItemType == EItemType::Weapon)
+		Inv->EquipWeapon(_TID);						// 장비 슬롯
+	else
+		Inv->AddItem(_TID, _Count);					// 아이템 슬롯
+
 	Destroy();					// 제거(PickUp)
 
 

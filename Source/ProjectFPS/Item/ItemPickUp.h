@@ -32,7 +32,7 @@ private:
 
 public:
 	virtual void BeginPlay() override;
-	virtual void Interact(AActor* Interactor) override; // 인터페이스 구현
+	virtual void Interact_Implementation(AActor* Interactor) override; // 인터페이스 구현 -> void -> bool
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 

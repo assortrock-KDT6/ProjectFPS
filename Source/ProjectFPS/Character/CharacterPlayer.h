@@ -36,7 +36,7 @@ public:
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<USpringArmComponent> _SprintArmComponent;
+	TObjectPtr<USpringArmComponent> _SpringArmComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<UCameraComponent> _CameraComponent;
@@ -63,6 +63,9 @@ protected:
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
+public:
+	virtual void Jump() override;
 
 public:
 	// Called every frame
@@ -76,9 +79,6 @@ public:
 protected:
 	UFUNCTION()
 	void MoveAction(const FInputActionValue& Value);
-
-	UFUNCTION()
-	void JumpAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void MoveLookAction(const FInputActionValue& Value);
