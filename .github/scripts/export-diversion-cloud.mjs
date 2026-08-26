@@ -257,11 +257,6 @@ async function exportBranch(branch) {
   }
 }
 
-const tokenCheck = await diversionFetch("/auth/test");
-if (tokenCheck.status !== 204) {
-  throw new Error(`Unexpected Diversion token test status: ${tokenCheck.status}`);
-}
-
 let branches = await listBranches();
 if (requestedBranch !== "*") {
   branches = branches.filter((branch) => branch.branch_name === requestedBranch);
