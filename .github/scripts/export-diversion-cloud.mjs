@@ -6,7 +6,6 @@ import path from "node:path";
 const API_BASE_URL = "https://api.diversion.dev/v0";
 const INCLUDED_ROOTS = ["Config", "Source"];
 const FALLBACK_BRANCH = "develop";
-const DOWNLOAD_CONCURRENCY = 8;
 
 const token = process.env.DIVERSION_API_TOKEN;
 const repoId = process.env.DIVERSION_REPO_ID || "ProjectFPS";
@@ -14,6 +13,12 @@ const requestedBranch = process.env.REQUESTED_BRANCH || "*";
 const gitWorkspace = path.resolve(process.env.GITHUB_WORKSPACE || process.cwd());
 const runnerTemp = path.resolve(process.env.RUNNER_TEMP || path.join(gitWorkspace, ".tmp"));
 
+const diversionWorkspace = path.join(
+  runnerTemp,
+  "projectfps-diversion-cli",
+);
+
+let diversionWorkspaceReady = false;
 if (!token) {
   throw new Error("GitHub secret DIVERSION_API_TOKEN is not configured.");
 }
@@ -31,6 +36,49 @@ function gitStatus(args) {
     cwd: gitWorkspace,
     encoding: "utf8",
     stdio: "pipe",
+  });
+}
+
+function diversionCli(args, options = {}) {
+  return execFileSync("dv", args, {
+    cwd: options.cwd || gitWorkspace,
+    encoding: "utf8",
+    stdio: "inherit",
+  });
+}
+
+async function checkoutDiversionCommit(commitId) {
+  if (!diversionWorkspaceReady) {
+    await rm(diversionWorkspace, {
+      recursive: true,
+      force: true,
+    });
+
+    diversionCli([
+      "clone",
+      repoId,
+      diversionWorkspace,
+      "--new-workspace",
+      "--ref",
+      commitId,
+    ]);
+
+    diversionWorkspaceReady = true;
+  } else {
+    diversionCli(
+      [
+        "checkout",
+        commitId,
+        "--discard-changes",
+        "--ignore-shelf",
+      ],
+      { cwd: diversionWorkspace },
+    );
+  }
+
+  // 모든 파일의 클라우드 다운로드가 끝날 때까지 기다린다.
+  diversionCli(["status"], {
+    cwd: diversionWorkspace,
   });
 }
 
@@ -67,10 +115,6 @@ async function diversionFetch(apiPath) {
 
 function encodeRepoRef(value) {
   return encodeURIComponent(value);
-}
-
-function encodeRepositoryPath(value) {
-  return value.split("/").map(encodeURIComponent).join("/");
 }
 
 function validateRepositoryPath(repositoryPath) {
@@ -123,122 +167,98 @@ async function listFiles(refId) {
   });
 }
 
-async function downloadFile(refId, entry, stagingRoot) {
-  const repositoryPath = validateRepositoryPath(entry.path);
-  const destination = path.resolve(stagingRoot, ...repositoryPath.split("/"));
-  const expectedPrefix = `${path.resolve(stagingRoot)}${path.sep}`;
-
-  if (!destination.startsWith(expectedPrefix)) {
-    throw new Error(`Refusing to write outside staging directory: ${destination}`);
-  }
-
-  const blob = entry.blob || {};
-  const downloadUrl =
-    entry.download_url ||
-    entry.downloadUrl ||
-    entry.temp_download_url ||
-    blob.download_url ||
-    blob.downloadUrl ||
-    blob.temp_download_url;
-
-  const expectedSize = blob.size === undefined ? undefined : Number(blob.size);
-  let bytes;
-
-  if (typeof downloadUrl === "string" && downloadUrl) {
-    try {
-      const response = await fetch(downloadUrl);
-      if (response.ok) {
-        bytes = Buffer.from(await response.arrayBuffer());
-      }
-    } catch {
-      // The short-lived object URL can expire; retry through Diversion below.
-    }
-  }
-
-  if (!bytes || (expectedSize !== undefined && bytes.length !== expectedSize)) {
-    const response = await diversionFetch(
-      `/repos/${encodeRepoRef(repoId)}/blobs/${encodeRepoRef(refId)}/${encodeRepositoryPath(`/${repositoryPath}`)}`,
-    );
-    bytes = Buffer.from(await response.arrayBuffer());
-  }
-
-  if (expectedSize !== undefined && bytes.length !== expectedSize) {
-    const existingPath = path.resolve(
-      gitWorkspace,
-      ...repositoryPath.split("/"),
-    );
-    const expectedWorkspacePrefix = `${gitWorkspace}${path.sep}`;
-    if (!existingPath.startsWith(expectedWorkspacePrefix)) {
-      throw new Error(`Refusing to read outside Git workspace: ${existingPath}`);
-    }
-
-    try {
-      const existingBytes = await readFile(existingPath);
-      const existingSha = createHash("sha1").update(existingBytes).digest("hex");
-      if (
-        existingBytes.length === expectedSize &&
-        typeof blob.sha === "string" &&
-        existingSha === blob.sha.toLowerCase()
-      ) {
-        console.warn(
-          `Diversion returned an empty blob for ${repositoryPath}; preserving the byte-identical GitHub file.`,
-        );
-        bytes = existingBytes;
-      }
-    } catch (error) {
-      if (error?.code !== "ENOENT") {
-        throw error;
-      }
-    }
-  }
-
-  if (expectedSize !== undefined && bytes.length !== expectedSize) {
-    throw new Error(
-      `Diversion file size mismatch for ${repositoryPath}: expected ${expectedSize}, received ${bytes.length}.`,
-    );
-  }
-
-  await mkdir(path.dirname(destination), { recursive: true });
-  await writeFile(destination, bytes);
-
-  if (entry.mode === 33261) {
-    await chmod(destination, 0o755);
-  }
-}
-
-async function runWithConcurrency(items, workerCount, worker) {
-  let nextIndex = 0;
-
-  async function runWorker() {
-    while (true) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      if (currentIndex >= items.length) {
-        return;
-      }
-      await worker(items[currentIndex]);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(workerCount, items.length) }, runWorker),
-  );
-}
-
 async function stageBranch(branch) {
-  const stagingRoot = path.join(runnerTemp, "projectfps-diversion-export");
-  await rm(stagingRoot, { recursive: true, force: true });
+  const stagingRoot = path.join(
+    runnerTemp,
+    "projectfps-diversion-export",
+  );
+
+  await rm(stagingRoot, {
+    recursive: true,
+    force: true,
+  });
 
   for (const root of INCLUDED_ROOTS) {
-    await mkdir(path.join(stagingRoot, root), { recursive: true });
+    await mkdir(path.join(stagingRoot, root), {
+      recursive: true,
+    });
   }
 
-  const entries = await listFiles(branch.commit_id);
-  await runWithConcurrency(entries, DOWNLOAD_CONCURRENCY, (entry) =>
-    downloadFile(branch.commit_id, entry, stagingRoot),
-  );
+  // 브랜치 이름 대신 정확한 Diversion 커밋을 받는다.
+  await checkoutDiversionCommit(branch.commit_id);
 
-  return { stagingRoot, fileCount: entries.length };
+  // API는 파일 내용이 아니라 검증용 크기와 SHA만 조회한다.
+  const entries = await listFiles(branch.commit_id);
+
+  if (entries.length === 0) {
+    throw new Error(
+      `No Config/Source files were returned for ${branch.branch_name}.`,
+    );
+  }
+
+  for (const entry of entries) {
+    const repositoryPath = validateRepositoryPath(entry.path);
+
+    const sourcePath = path.resolve(
+      diversionWorkspace,
+      ...repositoryPath.split("/"),
+    );
+
+    const sourcePrefix = `${path.resolve(diversionWorkspace)}${path.sep}`;
+    if (!sourcePath.startsWith(sourcePrefix)) {
+      throw new Error(
+        `Refusing to read outside Diversion workspace: ${sourcePath}`,
+      );
+    }
+
+    const bytes = await readFile(sourcePath);
+    const expectedSize = Number(entry.blob.size);
+
+    if (bytes.length !== expectedSize) {
+      throw new Error(
+        `Diversion CLI file size mismatch for ${repositoryPath}: ` +
+          `expected ${expectedSize}, received ${bytes.length}.`,
+      );
+    }
+
+    if (typeof entry.blob.sha === "string" && entry.blob.sha) {
+      const actualSha = createHash("sha1")
+        .update(bytes)
+        .digest("hex");
+
+      if (actualSha !== entry.blob.sha.toLowerCase()) {
+        throw new Error(
+          `Diversion CLI SHA mismatch for ${repositoryPath}.`,
+        );
+      }
+    }
+
+    const destination = path.resolve(
+      stagingRoot,
+      ...repositoryPath.split("/"),
+    );
+
+    const stagingPrefix = `${path.resolve(stagingRoot)}${path.sep}`;
+    if (!destination.startsWith(stagingPrefix)) {
+      throw new Error(
+        `Refusing to write outside staging directory: ${destination}`,
+      );
+    }
+
+    await mkdir(path.dirname(destination), {
+      recursive: true,
+    });
+    await writeFile(destination, bytes);
+
+    if (entry.mode === 33261) {
+      await chmod(destination, 0o755);
+    }
+  }
+
+  return {
+    stagingRoot,
+    fileCount: entries.length,
+  };
 }
 
 async function mirrorIncludedRoots(stagingRoot) {
