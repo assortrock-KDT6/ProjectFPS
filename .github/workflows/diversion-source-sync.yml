@@ -3,6 +3,7 @@ name: Export Diversion source branches
 on:
   repository_dispatch:
     types: [diversion_source_sync]
+
   workflow_dispatch:
     inputs:
       branch:
@@ -22,7 +23,7 @@ jobs:
   export-source:
     name: Export Config and Source
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Check out GitHub repository
