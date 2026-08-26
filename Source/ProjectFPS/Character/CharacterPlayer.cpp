@@ -176,17 +176,29 @@ void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
 	// todo : 파쿠르 액션에 대한 판정은 C++ , 애니메이션과 세부 판정값은 Blueprint로 작성하기
 	// 파쿠르 액션은 여러개의 LineTrace를 통해 해당 물체의 오브젝트의 크기를 알아내고 Vault 와 Mentle 액션을 결정한다.
 
-	if (IsValid(_ParkourComponent))
+	const bool bVaultActive = IsValid(_ParkourComponent) && _ParkourComponent->IsVaultActive();
+	
+	const bool bMantleActive = IsValid(_MantleComponent) && _MantleComponent->IsMantleActive();
+	
+	if (bVaultActive || bMantleActive)
 	{
-		if (_ParkourComponent->TryParkour())
-		{
-			return;
-		}
+		return;
+	}
+	
+	if (IsValid(_ParkourComponent) && _ParkourComponent->TryParkour())
+	{
+		return;
+		
+		// if (_ParkourComponent->TryParkour())
+		// {
+		// 	return;
+		// }
 	}
 	if (IsValid(_MantleComponent))
 	{
 		_MantleComponent->TryMantle();
-		_ParkourComponent->TryParkour();
+		// _ParkourComponent->TryParkour(); <-- Fatal Bug FIX : 두개의 파쿠르 액션을 취하게 되니 Flying 상태에서 다시 Flying 상태가 되어 이전 상태인 Move_Walk를 기억하지못해 계속된 Flying 상태가 유지됐다.
+		//  todo : 애니메이션 몽타쥬가 종료될때까지 액션이 끝날동안 추가 파쿠르 입력의 키는 받지 않게 설정한다.
 	}
 }
 

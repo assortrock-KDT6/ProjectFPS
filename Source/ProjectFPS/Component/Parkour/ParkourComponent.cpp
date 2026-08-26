@@ -131,6 +131,11 @@ bool UParkourComponent::TryParkour()
 	return false;
 }
 
+bool UParkourComponent::IsVaultActive() const
+{
+	return bVaultActive;
+}
+
 void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& LandingHit)
 {
 	if (bVaultActive || false == FrontHit.bBlockingHit || false == LandingHit.bBlockingHit || false == IsValid(VaultMontage.Get()))

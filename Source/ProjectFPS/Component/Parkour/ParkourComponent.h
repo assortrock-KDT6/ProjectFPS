@@ -22,7 +22,9 @@ public:
 
 public:
 	bool TryParkour();
-
+	
+	bool IsVaultActive() const;
+	
 private:
 	UPROPERTY()
 	TObjectPtr<UHurdleCheckComponent> HurdleCheckComponent;
