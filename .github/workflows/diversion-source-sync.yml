@@ -33,17 +33,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Install and authenticate Diversion CLI
-        env:
-          DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
-        run: |
-          curl -fsSL https://get.diversion.dev/unix -o "$RUNNER_TEMP/install-diversion.sh"
-          bash "$RUNNER_TEMP/install-diversion.sh"
-          echo "$HOME/.diversion/bin" >> "$GITHUB_PATH"
-          "$HOME/.diversion/bin/dv" --agent --bkg
-          sleep 2
-          "$HOME/.diversion/bin/dv" authenticate "$DIVERSION_API_TOKEN"
-
       - name: Export Diversion Cloud branches
         env:
           DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
@@ -51,5 +40,11 @@ jobs:
           DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
           MANUAL_BRANCH: ${{ inputs.branch }}
         run: |
+          curl -fsSL https://get.diversion.dev/unix -o "$RUNNER_TEMP/install-diversion.sh"
+          bash "$RUNNER_TEMP/install-diversion.sh"
+          export PATH="$HOME/.diversion/bin:$PATH"
+          "$HOME/.diversion/bin/dv" --agent --bkg
+          sleep 2
+          "$HOME/.diversion/bin/dv" authenticate "$DIVERSION_API_TOKEN"
           export REQUESTED_BRANCH="${DISPATCH_BRANCH:-${MANUAL_BRANCH:-*}}"
           node .github/scripts/export-diversion-cloud.mjs
