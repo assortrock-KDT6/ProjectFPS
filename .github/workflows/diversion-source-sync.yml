@@ -21,7 +21,7 @@ concurrency:
 jobs:
   export-source:
     name: Export Config and Source
-    runs-on: [self-hosted, Windows, X64, projectfps-sync]
+    runs-on: ubuntu-latest
     timeout-minutes: 120
 
     steps:
@@ -31,34 +31,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Prepare exporter
-        shell: pwsh
-        run: |
-          Copy-Item ".github/scripts/sync-diversion-sources.ps1" "$env:RUNNER_TEMP/sync-diversion-sources.ps1" -Force
-
-      - name: Export Diversion branches
-        shell: pwsh
+      - name: Export Diversion Cloud branches
         env:
-          DIVERSION_WORKSPACE_PATH: ${{ vars.DIVERSION_WORKSPACE_PATH }}
+          DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
+          DIVERSION_REPO_ID: ProjectFPS
           DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
           MANUAL_BRANCH: ${{ inputs.branch }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:DIVERSION_WORKSPACE_PATH)) {
-            throw "Repository variable DIVERSION_WORKSPACE_PATH is not configured."
-          }
-
-          $branch = "*"
-          if (-not [string]::IsNullOrWhiteSpace($env:DISPATCH_BRANCH)) {
-            $branch = $env:DISPATCH_BRANCH
-          }
-          elseif (-not [string]::IsNullOrWhiteSpace($env:MANUAL_BRANCH)) {
-            $branch = $env:MANUAL_BRANCH
-          }
-
-          & "$env:RUNNER_TEMP/sync-diversion-sources.ps1" `
-            -DiversionWorkspacePath $env:DIVERSION_WORKSPACE_PATH `
-            -GitWorkspacePath $env:GITHUB_WORKSPACE `
-            -RequestedBranch $branch `
-            -FallbackBaseBranch "develop" `
-            -IncludeDirectories @("Config", "Source")
-
+          export REQUESTED_BRANCH="${DISPATCH_BRANCH:-${MANUAL_BRANCH:-*}}"
+          node .github/scripts/export-diversion-cloud.mjs

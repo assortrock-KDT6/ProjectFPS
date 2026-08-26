@@ -1,39 +1,35 @@
 # ProjectFPS: Diversion source export
 
 This automation exports only `Config/` and `Source/` from every Diversion
-branch to the GitHub branch with the same name. It never enables Diversion's
-Git synchronization.
+Cloud branch to the GitHub branch with the same name. It never enables
+Diversion's Git synchronization and does not depend on a local workstation.
 
-## 1. Windows runner
+## 1. Diversion API token
 
-Register a GitHub Actions self-hosted runner on the Windows machine that has
-Diversion installed and authenticated. Add these labels to the runner:
+Generate an API token in **Diversion → Settings → Integrations**. API tokens
+start with `dvk_` and are shown only once. Confirm that token generation is
+available for the Diversion account being used; it is available for this
+ProjectFPS Indie account.
 
-- `Windows`
-- `X64`
-- `projectfps-sync`
+Create this GitHub Actions repository secret:
 
-Run the runner interactively as the same Windows user that is signed in to
-Diversion, or configure its service to run as that user.
+- Name: `DIVERSION_API_TOKEN`
+- Value: the generated Diversion API token
 
-Create this GitHub repository variable:
-
-- Name: `DIVERSION_WORKSPACE_PATH`
-- Value: the path to a clean, dedicated Diversion workspace for `ProjectFPS`
-
-Do not point this variable at a workspace where a developer has pending edits.
-The exporter refuses to run when it detects pending Diversion changes.
+Never commit the token. The workflow reads it only from GitHub's encrypted
+Actions secret store.
 
 ## 2. First test
 
 Open GitHub Actions, select **Export Diversion source branches**, choose
 **Run workflow**, and keep the branch input as `*`.
 
-The workflow mirrors `Config/` and `Source/`, commits only when those folders
-changed, and pushes to the matching branch. A Diversion branch that does not
-exist on GitHub is created from `develop` before its source snapshot is added.
-GitHub branches are not automatically deleted when a Diversion branch is
-deleted.
+GitHub's hosted runner reads the branch list and file tree directly from the
+Diversion Cloud API. It downloads only files under `Config/` and `Source/`,
+commits only when those folders changed, and pushes to the matching branch.
+A Diversion branch that does not exist on GitHub is created from `develop`
+before its source snapshot is added. GitHub branches are not automatically
+deleted when a Diversion branch is deleted.
 
 ## 3. Notion webhook bridge
 
@@ -52,4 +48,3 @@ In the Notion database automation or button:
 
 The bridge deliberately ignores Notion page content. Each accepted request
 starts an all-branch source export and returns HTTP 202.
-
