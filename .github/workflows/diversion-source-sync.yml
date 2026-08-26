@@ -37,6 +37,7 @@ jobs:
           USER_POOL_CLIENT_ID: j084768v4hd6j1pf8df4h4c47
           DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
           DIVERSION_REPO_ID: dv.repo.aafecadc-62dd-47fa-a91c-c5b3b358c8a8
+          DIVERSION_REPO_NAME: ProjectFPS
           DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
           MANUAL_BRANCH: ${{ inputs.branch }}
         run: |
