@@ -50,5 +50,7 @@ jobs:
           sleep 2
           dv authenticate "$DIVERSION_API_TOKEN"
 
+          dv repo
+
           export REQUESTED_BRANCH="${DISPATCH_BRANCH:-${MANUAL_BRANCH:-*}}"
           node .github/scripts/export-diversion-cloud.mjs
