@@ -1,17 +1,17 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const API_BASE_URL = "https://api.diversion.dev/v0";
 const INCLUDED_ROOTS = ["Config", "Source"];
 const FALLBACK_BRANCH = "develop";
-const DOWNLOAD_CONCURRENCY = 8;
 
 const token = process.env.DIVERSION_API_TOKEN;
 const repoId = process.env.DIVERSION_REPO_ID || "ProjectFPS";
 const requestedBranch = process.env.REQUESTED_BRANCH || "*";
 const gitWorkspace = path.resolve(process.env.GITHUB_WORKSPACE || process.cwd());
 const runnerTemp = path.resolve(process.env.RUNNER_TEMP || path.join(gitWorkspace, ".tmp"));
+const diversionWorkspace = path.join(runnerTemp, "projectfps-diversion-workspace");
 
 if (!token) {
   throw new Error("GitHub secret DIVERSION_API_TOKEN is not configured.");
@@ -30,6 +30,14 @@ function gitStatus(args) {
     cwd: gitWorkspace,
     encoding: "utf8",
     stdio: "pipe",
+  });
+}
+
+function dv(args, cwd = runnerTemp) {
+  return execFileSync("dv", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: "inherit",
   });
 }
 
@@ -68,25 +76,6 @@ function encodeRepoRef(value) {
   return encodeURIComponent(value);
 }
 
-function encodeRepositoryPath(value) {
-  return value.split("/").map(encodeURIComponent).join("/");
-}
-
-function validateRepositoryPath(repositoryPath) {
-  const normalized = repositoryPath.replaceAll("\\", "/").replace(/^\/+/, "");
-  const segments = normalized.split("/");
-
-  if (
-    !normalized ||
-    path.posix.isAbsolute(normalized) ||
-    segments.some((segment) => !segment || segment === "." || segment === "..")
-  ) {
-    throw new Error(`Unsafe Diversion repository path: ${repositoryPath}`);
-  }
-
-  return normalized;
-}
-
 async function listBranches() {
   const response = await diversionFetch(
     `/repos/${encodeRepoRef(repoId)}/branches`,
@@ -95,109 +84,30 @@ async function listBranches() {
   return payload.items || [];
 }
 
-async function listFiles(refId) {
-  const query = new URLSearchParams({
-    recurse: "true",
-    include_deleted: "false",
-    use_selective_sync: "false",
-    include_download_urls: "true",
-  });
-  const response = await diversionFetch(
-    `/repos/${encodeRepoRef(repoId)}/tree_content/${encodeRepoRef(refId)}?${query}`,
-  );
-  const body = await response.text();
-  const files = body
-    .split(/\r?\n/)
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line));
-
-  return files.filter((entry) => {
-    if (!entry.blob) {
-      return false;
-    }
-    const repositoryPath = entry.path.replaceAll("\\", "/").replace(/^\/+/, "");
-    return INCLUDED_ROOTS.some(
-      (root) => repositoryPath === root || repositoryPath.startsWith(`${root}/`),
-    );
-  });
-}
-
-async function downloadFile(refId, entry, stagingRoot) {
-  const repositoryPath = validateRepositoryPath(entry.path);
-  const destination = path.resolve(stagingRoot, ...repositoryPath.split("/"));
-  const expectedPrefix = `${path.resolve(stagingRoot)}${path.sep}`;
-
-  if (!destination.startsWith(expectedPrefix)) {
-    throw new Error(`Refusing to write outside staging directory: ${destination}`);
-  }
-
-  const blob = entry.blob || {};
-  const downloadUrl =
-    entry.download_url ||
-    entry.downloadUrl ||
-    entry.temp_download_url ||
-    blob.download_url ||
-    blob.downloadUrl ||
-    blob.temp_download_url;
-
-  let response;
-  if (typeof downloadUrl === "string" && downloadUrl) {
-    response = await fetch(downloadUrl);
-  }
-  if (!response?.ok) {
-    response = await diversionFetch(
-      `/repos/${encodeRepoRef(repoId)}/blobs/${encodeRepoRef(refId)}/${encodeRepositoryPath(`/${repositoryPath}`)}`,
-    );
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
-
-  if (blob.size !== undefined && bytes.length !== Number(blob.size)) {
-    throw new Error(
-      `Diversion file size mismatch for ${repositoryPath}: expected ${blob.size}, received ${bytes.length}.`,
-    );
-  }
-
-  await mkdir(path.dirname(destination), { recursive: true });
-  await writeFile(destination, bytes);
-
-  if (entry.mode === 33261) {
-    await chmod(destination, 0o755);
-  }
-}
-
-async function runWithConcurrency(items, workerCount, worker) {
-  let nextIndex = 0;
-
-  async function runWorker() {
-    while (true) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      if (currentIndex >= items.length) {
-        return;
-      }
-      await worker(items[currentIndex]);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(workerCount, items.length) }, runWorker),
-  );
-}
-
 async function stageBranch(branch) {
   const stagingRoot = path.join(runnerTemp, "projectfps-diversion-export");
   await rm(stagingRoot, { recursive: true, force: true });
+  await mkdir(stagingRoot, { recursive: true });
+
+  dv(
+    ["checkout", branch.branch_id || branch.branch_name, "--discard-changes"],
+    diversionWorkspace,
+  );
+  dv(["status"], diversionWorkspace);
 
   for (const root of INCLUDED_ROOTS) {
-    await mkdir(path.join(stagingRoot, root), { recursive: true });
+    await cp(path.join(diversionWorkspace, root), path.join(stagingRoot, root), {
+      recursive: true,
+    });
   }
 
-  const entries = await listFiles(branch.commit_id);
-  await runWithConcurrency(entries, DOWNLOAD_CONCURRENCY, (entry) =>
-    downloadFile(branch.commit_id, entry, stagingRoot),
-  );
+  const entries = await readdir(stagingRoot, {
+    recursive: true,
+    withFileTypes: true,
+  });
+  const fileCount = entries.filter((entry) => entry.isFile()).length;
 
-  return { stagingRoot, fileCount: entries.length };
+  return { stagingRoot, fileCount };
 }
 
 async function mirrorIncludedRoots(stagingRoot) {
@@ -281,6 +191,20 @@ if (requestedBranch !== "*") {
 if (branches.length === 0) {
   throw new Error("No Diversion branches were returned by the API.");
 }
+
+await rm(diversionWorkspace, { recursive: true, force: true });
+dv([
+  "clone",
+  repoId,
+  diversionWorkspace,
+  "--new-workspace",
+  "--ref",
+  branches[0].branch_id || branches[0].branch_name,
+  "--nowait",
+]);
+dv(["preferences", "-add", "Config"], diversionWorkspace);
+dv(["preferences", "-add", "Source"], diversionWorkspace);
+dv(["status"], diversionWorkspace);
 
 git(["config", "user.name", "github-actions[bot]"]);
 git([

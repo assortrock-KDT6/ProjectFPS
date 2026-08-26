@@ -23,6 +23,8 @@ jobs:
     name: Export Config and Source
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      USER_POOL_CLIENT_ID: j084768v4hd6j1pf8df4h4c47
 
     steps:
       - name: Check out GitHub repository
@@ -30,6 +32,17 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+
+      - name: Install and authenticate Diversion CLI
+        env:
+          DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
+        run: |
+          curl -fsSL https://get.diversion.dev/unix -o "$RUNNER_TEMP/install-diversion.sh"
+          bash "$RUNNER_TEMP/install-diversion.sh"
+          echo "$HOME/.diversion/bin" >> "$GITHUB_PATH"
+          "$HOME/.diversion/bin/dv" --agent --bkg
+          sleep 2
+          "$HOME/.diversion/bin/dv" authenticate "$DIVERSION_API_TOKEN"
 
       - name: Export Diversion Cloud branches
         env:

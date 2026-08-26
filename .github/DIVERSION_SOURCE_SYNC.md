@@ -24,12 +24,13 @@ Actions secret store.
 Open GitHub Actions, select **Export Diversion source branches**, choose
 **Run workflow**, and keep the branch input as `*`.
 
-GitHub's hosted runner reads the branch list and file tree directly from the
-Diversion Cloud API. It downloads only files under `Config/` and `Source/`,
-commits only when those folders changed, and pushes to the matching branch.
-A Diversion branch that does not exist on GitHub is created from `develop`
-before its source snapshot is added. GitHub branches are not automatically
-deleted when a Diversion branch is deleted.
+GitHub's hosted runner reads the branch list from the Diversion Cloud API,
+then uses Diversion's official Linux CLI in a temporary selective-sync
+workspace. Only `Config/` and `Source/` are copied into Git, committed when
+those folders changed, and pushed to the matching branch. A Diversion branch
+that does not exist on GitHub is created from `develop` before its source
+snapshot is added. GitHub branches are not automatically deleted when a
+Diversion branch is deleted.
 
 ## 3. Notion webhook bridge
 
