@@ -9,6 +9,7 @@ const FALLBACK_BRANCH = "develop";
 
 const token = process.env.DIVERSION_API_TOKEN;
 const repoId = process.env.DIVERSION_REPO_ID || "ProjectFPS";
+const repoName = process.env.DIVERSION_REPO_NAME || "ProjectFPS";
 const requestedBranch = process.env.REQUESTED_BRANCH || "*";
 const gitWorkspace = path.resolve(process.env.GITHUB_WORKSPACE || process.cwd());
 const runnerTemp = path.resolve(process.env.RUNNER_TEMP || path.join(gitWorkspace, ".tmp"));
@@ -47,7 +48,7 @@ function diversionCli(args, options = {}) {
   });
 }
 
-async function checkoutDiversionCommit(commitId) {
+async function checkoutDiversionBranch(branchName) {
   if (!diversionWorkspaceReady) {
     await rm(diversionWorkspace, {
       recursive: true,
@@ -56,11 +57,11 @@ async function checkoutDiversionCommit(commitId) {
 
     diversionCli([
       "clone",
-      repoId,
+      repoName,
       diversionWorkspace,
       "--new-workspace",
       "--ref",
-      commitId,
+      branchName,
     ]);
 
     diversionWorkspaceReady = true;
@@ -68,7 +69,7 @@ async function checkoutDiversionCommit(commitId) {
     diversionCli(
       [
         "checkout",
-        commitId,
+        branchName,
         "--discard-changes",
         "--ignore-shelf",
       ],
@@ -76,7 +77,6 @@ async function checkoutDiversionCommit(commitId) {
     );
   }
 
-  // 모든 파일의 클라우드 다운로드가 끝날 때까지 기다린다.
   diversionCli(["status"], {
     cwd: diversionWorkspace,
   });
@@ -185,7 +185,7 @@ async function stageBranch(branch) {
   }
 
   // 브랜치 이름 대신 정확한 Diversion 커밋을 받는다.
-  await checkoutDiversionCommit(branch.commit_id);
+  await checkoutDiversionBranch(branch.branch_name);
 
   // API는 파일 내용이 아니라 검증용 크기와 SHA만 조회한다.
   const entries = await listFiles(branch.commit_id);
