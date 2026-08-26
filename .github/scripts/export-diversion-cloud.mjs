@@ -14,9 +14,13 @@ const requestedBranch = process.env.REQUESTED_BRANCH || "*";
 const gitWorkspace = path.resolve(process.env.GITHUB_WORKSPACE || process.cwd());
 const runnerTemp = path.resolve(process.env.RUNNER_TEMP || path.join(gitWorkspace, ".tmp"));
 
-const diversionWorkspace = path.join(
+const diversionCloneRoot = path.join(
   runnerTemp,
   "projectfps-diversion-cli",
+);
+const diversionWorkspace = path.join(
+  diversionCloneRoot,
+  repoName,
 );
 
 let diversionWorkspaceReady = false;
@@ -50,18 +54,23 @@ function diversionCli(args, options = {}) {
 
 async function checkoutDiversionBranch(branchName) {
   if (!diversionWorkspaceReady) {
-    await rm(diversionWorkspace, {
+    await rm(diversionCloneRoot, {
       recursive: true,
       force: true,
     });
+    await mkdir(diversionCloneRoot, {
+      recursive: true,
+    });
 
-    // Diversion 공식 CI 문서와 동일하게 옵션을 앞에 둔다.
-    diversionCli([
-      "clone",
-      "-new-workspace",
-      repoName,
-      diversionWorkspace,
-    ]);
+    // 공식 CI 예제와 동일하게 현재 폴더 아래에 저장소를 복제한다.
+    diversionCli(
+      [
+        "clone",
+        "-new-workspace",
+        repoName,
+      ],
+      { cwd: diversionCloneRoot },
+    );
 
     diversionWorkspaceReady = true;
   }
