@@ -1,0 +1,64 @@
+name: Export Diversion source branches
+
+on:
+  repository_dispatch:
+    types: [diversion_source_sync]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Diversion branch name, or * for every branch"
+        required: true
+        default: "*"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: projectfps-diversion-source-export
+  cancel-in-progress: false
+
+jobs:
+  export-source:
+    name: Export Config and Source
+    runs-on: [self-hosted, Windows, X64, projectfps-sync]
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out GitHub repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Prepare exporter
+        shell: pwsh
+        run: |
+          Copy-Item ".github/scripts/sync-diversion-sources.ps1" "$env:RUNNER_TEMP/sync-diversion-sources.ps1" -Force
+
+      - name: Export Diversion branches
+        shell: pwsh
+        env:
+          DIVERSION_WORKSPACE_PATH: ${{ vars.DIVERSION_WORKSPACE_PATH }}
+          DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
+          MANUAL_BRANCH: ${{ inputs.branch }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:DIVERSION_WORKSPACE_PATH)) {
+            throw "Repository variable DIVERSION_WORKSPACE_PATH is not configured."
+          }
+
+          $branch = "*"
+          if (-not [string]::IsNullOrWhiteSpace($env:DISPATCH_BRANCH)) {
+            $branch = $env:DISPATCH_BRANCH
+          }
+          elseif (-not [string]::IsNullOrWhiteSpace($env:MANUAL_BRANCH)) {
+            $branch = $env:MANUAL_BRANCH
+          }
+
+          & "$env:RUNNER_TEMP/sync-diversion-sources.ps1" `
+            -DiversionWorkspacePath $env:DIVERSION_WORKSPACE_PATH `
+            -GitWorkspacePath $env:GITHUB_WORKSPACE `
+            -RequestedBranch $branch `
+            -FallbackBaseBranch "develop" `
+            -IncludeDirectories @("Config", "Source")
+
