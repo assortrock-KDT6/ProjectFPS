@@ -80,6 +80,8 @@ async function checkoutDiversionBranch(branchName) {
     [
       "checkout",
       branchName,
+      "--discard-changes",
+      "--ignore-shelf",
     ],
     { cwd: diversionWorkspace },
   );
