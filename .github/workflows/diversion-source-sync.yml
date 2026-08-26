@@ -34,7 +34,7 @@ jobs:
       - name: Export Diversion Cloud branches
         env:
           DIVERSION_API_TOKEN: ${{ secrets.DIVERSION_API_TOKEN }}
-          DIVERSION_REPO_ID: ProjectFPS
+          DIVERSION_REPO_ID: dv.repo.aafecadc-62dd-47fa-a91c-c5b3b358c8a8
           DISPATCH_BRANCH: ${{ github.event.client_payload.branch }}
           MANUAL_BRANCH: ${{ inputs.branch }}
         run: |

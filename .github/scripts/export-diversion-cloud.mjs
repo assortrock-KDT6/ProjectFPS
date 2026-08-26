@@ -96,29 +96,20 @@ async function listBranches() {
 }
 
 async function listFiles(refId) {
-  const files = [];
-  const pageSize = 1000;
-  let skip = 0;
-
-  while (true) {
-    const query = new URLSearchParams({
-      recurse: "true",
-      include_deleted: "false",
-      skip: String(skip),
-      limit: String(pageSize),
-    });
-    const response = await diversionFetch(
-      `/repos/${encodeRepoRef(repoId)}/trees/${encodeRepoRef(refId)}?${query}`,
-    );
-    const payload = await response.json();
-    const page = payload.items || [];
-    files.push(...page);
-
-    if (page.length < pageSize) {
-      break;
-    }
-    skip += page.length;
-  }
+  const query = new URLSearchParams({
+    recurse: "true",
+    include_deleted: "false",
+    use_selective_sync: "false",
+    include_download_urls: "true",
+  });
+  const response = await diversionFetch(
+    `/repos/${encodeRepoRef(repoId)}/tree_content/${encodeRepoRef(refId)}?${query}`,
+  );
+  const body = await response.text();
+  const files = body
+    .split(/\r?\n/)
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line));
 
   return files.filter((entry) => {
     if (!entry.blob) {
@@ -140,10 +131,32 @@ async function downloadFile(refId, entry, stagingRoot) {
     throw new Error(`Refusing to write outside staging directory: ${destination}`);
   }
 
-  const response = await diversionFetch(
-    `/repos/${encodeRepoRef(repoId)}/blobs/${encodeRepoRef(refId)}/${encodeRepositoryPath(repositoryPath)}`,
-  );
+  const blob = entry.blob || {};
+  const downloadUrl =
+    entry.download_url ||
+    entry.downloadUrl ||
+    entry.temp_download_url ||
+    blob.download_url ||
+    blob.downloadUrl ||
+    blob.temp_download_url;
+
+  let response;
+  if (typeof downloadUrl === "string" && downloadUrl) {
+    response = await fetch(downloadUrl);
+  }
+  if (!response?.ok) {
+    response = await diversionFetch(
+      `/repos/${encodeRepoRef(repoId)}/blobs/${encodeRepoRef(refId)}/${encodeRepositoryPath(`/${repositoryPath}`)}`,
+    );
+  }
   const bytes = Buffer.from(await response.arrayBuffer());
+
+  if (blob.size !== undefined && bytes.length !== Number(blob.size)) {
+    throw new Error(
+      `Diversion file size mismatch for ${repositoryPath}: expected ${blob.size}, received ${bytes.length}.`,
+    );
+  }
+
   await mkdir(path.dirname(destination), { recursive: true });
   await writeFile(destination, bytes);
 
