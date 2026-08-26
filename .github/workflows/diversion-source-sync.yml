@@ -50,6 +50,9 @@ jobs:
           sleep 2
           dv authenticate "$DIVERSION_API_TOKEN"
 
+          dv --agent --bkg
+          sleep 5
+
           dv repo
 
           export REQUESTED_BRANCH="${DISPATCH_BRANCH:-${MANUAL_BRANCH:-*}}"
