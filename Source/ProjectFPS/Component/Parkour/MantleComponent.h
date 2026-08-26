@@ -23,6 +23,8 @@ public:
 public:
 	bool TryMantle();
 
+	bool IsMantleActive() const;
+	
 private:
 	UPROPERTY()
 	TObjectPtr<UHurdleCheckComponent> HurdleCheckComponent;

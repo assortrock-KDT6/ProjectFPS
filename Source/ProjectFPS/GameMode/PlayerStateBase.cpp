@@ -2,18 +2,9 @@
 
 
 #include "GameMode/PlayerStateBase.h"
+#include "Component/Inventory/InventoryComponent.h"
 
-void APlayerStateBase::BeginPlay()
+APlayerStateBase::APlayerStateBase()
 {
-	Super::BeginPlay();
-
-	_Items = _StartItems; 
-}
-
-void APlayerStateBase::AddItem(FName TID, int32 Count)
-{
-	if (TID.IsNone() || Count <= 0)
-		return;
-	int32& Cur = _Items.FindOrAdd(TID);
-	Cur += Count;
+	_InventoryComponent = CreateDefaultSubobject<UInventoryComponent>(TEXT("InventoryComponent"));
 }

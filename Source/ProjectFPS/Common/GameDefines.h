@@ -58,6 +58,17 @@ enum class EFPSOnlineTravelState : uint8
 	Traveling	UMETA(DisplayName = "TRAVELING")
 };
 
+// 아이템 종류 --> 
+UENUM(BlueprintType)
+enum class EItemType : uint8
+{
+	Weapon,		// 무기 (가로형 슬롯)
+	Consumable,	// 소모품 (정사각형 슬롯)
+	Bullet,		// 탄약 (정사각형 슬롯)
+};
+
+
+
 // OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.
 namespace FCharacterStateUtils
 {

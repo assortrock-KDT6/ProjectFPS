@@ -97,6 +97,11 @@ bool UMantleComponent::TryMantle()
 	return bMantleActive;
 }
 
+bool UMantleComponent::IsMantleActive() const
+{
+	return bMantleActive;
+}
+
 void UMantleComponent::PlayMantle(const FHitResult& FrontHit, const FHitResult& TopFloorHit)
 {
 	if (bMantleActive || false == FrontHit.bBlockingHit || false == TopFloorHit.bBlockingHit || false == IsValid(ActiveMantleMontage.Get()))

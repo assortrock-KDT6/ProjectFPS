@@ -106,6 +106,7 @@ bool UFPSOnlineSessionSubsystem::RefreshSessionInterface()
 	}
 
 	_SessionInterface = Subsystem->GetSessionInterface();
+	
 	return _SessionInterface.IsValid();
 }
 
@@ -114,6 +115,7 @@ void UFPSOnlineSessionSubsystem::Deinitialize()
 	if (true == _PostLoadMapHandle.IsValid())
 	{
 		FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(_PostLoadMapHandle);
+
 		_PostLoadMapHandle.Reset();
 	}
 	if (true == IsValid(GEngine))
@@ -121,11 +123,13 @@ void UFPSOnlineSessionSubsystem::Deinitialize()
 		if (true == _TravelFailureHandle.IsValid())
 		{
 			GEngine->OnTravelFailure().Remove(_TravelFailureHandle);
+
 			_TravelFailureHandle.Reset();
 		}
 		if (true == _NetworkFailureHandle.IsValid())
 		{
 			GEngine->OnNetworkFailure().Remove(_NetworkFailureHandle);
+
 			_NetworkFailureHandle.Reset();
 		}
 	}
