@@ -7,6 +7,8 @@
 #include "Common/GameDatas.h"
 #include "InventoryComponent.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryChanger);
+
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class PROJECTFPS_API UInventoryComponent : public UActorComponent
@@ -24,6 +26,10 @@ private:
 	// 장비 슬롯
 	UPROPERTY(ReplicatedUsing = OnRep_Weapons)
 	TArray<FName> _Weapons;
+
+	
+	UPROPERTY(BlueprintAssignable)
+	FOnInventoryChanger _OnInventoryChanged;
 
 public:
 	void AddItem(FName TID, int32 Count = 1);

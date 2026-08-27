@@ -10,6 +10,24 @@
 UInteractionComponent::UInteractionComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true; // 하이라이트용
+
+	SetIsReplicatedByDefault(true);	// 컴포넌트 네트워크 복제를 사용한다.
+}
+
+void UInteractionComponent::ServerInteract_Implementation(AActor* Target)
+{
+	AActor* Owner = GetOwner();
+	if (nullptr == Owner || nullptr == Target)
+		return;
+
+	// 서버 재검증 (클라 신호를 그대로 믿지 않음)
+	if (false == Target->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+		return;
+	
+	if (FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation()) > _InteractDistance)
+		return;
+	// 서버에서 실행
+	IInteractable::Execute_Interact(Target, Owner); 
 }
 
 void UInteractionComponent::TryInteract() // -> *TraceInteract
@@ -42,11 +60,12 @@ void UInteractionComponent::TryInteract() // -> *TraceInteract
 		AActor* HitActor = Hit.GetActor();
 
 		if (HitActor && HitActor->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
-			IInteractable::Execute_Interact(HitActor, Owner);	
+			ServerInteract(HitActor);
 
 		
 	}
 	
+
 	// 라인 트레이서
 
 	// 스페어 트레이서

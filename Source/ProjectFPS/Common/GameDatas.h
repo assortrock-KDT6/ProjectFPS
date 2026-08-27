@@ -78,8 +78,8 @@ USTRUCT(BlueprintType)
 struct FInventorySlot
 {
 	GENERATED_BODY()
-	UPROPERTY(BlueprintReadOnly) FName _TID;
-	UPROPERTY(BlueprintReadOnly) int32 _Count;
+	UPROPERTY(BlueprintReadOnly) FName _TID= NAME_None;
+	UPROPERTY(BlueprintReadOnly) int32 _Count = 0;
 
 };
 
