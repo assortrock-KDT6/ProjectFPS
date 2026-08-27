@@ -16,6 +16,7 @@
 UMantleComponent::UMantleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	SetIsReplicatedByDefault(true);
 }
 
 void UMantleComponent::BeginPlay()
@@ -31,6 +32,7 @@ void UMantleComponent::BeginPlay()
 
 	HurdleCheckComponent = Owner->FindComponentByClass<UHurdleCheckComponent>();
 }
+
 bool UMantleComponent::TryMantle()
 {
 	if (bMantleActive)

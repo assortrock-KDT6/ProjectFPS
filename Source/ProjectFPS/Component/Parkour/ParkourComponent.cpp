@@ -15,7 +15,8 @@
 // Sets default values for this component's properties
 UParkourComponent::UParkourComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.bCanEverTick = false;
+	SetIsReplicatedByDefault(true);
 }
 
 void UParkourComponent::BeginPlay()
@@ -45,95 +46,104 @@ bool UParkourComponent::TryParkour()
 	}
 
 	FHitResult FrontHit;
-
-	const bool bCollision = HurdleCheckComponent->CheckFrontBlock(FrontHit);
-
-	if (bCollision)
+	
+	if (false == HurdleCheckComponent->CheckFrontBlock(FrontHit))
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green, FString::Printf(TEXT("Front Block : %s"), *GetNameSafe(FrontHit.GetActor())));
+		return false;
+	}
 
-		FHitResult TopHit;
-		
-		float BlockHeight = 0.0f;
+	FHitResult TopHit;
+	
+	float BlockHeight = 0.0f;
+	
+	if (false == HurdleCheckComponent->CheckTopBlock(FrontHit, TopHit, BlockHeight))
+	{
+		return false;
+	}
 
-		const bool bTopCollision = HurdleCheckComponent->CheckTopBlock(FrontHit, TopHit, BlockHeight);
+	FHitResult BackHit;
+	
+	float BlockDepth = 0.0f;
+	
+	if (false == HurdleCheckComponent->CheckBackBlock(FrontHit, TopHit, BackHit, BlockDepth))
+	{
+		return false;
+	}
 
-		if (bTopCollision)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Magenta, FString::Printf(TEXT("Top Surface : Found / Height : %.1f cm"), BlockHeight));
+	FHitResult LandingHit;
 
-			FHitResult BackHit;
-			
-			float BlockDepth = 0.0f;
+	if (false == HurdleCheckComponent->CheckLandingFloor(FrontHit, TopHit, BackHit, LandingHit))
+	{
+		return false;
+	}
 
-			const bool bBackCollision = HurdleCheckComponent->CheckBackBlock(FrontHit, TopHit, BackHit, BlockDepth);
+	if (false == HurdleCheckComponent->CheckLandingSpace(LandingHit))
+	{
+		return false;
+	}
 
-			if (bBackCollision)
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Blue, FString::Printf(TEXT("Back Point : Found / Depth : %.1f cm"), BlockDepth));
+	const bool bCanVaultAction = BlockHeight >= MinVaultHeight && BlockHeight <= MaxVaultHeight && BlockDepth <= MaxVaultDepth;
 
-				FHitResult LandingHit;
+	if (false == bCanVaultAction)
+	{
+		return false;
+	}
 
-				const bool bLandingCollision = HurdleCheckComponent->CheckLandingFloor(FrontHit, TopHit, BackHit, LandingHit);
+	
+	PlayVault(FrontHit, LandingHit);
 
-				if (bLandingCollision)
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow, FString::Printf(TEXT("Landing Floor : Found")));
-
-					const bool bLandingSpace = HurdleCheckComponent->CheckLandingSpace(LandingHit);
-
-					if (bLandingSpace)
-					{
-						GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green, FString::Printf(TEXT("Landing Space : Clear")));
-
-						const bool bCanVaultAction = BlockHeight >= MinVaultHeight && BlockHeight <= MaxVaultHeight && BlockDepth <= MaxVaultDepth;
-
-						if (bCanVaultAction)
-						{
-							PlayVault(FrontHit, LandingHit);
-
-							if (bVaultActive)
-							{
-								GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Emerald, FString::Printf(TEXT("Parkour Action : Vault")));
-
-								return true;
-							}
-						}
-
-						GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Parkour Action : None")));
-					}
-					else
-					{
-						GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Landing Space : Blocked")));
-					}
-				}
-				else
-				{
-					GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Landing Floor : None")));
-				}
-			}
-			else
-			{
-				GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Back Point : None")));
-			}
-		}
-		else
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Orange, FString::Printf(TEXT("Top Surface : None")));
-		}
-
+	if (bVaultActive)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green	, FString::Printf(TEXT("Front Block : %s"), *GetNameSafe(FrontHit.GetActor())));
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Magenta	, FString::Printf(TEXT("Top Surface : Found / Height : %.1f cm"), BlockHeight));
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Blue	, FString::Printf(TEXT("Back Point : Found / Depth : %.1f cm"), BlockDepth));
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow	, FString::Printf(TEXT("Landing Floor : Found")));
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green	, FString::Printf(TEXT("Landing Space : Clear")));
+		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Emerald	, FString::Printf(TEXT("Parkour Action : Vault")));
 	}
 	else
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Red, FString::Printf(TEXT("Front Block : None")));
 	}
 
-	return false;
+	return bVaultActive;
 }
 
 bool UParkourComponent::IsVaultActive() const
 {
 	return bVaultActive;
+}
+
+void UParkourComponent::Server_TryParkour_Implementation()
+{
+	TryParkour();
+}
+
+void UParkourComponent::Multicast_PlayValut_Implementation()
+{
+	ACharacter* Owner = Cast<ACharacter>(GetOwner());
+	if (false == IsValid(Owner))
+	{
+		return;
+	}
+
+	if (Owner->HasAuthority())
+	{
+		return;
+	}
+
+	Owner->PlayAnimMontage(VaultMontage.Get());
+	
+}
+
+float UParkourComponent::PlayValutMontage()
+{
+	ACharacter* Owner = Cast<ACharacter>(GetOwner());
+	if (false == IsValid(Owner))
+	{
+		return 0.f;
+	}
+	return Owner->PlayAnimMontage(VaultMontage.Get());
 }
 
 void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& LandingHit)
@@ -200,7 +210,7 @@ void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& 
 	// 몽타주의 VaultLand 와 검사한 착지 지점을 연결하기
 	MotionWarping->AddOrUpdateWarpTargetFromLocationAndRotation(TEXT("VaultLand"), LandingHit.ImpactPoint, TargetRotation);
 
-	const float MontageDuration = Owner->PlayAnimMontage(VaultMontage.Get());
+	float MontageDuration = PlayValutMontage();
 
 	if (MontageDuration <= 0.f)
 	{
@@ -208,6 +218,8 @@ void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& 
 
 		return;
 	}
+	
+	Multicast_PlayValut();
 
 	VaultStartTransform = Owner->GetActorTransform();
 

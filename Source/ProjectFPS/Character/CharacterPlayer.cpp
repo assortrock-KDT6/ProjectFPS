@@ -190,15 +190,16 @@ void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
 		return;
 	}
 	
-	if (IsValid(_ParkourComponent) && _ParkourComponent->TryParkour())
+	if (IsValid(_ParkourComponent))
 	{
-		return;
-		
-		// if (_ParkourComponent->TryParkour())
-		// {
-		// 	return;
-		// }
+		_ParkourComponent->Server_TryParkour();
+		if (true == _ParkourComponent->IsVaultActive())
+		{
+			return;
+		}
+
 	}
+
 	if (IsValid(_MantleComponent))
 	{
 		_MantleComponent->TryMantle();

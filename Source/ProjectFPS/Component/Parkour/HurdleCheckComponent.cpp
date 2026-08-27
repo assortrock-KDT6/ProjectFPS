@@ -9,6 +9,7 @@
 UHurdleCheckComponent::UHurdleCheckComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	SetIsReplicatedByDefault(true);
 }
 
 bool UHurdleCheckComponent::CheckFrontBlock(FHitResult& OutHit) const

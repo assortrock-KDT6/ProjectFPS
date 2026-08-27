@@ -24,7 +24,17 @@ public:
 	bool TryParkour();
 	
 	bool IsVaultActive() const;
-	
+
+public:
+	UFUNCTION(Server, Reliable)
+	void Server_TryParkour();
+	void Server_TryParkour_Implementation();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayValut();
+	void Multicast_PlayValut_Implementation();
+private:
+	float PlayValutMontage();
 private:
 	UPROPERTY()
 	TObjectPtr<UHurdleCheckComponent> HurdleCheckComponent;
