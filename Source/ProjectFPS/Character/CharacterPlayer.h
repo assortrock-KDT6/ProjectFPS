@@ -36,7 +36,7 @@ public:
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<USpringArmComponent> _SprintArmComponent;
+	TObjectPtr<USpringArmComponent> _SpringArmComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<UCameraComponent> _CameraComponent;
@@ -45,13 +45,27 @@ protected:
 	TObjectPtr<UDefaultInput> _DefaultInput;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
+	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UParkourComponent> _ParkourComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
+	TObjectPtr<class UMantleComponent> _MantleComponent;
+
+	UPROPERTY(VisibleAnywhere, Category = "Interact")
+	TObjectPtr<class UInteractionComponent> _InteractionComponent;
+
+
 
 	
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+	
+public:
+	virtual void Jump() override;
 
 public:
 	// Called every frame
@@ -65,9 +79,6 @@ public:
 protected:
 	UFUNCTION()
 	void MoveAction(const FInputActionValue& Value);
-
-	UFUNCTION()
-	void JumpAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void MoveLookAction(const FInputActionValue& Value);
@@ -84,5 +95,7 @@ protected:
 	UFUNCTION()
 	void ToggleMapAction(const FInputActionValue& value);
 
+	UFUNCTION()
+	void InteractAction(const FInputActionValue& value);
 
 };

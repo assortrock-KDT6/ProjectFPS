@@ -8,7 +8,11 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
+#include "Component/Interaction/InteractionComponent.h"
+#include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/ParkourComponent.h"
+//#include "Component/Parkour/HangingComponent.h
+#include "Component/Parkour/MantleComponent.h"
 #include "UI/GameHUD.h"
 
 
@@ -36,7 +40,7 @@ ACharacterPlayer::ACharacterPlayer()
 
 #pragma endregion
 
-	_SprintArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
+	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
 	_CameraComponent	= CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 
 #pragma region ROTATION_SETTING
@@ -44,15 +48,15 @@ ACharacterPlayer::ACharacterPlayer()
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
 	if (IsValid(CapsuleComp))
 	{
-		_SprintArmComponent->SetupAttachment(CapsuleComp);
-		_CameraComponent->SetupAttachment(_SprintArmComponent);
+		_SpringArmComponent->SetupAttachment(CapsuleComp);
+		_CameraComponent->SetupAttachment(_SpringArmComponent);
 
-		_SprintArmComponent->TargetArmLength = 400.f;
-		_SprintArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
-
-		_SprintArmComponent->bUsePawnControlRotation = true;
-		_SprintArmComponent->bInheritPitch	= true;
-		_SprintArmComponent->bInheritYaw	= true;
+		_SpringArmComponent->TargetArmLength = 0.f;
+		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
+		
+		_SpringArmComponent->bUsePawnControlRotation = true;
+		_SpringArmComponent->bInheritPitch	= true;
+		_SpringArmComponent->bInheritYaw	= true;
 
 		_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
@@ -68,13 +72,24 @@ ACharacterPlayer::ACharacterPlayer()
 #pragma endregion
 
 	// Parkour
-	_ParkourComponent = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
+	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
+	_ParkourComponent     = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
+	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
+	_MantleComponent    = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
+
+	//Interaction
+	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 
 }
 
 void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
+}
+
+void ACharacterPlayer::Jump()
+{
+	Super::Jump();
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)
@@ -110,12 +125,13 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
 
 	InputComp->BindAction(_DefaultInput->_Move,      ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
-	InputComp->BindAction(_DefaultInput->_Jump,      ETriggerEvent::Triggered, this, &ACharacterPlayer::JumpAction);
+	InputComp->BindAction(_DefaultInput->_Jump,      ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
 	InputComp->BindAction(_DefaultInput->_MouseLook, ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
 	InputComp->BindAction(_DefaultInput->_MouseZoom, ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
 	InputComp->BindAction(_DefaultInput->_Parkour,   ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
 	InputComp->BindAction(_DefaultInput->_Inventory, ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
 	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
+	InputComp->BindAction(_DefaultInput->_Interact,  ETriggerEvent::Started,    this, &ACharacterPlayer::InteractAction);
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -137,11 +153,6 @@ void ACharacterPlayer::MoveAction(const FInputActionValue& Value)
 	AddMovementInput(Right, Axis.Y);
 }
 
-void ACharacterPlayer::JumpAction(const FInputActionValue& Value)
-{
-	Jump();
-}
-
 void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 {
 	FVector2D Aim = Value.Get<FVector2D>();
@@ -155,14 +166,14 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 
 void ACharacterPlayer::CharacterMouseZoomAction(const FInputActionValue& Value)
 {
-	if (IsValid(_SprintArmComponent))
-	{
-		const float ZoomValue = Value.Get<float>() * _ZoomSensitivity;
-		const float Length = _SprintArmComponent->TargetArmLength;
-
-		// [Todo] : 최대 거리, 최소 거리 변수로 분리할 것.
-		_SprintArmComponent->TargetArmLength = FMath::Clamp(_SprintArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
-	}
+	// if (IsValid(_SpringArmComponent))
+	// {
+	// 	const float ZoomValue = Value.Get<float>() * _ZoomSensitivity;
+	// 	//const float Length = _SprintArmComponent->TargetArmLength;
+	//
+	// 	// [Todo] : 최대 거리, 최소 거리 변수로 분리할 것.
+	// 	//_SprintArmComponent->TargetArmLength = FMath::Clamp(_SprintArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
+	// }
 }
 
 void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
@@ -170,9 +181,29 @@ void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
 	// todo : 파쿠르 액션에 대한 판정은 C++ , 애니메이션과 세부 판정값은 Blueprint로 작성하기
 	// 파쿠르 액션은 여러개의 LineTrace를 통해 해당 물체의 오브젝트의 크기를 알아내고 Vault 와 Mentle 액션을 결정한다.
 
-	if (IsValid(_ParkourComponent))
+	const bool bVaultActive = IsValid(_ParkourComponent) && _ParkourComponent->IsVaultActive();
+	
+	const bool bMantleActive = IsValid(_MantleComponent) && _MantleComponent->IsMantleActive();
+	
+	if (bVaultActive || bMantleActive)
 	{
-		_ParkourComponent->TryParkour();
+		return;
+	}
+	
+	if (IsValid(_ParkourComponent) && _ParkourComponent->TryParkour())
+	{
+		return;
+		
+		// if (_ParkourComponent->TryParkour())
+		// {
+		// 	return;
+		// }
+	}
+	if (IsValid(_MantleComponent))
+	{
+		_MantleComponent->TryMantle();
+		// _ParkourComponent->TryParkour(); <-- Fatal Bug FIX : 두개의 파쿠르 액션을 취하게 되니 Flying 상태에서 다시 Flying 상태가 되어 이전 상태인 Move_Walk를 기억하지못해 계속된 Flying 상태가 유지됐다.
+		//  todo : 애니메이션 몽타쥬가 종료될때까지 액션이 끝날동안 추가 파쿠르 입력의 키는 받지 않게 설정한다.
 	}
 }
 
@@ -194,4 +225,11 @@ void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
 			HUD->ToggleMap();
 		
 	}
+}
+
+void ACharacterPlayer::InteractAction(const FInputActionValue& value)
+{
+
+	if (_InteractionComponent)
+		_InteractionComponent->TryInteract();
 }

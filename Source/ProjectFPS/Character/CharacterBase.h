@@ -4,6 +4,8 @@
 
 #include "EngineMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
+#include "Component/Ability/FPSAbilitySystemComponent.h"
 #include "CharacterBase.generated.h"
 
 /*
@@ -17,7 +19,7 @@
  */
 
 UCLASS()
-class PROJECTFPS_API ACharacterBase : public ACharacter
+class PROJECTFPS_API ACharacterBase : public ACharacter, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -29,6 +31,13 @@ protected:
 	UPROPERTY(BlueprintReadWrite)
 	FName	_Id = FName(TEXT(""));
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FPS | AbilitySystem")
+	TObjectPtr<UFPSAbilitySystemComponent> _AbilitySystemComponent;
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FPS | AbilitySystem")
+	EGameplayEffectReplicationMode _AbilitySystemComponentReplicationMode = EGameplayEffectReplicationMode::Mixed;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -38,11 +47,16 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void PossessedBy(AController* Newcontroller) override;
+
+	// 플레이어가 서버에 접속하거나 만들어짐.
+	virtual void OnRep_PlayerState() override;
 public:
 	// 캐릭터의 고유 아이디를 가져온다.
 	const FName& GetId() const;
 
 	// 캐릭터의 고유 아이디를 설정한다.
 	void SetId(const FName& Id);
+
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const ;
 
 };

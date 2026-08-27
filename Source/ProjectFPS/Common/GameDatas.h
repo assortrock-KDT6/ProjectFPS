@@ -73,5 +73,16 @@ struct FFPSSessionCreateOptions
 	FString _GameModeId;
 };
 
+// 아이템 슬롯.
+USTRUCT(BlueprintType)
+struct FInventorySlot
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly) FName _TID= NAME_None;
+	UPROPERTY(BlueprintReadOnly) int32 _Count = 0;
+
+};
+
+
 #pragma endregion
 
