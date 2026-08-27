@@ -1,9 +1,16 @@
 #include "Character/CharacterBase.h"
+#include "Component/Ability/FPSAbilitySystemComponent.h"
 
 ACharacterBase::ACharacterBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	// Ability System Component를 생성하고 명시적으로 복제되도록 설정한다.
+	_AbilitySystemComponent = CreateDefaultSubobject<UFPSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	_AbilitySystemComponent->SetIsReplicated(true);
+	_AbilitySystemComponent->SetReplicationMode(_AbilitySystemComponentReplicationMode);
+
+	// _AbilitySystemComponent->InitAbilityActorInfo(this, this);
 }
 
 void ACharacterBase::BeginPlay()
@@ -28,6 +35,21 @@ void ACharacterBase::PossessedBy(AController* Newcontroller)
 {
 	Super::PossessedBy(Newcontroller);
 
+	if (nullptr != _AbilitySystemComponent)
+	{
+		_AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	}
+
+}
+
+void ACharacterBase::OnRep_PlayerState()
+{
+	Super::OnRep_PlayerState();
+	
+	if (nullptr != _AbilitySystemComponent)
+	{
+		_AbilitySystemComponent->InitAbilityActorInfo(this, this);
+	}
 }
 
 const FName& ACharacterBase::GetId() const
@@ -38,5 +60,10 @@ const FName& ACharacterBase::GetId() const
 void ACharacterBase::SetId(const FName& Id)
 {
 	_Id = Id;
+}
+
+UAbilitySystemComponent* ACharacterBase::GetAbilitySystemComponent() const
+{
+	return _AbilitySystemComponent;
 }
 
