@@ -15,6 +15,8 @@ AItemPickUp::AItemPickUp()
 {
 	_Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(_Mesh);
+	bReplicates = true;
+
 }
 
 void AItemPickUp::BeginPlay()
@@ -34,6 +36,11 @@ void AItemPickUp::BeginPlay()
 
 void AItemPickUp::Interact_Implementation(AActor* Interactor)
 {
+	// 서버에서만 체크
+	if (false == HasAuthority())
+		return;
+
+
 	APawn* Pawn = Cast<APawn>(Interactor);
 	if (nullptr == Pawn)
 		return;
@@ -62,7 +69,6 @@ void AItemPickUp::Interact_Implementation(AActor* Interactor)
 		Inv->AddItem(_TID, _Count);					// 아이템 슬롯
 
 	Destroy();					// 제거(PickUp)
-
 
 }
 

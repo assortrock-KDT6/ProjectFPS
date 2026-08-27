@@ -229,8 +229,6 @@ void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
 
 void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
-	if (nullptr == _InteractionComponent)
-		GEngine->AddOnScreenDebugMessage(-1, 10, FColor::Red, TEXT("Error")); // 에러 명칭 정확하게 작성할것.
 
 	if (_InteractionComponent)
 		_InteractionComponent->TryInteract();
