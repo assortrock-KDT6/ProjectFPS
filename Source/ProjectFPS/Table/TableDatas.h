@@ -31,7 +31,7 @@ struct FItemData  : public  FTableRowBase
 
 	// 아이템 아이콘
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<UTexture2D> _Icon = nullptr;			// 
+	TObjectPtr<UTexture2D> _Icon = nullptr;			
 
 	//  *나중에 지울예정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

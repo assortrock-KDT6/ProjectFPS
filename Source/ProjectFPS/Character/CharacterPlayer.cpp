@@ -161,13 +161,15 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 
 void ACharacterPlayer::CharacterMouseZoomAction(const FInputActionValue& Value)
 {
+	
+	// Jisoo's Code : 조준으로 확대가 힘들다면 돋보기로 키우기
 	// if (IsValid(_SpringArmComponent))
 	// {
 	// 	const float ZoomValue = Value.Get<float>() * _ZoomSensitivity;
-	// 	//const float Length = _SprintArmComponent->TargetArmLength;
+	// 	const float Length = _SpringArmComponent->TargetArmLength;
 	//
 	// 	// [Todo] : 최대 거리, 최소 거리 변수로 분리할 것.
-	// 	//_SprintArmComponent->TargetArmLength = FMath::Clamp(_SprintArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
+	// 	_SpringArmComponent->TargetArmLength = FMath::Clamp(_SpringArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
 	// }
 }
 

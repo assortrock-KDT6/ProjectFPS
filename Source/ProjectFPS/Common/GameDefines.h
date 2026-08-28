@@ -17,7 +17,6 @@ class PROJECTFPS_API UGameDefines : public UObject
 };
 
 // 언리얼 enun
-
 // 인게임 화면
 UENUM(BlueprintType)
 enum class EMatchPhase : uint8
