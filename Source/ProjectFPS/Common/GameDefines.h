@@ -67,6 +67,16 @@ enum class EItemType : uint8
 	Bullet,		// 탄약 (정사각형 슬롯)
 };
 
+UENUM(BlueprintType)
+enum class  EProjectCustomMovementMode : uint8
+{
+	None = 0	UMETA(DisplayName = "NONE"),
+	Travelsal	UMETA(DisplayName = "Traversal"),
+	Vault		UMETA(DisplayName = "Vault"),
+	Mentle		UMETA(DisplayName = "Mentle"),
+	Hanging		UMETA(DisplayName = "Hanging")
+};
+
 
 
 // OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.

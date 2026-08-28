@@ -11,6 +11,7 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "MotionWarpingComponent.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values for this component's properties
 UParkourComponent::UParkourComponent()
@@ -30,7 +31,17 @@ void UParkourComponent::BeginPlay()
 		return;
 	}
 
-	HurdleCheckComponent = Owner->FindComponentByClass<UHurdleCheckComponent>();
+	HurdleCheckComponent	= Owner->FindComponentByClass<UHurdleCheckComponent>();
+	MotionWarpingComponent	= Owner->FindComponentByClass<UMotionWarpingComponent>();
+}
+
+void UParkourComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UParkourComponent, VaultMontage);
+	DOREPLIFETIME(UParkourComponent, bVaultActive);
+	DOREPLIFETIME(UParkourComponent, bVaultBlockIgnore);
 }
 
 bool UParkourComponent::TryParkour()
@@ -89,16 +100,20 @@ bool UParkourComponent::TryParkour()
 		return false;
 	}
 
-	
 	PlayVault(FrontHit, LandingHit);
 
 	if (bVaultActive)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green	, FString::Printf(TEXT("Front Block : %s"), *GetNameSafe(FrontHit.GetActor())));
+
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Magenta	, FString::Printf(TEXT("Top Surface : Found / Height : %.1f cm"), BlockHeight));
+
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Blue	, FString::Printf(TEXT("Back Point : Found / Depth : %.1f cm"), BlockDepth));
+
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Yellow	, FString::Printf(TEXT("Landing Floor : Found")));
+
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green	, FString::Printf(TEXT("Landing Space : Clear")));
+
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Emerald	, FString::Printf(TEXT("Parkour Action : Vault")));
 	}
 	else
@@ -119,7 +134,7 @@ void UParkourComponent::Server_TryParkour_Implementation()
 	TryParkour();
 }
 
-void UParkourComponent::Multicast_PlayValut_Implementation()
+void UParkourComponent::Multicast_PlayValut_Implementation(FName WarpTargetName, const FVector Location, const FRotator Rotation)
 {
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
 	if (false == IsValid(Owner))
@@ -132,8 +147,16 @@ void UParkourComponent::Multicast_PlayValut_Implementation()
 		return;
 	}
 
-	Owner->PlayAnimMontage(VaultMontage.Get());
-	
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(WarpTargetName, Location, Rotation);
+
+	float MontageDuration = PlayValutMontage();
+
+	if (MontageDuration <= 0.f)
+	{
+		MotionWarpingComponent->RemoveWarpTarget(WarpTargetName);
+
+		return;
+	}
 }
 
 float UParkourComponent::PlayValutMontage()
@@ -189,8 +212,7 @@ void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& 
 		return;
 	}
 
-	UMotionWarpingComponent* MotionWarping = Owner->FindComponentByClass<UMotionWarpingComponent>();
-	if (false == IsValid(MotionWarping))
+	if (false == IsValid(MotionWarpingComponent))
 	{
 		return;
 	}
@@ -208,18 +230,18 @@ void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& 
 	const FRotator TargetRotation = VaultDirection.Rotation();
 
 	// 몽타주의 VaultLand 와 검사한 착지 지점을 연결하기
-	MotionWarping->AddOrUpdateWarpTargetFromLocationAndRotation(TEXT("VaultLand"), LandingHit.ImpactPoint, TargetRotation);
+	MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(TEXT("VaultLand"), LandingHit.ImpactPoint, TargetRotation);
 
 	float MontageDuration = PlayValutMontage();
 
 	if (MontageDuration <= 0.f)
 	{
-		MotionWarping->RemoveWarpTarget(TEXT("VaultLand"));
+		MotionWarpingComponent->RemoveWarpTarget(TEXT("VaultLand"));
 
 		return;
 	}
 	
-	Multicast_PlayValut();
+	Multicast_PlayValut(TEXT("VaultLand"), LandingHit.ImpactPoint, TargetRotation);
 
 	VaultStartTransform = Owner->GetActorTransform();
 

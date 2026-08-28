@@ -10,6 +10,7 @@ class UAnimMontage;
 class AController;
 class UPrimitiveComponent;
 class UHurdleCheckComponent;
+class UMotionWarpingComponent;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class PROJECTFPS_API UParkourComponent : public UActorComponent
@@ -20,48 +21,27 @@ public:
 	// Sets default values for this component's properties
 	UParkourComponent();
 
-public:
-	bool TryParkour();
-	
-	bool IsVaultActive() const;
-
-public:
-	UFUNCTION(Server, Reliable)
-	void Server_TryParkour();
-	void Server_TryParkour_Implementation();
-
-	UFUNCTION(NetMulticast, Unreliable)
-	void Multicast_PlayValut();
-	void Multicast_PlayValut_Implementation();
-private:
-	float PlayValutMontage();
 private:
 	UPROPERTY()
-	TObjectPtr<UHurdleCheckComponent> HurdleCheckComponent;
+	TObjectPtr<UHurdleCheckComponent>	HurdleCheckComponent;
 
-	void PlayVault(const FHitResult& FrontHit, const FHitResult& LandingHit);
+	TObjectPtr<UMotionWarpingComponent> MotionWarpingComponent;
+	
+	TEnumAsByte<EMovementMode>			PreviousMovementMode = MOVE_Walking;
 
-	void OnVaultEnded(UAnimMontage* Montage, bool bInterrupted);
-
-	bool bVaultActive = false;
-
-	TEnumAsByte<EMovementMode> PreviousMovementMode = MOVE_Walking;
-
-	uint8 PreviousCustomMovementMode = 0;
-
-	TWeakObjectPtr<AController> VaultController;
+	TWeakObjectPtr<AController>			VaultController;
 
 	// 현재 Vault로 통과중인 장애물 컴포넌트
 	TWeakObjectPtr<UPrimitiveComponent> VaultBlockComponent;
 
-	// 중단되면 안전하게 시작 위치로 돌아가기 위한 값
-	FTransform VaultStartTransform;
 
-	bool bVaultBlockIgnore = false;
+	// 중단되면 안전하게 시작 위치로 돌아가기 위한 값
+	FTransform							VaultStartTransform;
+
+
+	uint8								PreviousCustomMovementMode = 0;
 
 protected:
-	virtual void BeginPlay() override;
-
 	// Vault
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Vault", meta = (ClampMin = "0.0"))
 	float MinVaultHeight = 40.0f;
@@ -72,14 +52,44 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Vault", meta = (ClampMin = "0.0"))
 	float MaxVaultDepth = 120.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Vault")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Vault", Replicated)
 	TObjectPtr<UAnimMontage> VaultMontage;
-
-
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|Check")
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_Visibility;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Parkour|DEBUG")
 	bool bDrawDebug = true;
+
+	UPROPERTY(VisibleAnywhere, Category = "Parkour|Valut", Replicated)
+	bool bVaultActive = false;
+
+	UPROPERTY(VisibleAnywhere, Category = "Parkour|Collision", Replicated)
+	bool bVaultBlockIgnore = false;
+protected:
+	virtual void BeginPlay() override;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+public:
+	bool TryParkour();
+	
+	bool IsVaultActive() const;
+
+	void PlayVault(const FHitResult& FrontHit, const FHitResult& LandingHit);
+
+	void OnVaultEnded(UAnimMontage* Montage, bool bInterrupted);
+
+
+public:
+	UFUNCTION(Server, Reliable)
+	void Server_TryParkour();
+	void Server_TryParkour_Implementation();
+
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayValut(FName WarpTargetName, const FVector Location, const FRotator Rotation);
+	void Multicast_PlayValut_Implementation(FName WarpTargetName, const FVector Location, const FRotator Rotation);
+
+private:
+	float PlayValutMontage();
 };
