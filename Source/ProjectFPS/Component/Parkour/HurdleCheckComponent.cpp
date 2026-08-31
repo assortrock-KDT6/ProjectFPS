@@ -87,6 +87,37 @@ bool UHurdleCheckComponent::CheckFrontBlock(FHitResult& OutHit) const
 	return bCollision;
 }
 
+bool UHurdleCheckComponent::ResolveLocalObstacle(const FVector& ObstaclePoint, const FVector& ObstacleNormal, FHitResult& OutHit) const
+{
+	OutHit = FHitResult();
+
+	const ACharacter* Owner = Cast<ACharacter>(GetOwner());
+	
+	UWorld* World = GetWorld();
+	if (false == IsValid(World) || false == IsValid(Owner))
+	{
+		return false;
+	}
+
+	const FVector SafeNormal = ObstacleNormal.GetSafeNormal();
+
+	if (true == SafeNormal.IsNearlyZero() || ObstacleResolveTraceHalfDistance <= 0.f)
+	{
+		return false;
+	}
+
+	const FVector TraceOffset = SafeNormal * ObstacleResolveTraceHalfDistance;
+
+	// FrontHit의 법선 방향은 표면 바깥족이다.
+	const FVector Start = ObstaclePoint + TraceOffset;
+	const FVector End = ObstaclePoint - TraceOffset;
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(Owner);
+
+	return World->LineTraceSingleByChannel(OutHit, Start, End, TraceChannel.GetValue(), QueryParams);
+}
+
 bool UHurdleCheckComponent::CheckTopBlock(const FHitResult& FrontHit, FHitResult& OutHit, float& OutHeight) const
 {
 	OutHeight = 0.0f;
@@ -389,6 +420,11 @@ bool UHurdleCheckComponent::CheckTopFloor(const FHitResult& FrontHit, const FHit
 	}
 
 	return bCollision;
+}
+
+float UHurdleCheckComponent::GetLandingFloorClearance() const
+{
+	return LandingCapsule;
 }
 
 bool UHurdleCheckComponent::CheckLandingSpace(const FHitResult& LandingHit) const

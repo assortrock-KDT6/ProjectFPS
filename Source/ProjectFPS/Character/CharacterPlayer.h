@@ -23,8 +23,7 @@ class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
 {
 	GENERATED_BODY()
 public:
-	ACharacterPlayer();
-
+	ACharacterPlayer(const FObjectInitializer& ObjectInitializer);
 public:
 // 카메라 회전 감도 조절 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
@@ -55,10 +54,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Interact")
 	TObjectPtr<class UInteractionComponent> _InteractionComponent;
-
-
-
-	
 
 protected:
 	// Called when the game starts or when spawned
@@ -97,5 +92,7 @@ protected:
 
 	UFUNCTION()
 	void InteractAction(const FInputActionValue& value);
+
+private:
 
 };

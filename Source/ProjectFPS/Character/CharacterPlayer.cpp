@@ -1,6 +1,6 @@
 #include "Character/CharacterPlayer.h"
 #include "Controller/PlayerControllerBase.h"
-#include "GameFramework/CharacterMovementComponent.h"
+#include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -15,8 +15,8 @@
 #include "Component/Parkour/MantleComponent.h"
 #include "UI/GameHUD.h"
 
-
-ACharacterPlayer::ACharacterPlayer()
+ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
+	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
 
@@ -41,7 +41,7 @@ ACharacterPlayer::ACharacterPlayer()
 #pragma endregion
 
 	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
-	_CameraComponent	= CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
+	_CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 
 #pragma region ROTATION_SETTING
 
@@ -53,16 +53,16 @@ ACharacterPlayer::ACharacterPlayer()
 
 		_SpringArmComponent->TargetArmLength = 0.f;
 		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
-		
+
 		_SpringArmComponent->bUsePawnControlRotation = true;
-		_SpringArmComponent->bInheritPitch	= true;
-		_SpringArmComponent->bInheritYaw	= true;
+		_SpringArmComponent->bInheritPitch = true;
+		_SpringArmComponent->bInheritYaw = true;
 
 		_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
 	}
 
-	UCharacterMovementComponent* MovementComp = GetCharacterMovement();	
+	UCharacterMovementComponent* MovementComp = GetCharacterMovement();
 	if (IsValid(MovementComp))
 	{
 		MovementComp->bOrientRotationToMovement = true;
@@ -73,9 +73,9 @@ ACharacterPlayer::ACharacterPlayer()
 
 	// Parkour
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
-	_ParkourComponent     = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
+	_ParkourComponent = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
-	_MantleComponent    = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
+	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
 	//Interaction
 	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
@@ -181,31 +181,39 @@ void ACharacterPlayer::ParkourAction(const FInputActionValue& Value)
 	// todo : 파쿠르 액션에 대한 판정은 C++ , 애니메이션과 세부 판정값은 Blueprint로 작성하기
 	// 파쿠르 액션은 여러개의 LineTrace를 통해 해당 물체의 오브젝트의 크기를 알아내고 Vault 와 Mentle 액션을 결정한다.
 
-	const bool bVaultActive = IsValid(_ParkourComponent) && _ParkourComponent->IsVaultActive();
-	
-	const bool bMantleActive = IsValid(_MantleComponent) && _MantleComponent->IsMantleActive();
-	
-	if (bVaultActive || bMantleActive)
+	//const bool bVaultActive = IsValid(_ParkourComponent) && _ParkourComponent->IsVaultActive();
+	//
+	//const bool bMantleActive = IsValid(_MantleComponent) && _MantleComponent->IsMantleActive();
+	//
+	//if (bVaultActive || bMantleActive)
+	//{
+	//	return;
+	//}
+	//
+	//if (IsValid(_ParkourComponent))
+	//{
+	//	_ParkourComponent->Server_TryParkour();
+	//	if (true == _ParkourComponent->IsVaultActive())
+	//	{
+	//		return;
+	//	}
+
+	//}
+
+	//if (IsValid(_MantleComponent))
+	//{
+	//	_MantleComponent->TryMantle();
+	//	// _ParkourComponent->TryParkour(); <-- Fatal Bug FIX : 두개의 파쿠르 액션을 취하게 되니 Flying 상태에서 다시 Flying 상태가 되어 이전 상태인 Move_Walk를 기억하지못해 계속된 Flying 상태가 유지됐다.
+	//	//  todo : 애니메이션 몽타쥬가 종료될때까지 액션이 끝날동안 추가 파쿠르 입력의 키는 받지 않게 설정한다.
+	//}
+
+	UFPSCharacterMovementComponent* Movement = Cast<UFPSCharacterMovementComponent>(GetCharacterMovement());
+	if (false == IsValid(Movement))
 	{
 		return;
 	}
-	
-	if (IsValid(_ParkourComponent))
-	{
-		_ParkourComponent->Server_TryParkour();
-		if (true == _ParkourComponent->IsVaultActive())
-		{
-			return;
-		}
 
-	}
-
-	if (IsValid(_MantleComponent))
-	{
-		_MantleComponent->TryMantle();
-		// _ParkourComponent->TryParkour(); <-- Fatal Bug FIX : 두개의 파쿠르 액션을 취하게 되니 Flying 상태에서 다시 Flying 상태가 되어 이전 상태인 Move_Walk를 기억하지못해 계속된 Flying 상태가 유지됐다.
-		//  todo : 애니메이션 몽타쥬가 종료될때까지 액션이 끝날동안 추가 파쿠르 입력의 키는 받지 않게 설정한다.
-	}
+	Movement->RequestTraversal();
 }
 
 void ACharacterPlayer::ToggleInventoryAction(const FInputActionValue& value)

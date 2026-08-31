@@ -25,6 +25,12 @@ public:
 	// Parkour : Public
 	bool CheckFrontBlock(FHitResult& OutHit) const;
 
+	/**
+	 * 서버에서 복제된 충돌점/법선을 기준으로 이 머신의 로컬 장애물을 다시 찾는다.
+	 * 객체 포인터는 네크워크에 전달하지 않는다.
+	 */
+	bool ResolveLocalObstacle(const FVector& ObstaclePoint, const FVector& ObstacleNormal, FHitResult& OutHit) const;
+
 	bool CheckTopBlock(const FHitResult& FrontHit, FHitResult& OutHit, float& OutHeight) const;			// 검출한 윗면 정보를 돌려줌 -> 반환값 : 유효한 윗면을 찾았는지 알려줌
 
 	bool CheckLandingSpace(const FHitResult& LandingHit) const;
@@ -36,7 +42,8 @@ public:
 
 	// Parkour : Mantle
 	bool CheckTopFloor(const FHitResult& FrontHit, const FHitResult& TopHit, FHitResult& OutHit) const;
-
+	
+	float GetLandingFloorClearance() const;
 protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hurdle|Collision")
@@ -90,5 +97,8 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hurdle|TopFloor", meta = (ClampMin = "0.0"))
 	float TopFloorCheckDistance = 50.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Hurdle|Collision", meta = (ClampMin = "1.0"))
+	float ObstacleResolveTraceHalfDistance = 20.f;
 
 };

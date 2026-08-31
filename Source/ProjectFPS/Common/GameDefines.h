@@ -71,9 +71,8 @@ UENUM(BlueprintType)
 enum class  EProjectCustomMovementMode : uint8
 {
 	None = 0	UMETA(DisplayName = "NONE"),
-	Travelsal	UMETA(DisplayName = "Traversal"),
 	Vault		UMETA(DisplayName = "Vault"),
-	Mentle		UMETA(DisplayName = "Mentle"),
+	Mantle		UMETA(DisplayName = "Mantle"),
 	Hanging		UMETA(DisplayName = "Hanging")
 };
 
