@@ -47,7 +47,7 @@ bool UMantleComponent::TryMantle()
 
 	FHitResult FrontHit;
 
-	if (false == HurdleCheckComponent->CheckFrontBlock(FrontHit))
+	if (false == HurdleCheckComponent->TraceFrontBlock(FrontHit))
 	{
 		return false;
 	}
@@ -56,7 +56,7 @@ bool UMantleComponent::TryMantle()
 
 	float MantleHeight = 0.0f;
 	
-	if (false == HurdleCheckComponent->CheckTopBlock(FrontHit, TopHit, MantleHeight))
+	if (false == HurdleCheckComponent->TraceTopBlock(FrontHit, TopHit, MantleHeight))
 	{
 		return false;
 	}

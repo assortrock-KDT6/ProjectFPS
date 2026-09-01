@@ -10,7 +10,7 @@
 #include "Input/DefaultInput.h"
 #include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
-#include "Component/Parkour/ParkourComponent.h"
+#include "Component/Parkour/VaultComponent.h"
 //#include "Component/Parkour/HangingComponent.h
 #include "Component/Parkour/MantleComponent.h"
 #include "UI/GameHUD.h"
@@ -73,7 +73,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 
 	// Parkour
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
-	_ParkourComponent = CreateDefaultSubobject<UParkourComponent>(TEXT("ParkourComponent"));
+	_VaultComponent = CreateDefaultSubobject<UVaultComponent>(TEXT("VaultComponent"));
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 

@@ -76,6 +76,14 @@ enum class  EProjectCustomMovementMode : uint8
 	Hanging		UMETA(DisplayName = "Hanging")
 };
 
+UENUM(BlueprintType)
+enum class ETraversalVariant : uint8
+{
+	Default		= 0	UMETA(DisplayName = "Default"),
+	MantleLow	= 1	UMETA(DisplayName = "MantleLow"),
+	MantleHigh	= 2	UMETA(DisplayName = "MantleHigh"),
+	MantleInAir = 3 UMETA(DisplayName = "MantleInAir"),
+};
 
 
 // OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.

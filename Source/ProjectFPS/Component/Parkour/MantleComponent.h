@@ -53,6 +53,10 @@ private:
 	bool bMantleBlockIgnore = false;
 
 protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Traversal|Mantle|Trace")
+	FMantleTraceSettings TraceSettings;
+
+protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 

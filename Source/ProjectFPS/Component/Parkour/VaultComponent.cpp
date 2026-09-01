@@ -1,6 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "ParkourComponent.h"
+#include "VaultComponent.h"
 #include "HurdleCheckComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
@@ -16,13 +16,13 @@
 #include "Net/UnrealNetwork.h"
 
 // Sets default values for this component's properties
-UParkourComponent::UParkourComponent()
+UVaultComponent::UVaultComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
 }
 
-void UParkourComponent::BeginPlay()
+void UVaultComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -37,14 +37,14 @@ void UParkourComponent::BeginPlay()
 	MotionWarpingComponent	= Owner->FindComponentByClass<UMotionWarpingComponent>();
 }
 
-void UParkourComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+void UVaultComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(UParkourComponent, VaultMontage);
+	DOREPLIFETIME(UVaultComponent, VaultMontage);
 }
 
-bool UParkourComponent::TryParkour()
+bool UVaultComponent::TryParkour()
 {
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
 	if (false == IsValid(Owner))
@@ -84,7 +84,7 @@ bool UParkourComponent::TryParkour()
 
 	FHitResult FrontHit;
 	
-	if (false == HurdleCheckComponent->CheckFrontBlock(FrontHit))
+	if (false == HurdleCheckComponent->TraceFrontBlock(FrontHit))
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green, TEXT("Vault 불가 : 전방 장애물을 찾지 못했습니다."));
 		return false;
@@ -94,7 +94,7 @@ bool UParkourComponent::TryParkour()
 	
 	float BlockHeight = 0.0f;
 	
-	if (false == HurdleCheckComponent->CheckTopBlock(FrontHit, TopHit, BlockHeight))
+	if (false == HurdleCheckComponent->TraceTopBlock(FrontHit, TopHit, BlockHeight))
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 5, FColor::Green, TEXT("Vault 불가 : 장애물 윗면을 찾지 못했습니다."));
 		return false;
@@ -156,12 +156,12 @@ bool UParkourComponent::TryParkour()
 	return bVaultActive;
 }
 
-bool UParkourComponent::IsVaultActive() const
+bool UVaultComponent::IsVaultActive() const
 {
 	return bVaultActive;
 }
 
-void UParkourComponent::Server_TryParkour_Implementation()
+void UVaultComponent::Server_TryParkour_Implementation()
 {
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
 	if (false == IsValid(Owner))
@@ -192,7 +192,7 @@ void UParkourComponent::Server_TryParkour_Implementation()
 
 }
 
-float UParkourComponent::PlayValutMontage()
+float UVaultComponent::PlayValutMontage()
 {
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
 	if (false == IsValid(Owner))
@@ -202,7 +202,7 @@ float UParkourComponent::PlayValutMontage()
 	return Owner->PlayAnimMontage(VaultMontage.Get());
 }
 
-void UParkourComponent::ApplyLocalVaultCollisionIgnore(const FC_TraversalData& Data)
+void UVaultComponent::ApplyLocalVaultCollisionIgnore(const FC_TraversalData& Data)
 {
 	if (true == bVaultBlockIgnore && true == LocalVaultBlockComponent.IsValid())
 	{
@@ -247,7 +247,7 @@ void UParkourComponent::ApplyLocalVaultCollisionIgnore(const FC_TraversalData& D
 	}
 }
 
-void UParkourComponent::ClearLocalVaultCollisionIgnore()
+void UVaultComponent::ClearLocalVaultCollisionIgnore()
 {
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
 	if (true == IsValid(Owner) && true == bVaultBlockIgnore
@@ -263,7 +263,7 @@ void UParkourComponent::ClearLocalVaultCollisionIgnore()
 	bVaultBlockIgnore = false;
 }
 
-float UParkourComponent::GetTraversalPresentationPosition(const FC_TraversalData& Data) const
+float UVaultComponent::GetTraversalPresentationPosition(const FC_TraversalData& Data) const
 {
 	const UWorld* World = GetWorld();
 
@@ -284,7 +284,7 @@ float UParkourComponent::GetTraversalPresentationPosition(const FC_TraversalData
 }
 
 /*  Data 작성과 서버 이동 시작만 담당한다. */
-void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& LandingHit)
+void UVaultComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& LandingHit)
 {
 	if (true == bVaultActive)
 	{
@@ -437,12 +437,12 @@ void UParkourComponent::PlayVault(const FHitResult& FrontHit, const FHitResult& 
 
 	//FOnMontageEnded EndDelegate;
 	//
-	//EndDelegate.BindUObject(this, &UParkourComponent::OnVaultEnded);
+	//EndDelegate.BindUObject(this, &UVaultComponent::OnVaultEnded);
 
 	//AnimInstance->Montage_SetEndDelegate(EndDelegate, VaultMontage.Get());
 }
 
-void UParkourComponent::OnVaultEnded(UAnimMontage* Montage, bool bInterrupted)
+void UVaultComponent::OnVaultEnded(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (Montage != VaultMontage.Get())
 	{
@@ -534,7 +534,7 @@ void UParkourComponent::OnVaultEnded(UAnimMontage* Montage, bool bInterrupted)
 	//ExitValutPresentation();
 }
 
-void UParkourComponent::EnterVaultPresentation(const FC_TraversalData& Data)
+void UVaultComponent::EnterVaultPresentation(const FC_TraversalData& Data)
 {
 	if (EProjectCustomMovementMode::Vault != Data._Mode || false == Data.IsValid())
 	{
@@ -714,7 +714,7 @@ void UParkourComponent::EnterVaultPresentation(const FC_TraversalData& Data)
 	}
 	
 	FOnMontageEnded EndDelegate;
-	EndDelegate.BindUObject(this, &UParkourComponent::OnVaultEnded);
+	EndDelegate.BindUObject(this, &UVaultComponent::OnVaultEnded);
 	AnimInstance->Montage_SetEndDelegate(EndDelegate, VaultMontage.Get());
 
 	const float MaxStartPosition = FMath::Max(0.f, MontageDuration - KINDA_SMALL_NUMBER);
@@ -727,7 +727,7 @@ void UParkourComponent::EnterVaultPresentation(const FC_TraversalData& Data)
  * Mesh 또는 AnimInstance가 없더라도 충돌과 입력은 반드시 복구되어야 하므로 중간 return을 두지 않는다.
  * 함수는 여러 번 호출해도 안전한 형태로 만든다.
  */
-void UParkourComponent::ExitValutPresentation()
+void UVaultComponent::ExitValutPresentation()
 {
 	if (0 != PresentedTraversalActionId)
 	{

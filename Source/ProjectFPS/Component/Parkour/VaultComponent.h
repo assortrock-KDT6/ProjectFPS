@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "ParkourComponent.generated.h"
+#include "VaultComponent.generated.h"
 
 class UAnimMontage;
 class AController;
@@ -15,13 +15,13 @@ class UMotionWarpingComponent;
 struct FC_TraversalData;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class PROJECTFPS_API UParkourComponent : public UActorComponent
+class PROJECTFPS_API UVaultComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
 	// Sets default values for this component's properties
-	UParkourComponent();
+	UVaultComponent();
 
 private:
 	UPROPERTY()
@@ -98,6 +98,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Parkour|Collision")
 	bool bVaultBlockIgnore = false;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Traversal|Vault|Trace")
+	FVaultTraceSettings TraceSettings; 
 protected:
 	virtual void BeginPlay() override;
 

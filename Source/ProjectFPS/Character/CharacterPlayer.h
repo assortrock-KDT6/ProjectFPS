@@ -47,7 +47,7 @@ protected:
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
-	TObjectPtr<class UParkourComponent> _ParkourComponent;
+	TObjectPtr<class UVaultComponent> _VaultComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UMantleComponent> _MantleComponent;

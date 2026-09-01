@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Common/GameDatas.h"
 #include "Common/PacketDatas.h"
 #include "FPSCharacterMovementComponent.generated.h"
 
@@ -30,9 +31,11 @@ public:
 	explicit FNetworkPredictionData_Client_FPS(const UCharacterMovementComponent& ClinetMovement);
 	virtual FSavedMovePtr AllocateNewMove() override;
 };
+
 /**
  * 
  */
+
 UCLASS()
 class PROJECTFPS_API UFPSCharacterMovementComponent : public UCharacterMovementComponent
 {
@@ -42,51 +45,51 @@ public:
 	UFPSCharacterMovementComponent();
 
 private:
-	static inline const float _TraversalFinishGraceTime = 0.75f;
-
-	float _TraversalElapsedTime = 0.f;
-
-private:
 	UPROPERTY(ReplicatedUsing = OnRep_TraversalData)
-	FC_TraversalData _TraversalData;
+	FTraversalRepState _TraversalState;
 
 private:
-	bool _WantsTraversal = false;
-	bool _WantsFinishTraversal = false;
+	bool	_WantsTraversal = false;
+	uint16	_NextAuthorityActionId = 1;
+
 private:
 	UFUNCTION()
 	void OnRep_TraversalData();
-public:
-	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
-	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 
 protected:
+	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void PhysCustom(float DeltaTime, int32 Iterations) override;
 	virtual void OnMovementModeChanged(EMovementMode PreviousMovementMode, uint8 PreviousCustomMode) override;
+	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
+	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
-	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 public:
 	bool StartTravelsal(const FC_TraversalData& NewTraversalData);
 	void StopTravelsal();
 
 	// 서버와 Autonomous Proxy가 각각 Traversal 종료를 예측한다.
 	void FinishTraversalLocally();
+
 	void RequestTraversal();
+	bool IsTraversing() const;
+	bool IsTraversing(uint8 Mode) const;
+	const FTraversalRepState& GetTraversalState() const;
+
+
 	void RequestFinishTraversal();
 
 	/**
 	 * 현재 파쿠르 상태인지 확인한다. 
 	 */
-	bool IsTraversing() const;
-	const FC_TraversalData& GetTraversalData() const;
 
 private:
-	void PhysVault(float DeltaTime, int32 Iterations);
-	void PhysMantle(float DeltaTime, int32 Iterations);
-	void PhyHanging(float DeltaTime, int32 Iterations);
-	void RefreshTraversalPresentation();
-	bool IsTraversalMode(uint8 Mode) const;
+	void TryStartTraversalAuthority();
+	bool StartTraversalAuthority(const FTraversalCandidate& Candidate);
+	void FinishTraversalAuthority();
 
-	void TryStartTraversalFromMove();
+	void PhyTraversal(float DeltaTime, int32 Interations);
+	void RefreshTraversalPresentation();
+
+	float GetAuthoritativeTimeSeconds() const;
 };

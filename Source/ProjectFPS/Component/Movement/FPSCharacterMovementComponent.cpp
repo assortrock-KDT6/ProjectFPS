@@ -2,7 +2,8 @@
 
 
 #include "Component/Movement/FPSCharacterMovementComponent.h"
-#include "Component/Parkour/ParkourComponent.h"
+#include "GameMode/FPSGameState.h"
+#include "Component/Parkour/VaultComponent.h"
 #include "GameFramework/Character.h"
 #include "Net/UnrealNetwork.h"
 
@@ -141,12 +142,13 @@ void UFPSCharacterMovementComponent::RequestFinishTraversal()
 
 bool UFPSCharacterMovementComponent::IsTraversing() const
 {
-	return MOVE_Custom == MovementMode && IsTraversalMode(CustomMovementMode);
+	return MOVE_Custom == MovementMode && IsTraversing(CustomMovementMode);
 }
 
-const FC_TraversalData& UFPSCharacterMovementComponent::GetTraversalData() const
+const FTraversalRepState& UFPSCharacterMovementComponent::GetTraversalState() const
 {
 	return _TraversalData;
+	// TODO: 여기에 return 문을 삽입합니다.
 }
 
 void UFPSCharacterMovementComponent::OnRep_TraversalData()
@@ -231,7 +233,7 @@ void UFPSCharacterMovementComponent::OnMovementModeChanged(EMovementMode Previou
 void UFPSCharacterMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-	DOREPLIFETIME(UFPSCharacterMovementComponent, _TraversalData);
+	DOREPLIFETIME(UFPSCharacterMovementComponent, _TraversalState);
 }
 
 void UFPSCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
@@ -241,20 +243,17 @@ void UFPSCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float De
 	/**
 	 * 종료를 시작보다 먼저 처리한다. 
 	 */
-	if (true == _WantsFinishTraversal)
-	{
-		_WantsFinishTraversal = false;
-		FinishTraversalLocally();
-		return;
-	}
-
-	if (false == _WantsTraversal)
+	if (true == _WantsTraversal)
 	{
 		return;
 	}
 
 	_WantsTraversal = false;
-	TryStartTraversalFromMove();
+
+	if (nullptr != CharacterOwner && true == CharacterOwner->HasAuthority())
+	{
+		TryStartTraversalAuthority();
+	}
 }
 
 void UFPSCharacterMovementComponent::PhysVault(float DeltaTime, int32 Iterations)
@@ -332,9 +331,57 @@ void UFPSCharacterMovementComponent::PhysMantle(float DeltaTime, int32 Iteration
 	}
 }
 
-void UFPSCharacterMovementComponent::PhyHanging(float DeltaTime, int32 Iterations)
+
+void UFPSCharacterMovementComponent::TryStartTraversalAuthority()
 {
-	// TODO : Hanging
+}
+
+bool UFPSCharacterMovementComponent::StartTraversalAuthority(const FTraversalCandidate& Candidate)
+{
+	if (nullptr == CharacterOwner || false == CharacterOwner->HasAuthority() || true == IsTraversing() || false == Candidate.IsValid())
+	{
+		return false;
+	}
+
+	_TraversalState = FTraversalRepState();
+	_TraversalState._Mode = Candidate._Mode;
+	_TraversalState._Variant = Candidate._Variant;
+	_TraversalState._ActionID = _NextAuthorityActionId++;
+	_TraversalState._TargetLocation = Candidate._TargetLocation;
+	_TraversalState._TargetRotation = Candidate._TargetRotation;
+	_TraversalState._ObstaclePoint = Candidate._ObstaclePoint;
+	_TraversalState._ObstacleNormal = Candidate._ObstacleNormal;
+	_TraversalState._ServerStartTimeSeconds = GetAuthoritativeTimeSeconds();
+	_TraversalState._Duration = Candidate._Duration;
+
+	if (0 == _NextAuthorityActionId)
+	{
+		_NextAuthorityActionId = 1;
+	}
+
+	SetMovementMode(MOVE_Custom, static_cast<uint8>(_TraversalState._Mode));
+	CharacterOwner->ForceNetUpdate();
+	return true;
+}
+
+void UFPSCharacterMovementComponent::FinishTraversalAuthority()
+{
+	if (nullptr == CharacterOwner || false == CharacterOwner->HasAuthority() || false == IsTraversing())
+	{
+		return;
+	}
+
+	_TraversalState = FTraversalRepState();
+
+	FFindFloorResult FloorResult;
+	FindFloor(UpdatedComponent->GetComponentLocation(), FloorResult, false);
+
+	SetMovementMode(FloorResult.IsWalkableFloor() ? MOVE_Walking : MOVE_Falling);
+	CharacterOwner->ForceNetUpdate();
+}
+
+void UFPSCharacterMovementComponent::PhyTraversal(float DeltaTime, int32 Interations)
+{
 }
 
 void UFPSCharacterMovementComponent::RefreshTraversalPresentation()
@@ -344,9 +391,9 @@ void UFPSCharacterMovementComponent::RefreshTraversalPresentation()
 		return;
 	}
 
-	UParkourComponent* Parkour = CharacterOwner->FindComponentByClass<UParkourComponent>();
+	UVaultComponent* Vault = CharacterOwner->FindComponentByClass<UVaultComponent>();
 
-	if (false == IsValid(Parkour))
+	if (false == IsValid(Vault))
 	{
 		return;
 	}
@@ -354,17 +401,35 @@ void UFPSCharacterMovementComponent::RefreshTraversalPresentation()
 	if (true == IsTraversing() && _TraversalData.IsValid())
 	{
 		// TODO : Parkour
-		Parkour->EnterVaultPresentation(_TraversalData);
+		Vault->EnterVaultPresentation(_TraversalData);
 	}
 	else
 	{
 		// TODO : Parkour
-		Parkour->ExitValutPresentation();
+		Vault->ExitValutPresentation();
 	}
 
 }
 
-bool UFPSCharacterMovementComponent::IsTraversalMode(uint8 Mode) const
+float UFPSCharacterMovementComponent::GetAuthoritativeTimeSeconds() const
+{
+	const UWorld* World = GetWorld();
+	if (false == IsValid(World))
+	{
+		return 0.f;
+	}
+
+	const AGameStateBase* GameState = World->GetGameState();	
+
+	if (false == IsValid(GameState))
+	{
+		return World->GetTimeSeconds();
+	}
+
+	return GameState->GetServerWorldTimeSeconds();
+}
+
+bool UFPSCharacterMovementComponent::IsTraversing(uint8 Mode) const
 {
 	switch (static_cast<EProjectCustomMovementMode>(Mode))
 	{
@@ -389,14 +454,14 @@ void UFPSCharacterMovementComponent::TryStartTraversalFromMove()
 		return;
 	}
 
-	UParkourComponent* Parkour = CharacterOwner->FindComponentByClass<UParkourComponent>();
+	UVaultComponent* Vault = CharacterOwner->FindComponentByClass<UVaultComponent>();
 
-	if (false == IsValid(Parkour))
+	if (false == IsValid(Vault))
 	{
 		return;
 	}
 
-	Parkour->TryParkour();
+	Vault->TryParkour();
 }
 
 void FSavedMove_FPS::Clear()
