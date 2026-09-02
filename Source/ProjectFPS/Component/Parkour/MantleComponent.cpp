@@ -3,274 +3,105 @@
 
 #include "Component/Parkour/MantleComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
-#include "Animation/AnimInstance.h"
-#include "Animation/AnimMontage.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "Components/CapsuleComponent.h"
-#include "Components/PrimitiveComponent.h"
+#include "Common/GameDatas.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/Controller.h"
-#include "GameFramework/CharacterMovementComponent.h"
-#include "MotionWarpingComponent.h"
 
 UMantleComponent::UMantleComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	SetIsReplicatedByDefault(true);
+
+	/**
+	 * 복제 프로퍼티도 RPC도 없다. 모든 트래버설 상태는 FPSCharacterMovementComponent가 복제한다.
+	 * 이 컴포넌트는 로컬 후보 판정과 표현만 담당한다.
+	 */
+	SetIsReplicatedByDefault(false);
 }
 
-void UMantleComponent::BeginPlay()
+EProjectCustomMovementMode UMantleComponent::GetMode() const
 {
-	Super::BeginPlay();
-
-	AActor* Owner = GetOwner();
-
-	if (false == IsValid(Owner))
-	{
-		return;
-	}
-
-	HurdleCheckComponent = Owner->FindComponentByClass<UHurdleCheckComponent>();
+	return EProjectCustomMovementMode::Mantle;
 }
 
-bool UMantleComponent::TryMantle()
+int32 UMantleComponent::GetPriority() const
 {
-	if (bMantleActive)
+	return 50;
+}
+
+bool UMantleComponent::BuildCandidate(const FTraversalBaseQuery& BaseQuery, FTraversalCandidate& OutCandidate) const
+{
+	OutCandidate = FTraversalCandidate();
+
+	const ETraversalVariant Variant = BaseQuery._ObstacleHeight < _HighMantleThreshold ? ETraversalVariant::MantleLow : ETraversalVariant::MantleHigh;
+	const FTraversalActionDefinition* Definition = FindDefinition(static_cast<uint8>(Variant));
+
+	if (nullptr == Definition)
 	{
+		/**
+		 * _Variant는 uint8이라 에디터에서 드롭다운이 아니라 숫자 입력으로 보인다.
+		 * MantleLow=1 / MantleHigh=2 를 직접 넣지 않으면 기본값 0으로 남아 여기서 탈락한다.
+		 */
+		UE_LOG(LogTraversal, Verbose,
+			TEXT("[Mantle] 탈락: Variant %d 에 해당하는 Definition 없음 (장애물 높이 %.1f, HighMantleThreshold %.1f). _Definitions에 _Variant=%d 행이 있는지 확인."),
+			static_cast<int32>(Variant), BaseQuery._ObstacleHeight, _HighMantleThreshold, static_cast<int32>(Variant));
 		return false;
 	}
 
-	if (false == IsValid(HurdleCheckComponent))
+	if (false == IsValid(Definition->_Montage))
 	{
+		UE_LOG(LogTraversal, Verbose, TEXT("[Mantle] 탈락: Variant %d Definition의 _Montage가 비어 있음."), static_cast<int32>(Variant));
 		return false;
 	}
 
-	FHitResult FrontHit;
-
-	if (false == HurdleCheckComponent->TraceFrontBlock(FrontHit))
+	if (BaseQuery._ObstacleHeight < Definition->_MinHeight
+		|| BaseQuery._ObstacleHeight > Definition->_MaxHeight)
 	{
+		UE_LOG(LogTraversal, Verbose,
+			TEXT("[Mantle] 탈락: 높이 범위 밖. 장애물 %.1f, 허용 %.1f~%.1f (둘 다 0이면 Definition의 _MinHeight/_MaxHeight 미설정)."),
+			BaseQuery._ObstacleHeight, Definition->_MinHeight, Definition->_MaxHeight);
 		return false;
 	}
 
-	FHitResult TopHit;
-
-	float MantleHeight = 0.0f;
-	
-	if (false == HurdleCheckComponent->TraceTopBlock(FrontHit, TopHit, MantleHeight))
+	/* Vault에는 있는 널 가드가 여기엔 없었다. */
+	if (false == IsValid(_HurdleCheckComponent))
 	{
-		return false;
-	}
-
-	const bool bValidHeight = MantleHeight >= MinMantleHeight && MantleHeight <= MaxMantleHeight;
-	
-	if (false == bValidHeight)
-	{
-		return false;
-	}
-
-	if (MantleHeight < Mantle2MHeight)
-	{
-		ActiveMantleMontage = MantleMontage1M;
-	}
-	else
-	{
-		ActiveMantleMontage = MantleMontage2M;
-	}
-
-	if (false == IsValid(ActiveMantleMontage.Get()))
-	{
+		UE_LOG(LogTraversal, Verbose, TEXT("[Mantle] 탈락: HurdleCheckComponent 없음."));
 		return false;
 	}
 
 	FHitResult TopFloorHit;
-
-	if (false == HurdleCheckComponent->CheckTopFloor(FrontHit, TopHit, TopFloorHit))
+	if (false == _HurdleCheckComponent->CheckMantleTopFloor(BaseQuery, _TraceSettings, TopFloorHit))
 	{
+		UE_LOG(LogTraversal, Verbose,
+			TEXT("[Mantle] 탈락: CheckMantleTopFloor 실패. 앞면에서 (캡슐반지름 + TopCheckInset)만큼 안쪽을 수직으로 훑는데, 장애물 윗면이 그만큼 깊지 않으면 허공을 찍는다."));
 		return false;
 	}
 
-	if (false == HurdleCheckComponent->CheckLandingSpace(TopFloorHit))
+	if (false == _HurdleCheckComponent->CheckLandingSpace(TopFloorHit))
 	{
+		UE_LOG(LogTraversal, Verbose, TEXT("[Mantle] 탈락: CheckLandingSpace 실패. 올라설 자리에 캐릭터 캡슐이 안 들어간다."));
 		return false;
 	}
 
-	PlayMantle(FrontHit, TopFloorHit);
+	const float Duration = GetEffectiveDuration(*Definition);
 
-	return bMantleActive;
+	if (Duration <= KINDA_SMALL_NUMBER)
+	{
+		UE_LOG(LogTraversal, Verbose, TEXT("[Mantle] 탈락: 유효 재생 시간 0. _PlayRate(%.2f) 또는 몽타주 RateScale 확인."), Definition->_PlayRate);
+		return false;
+	}
+
+	UE_LOG(LogTraversal, Verbose, TEXT("[Mantle] 후보 생성 성공. Variant %d, 높이 %.1f, 길이 %.2fs"),
+		static_cast<int32>(Variant), BaseQuery._ObstacleHeight, Duration);
+
+	OutCandidate._Mode = GetMode();
+	OutCandidate._Variant = static_cast<uint8>(Variant);
+	OutCandidate._TargetLocation = TopFloorHit.ImpactPoint;
+	OutCandidate._TargetRotation = BaseQuery._Direction.Rotation();
+	OutCandidate._ObstaclePoint = BaseQuery._FrontHit.ImpactPoint;
+	OutCandidate._ObstacleNormal = BaseQuery._FrontHit.ImpactNormal;
+	OutCandidate._ObstacleComponent = BaseQuery._FrontHit.GetComponent();
+	OutCandidate._Duration = Duration;
+
+	return OutCandidate.IsValid();
 }
-
-bool UMantleComponent::IsMantleActive() const
-{
-	return bMantleActive;
-}
-
-void UMantleComponent::PlayMantle(const FHitResult& FrontHit, const FHitResult& TopFloorHit)
-{
-	if (bMantleActive || false == FrontHit.bBlockingHit || false == TopFloorHit.bBlockingHit || false == IsValid(ActiveMantleMontage.Get()))
-	{
-		return;
-	}
-
-	ACharacter* Owner = Cast<ACharacter>(GetOwner());
-
-	if (false == IsValid(Owner))
-	{
-		return;
-	}
-
-	USkeletalMeshComponent* CharacterMesh = Owner->GetMesh();
-
-	if (false == IsValid(CharacterMesh))
-	{
-		return;
-	}
-
-	UCharacterMovementComponent* CharacterMovement = Owner->GetCharacterMovement();
-
-	if (false == IsValid(CharacterMovement))
-	{
-		return;
-	}
-
-	UCapsuleComponent* CharacterCapsule = Owner->GetCapsuleComponent();
-
-	if (false == IsValid(CharacterCapsule))
-	{
-		return;
-	}
-
-	UPrimitiveComponent* BlockComponent = FrontHit.GetComponent();
-
-	if (false == IsValid(BlockComponent))
-	{
-		return;
-	}
-
-	UAnimInstance* AnimInstance = CharacterMesh->GetAnimInstance();
-
-	if (false == IsValid(AnimInstance))
-	{
-		return;
-	}
-
-	UMotionWarpingComponent* MotionWarping = Owner->FindComponentByClass<UMotionWarpingComponent>();
-
-	if (false == IsValid(MotionWarping))
-	{
-		return;
-	}
-
-	const FVector UpVector = Owner->GetActorUpVector();
-
-	const FVector MantleDirection = FVector::VectorPlaneProject(-FrontHit.ImpactNormal, UpVector).GetSafeNormal();
-
-	if (MantleDirection.IsNearlyZero())
-	{
-		return;
-	}
-
-	const FRotator TargetRotation = MantleDirection.Rotation();
-
-	MotionWarping->AddOrUpdateWarpTargetFromLocationAndRotation(TEXT("MantleTop"), TopFloorHit.ImpactPoint, TargetRotation);
-
-	const float MontageDuration = Owner->PlayAnimMontage(ActiveMantleMontage.Get());
-
-	if (MontageDuration <= 0.0f)
-	{
-		MotionWarping->RemoveWarpTarget(TEXT("MantleTop"));
-
-		return;
-	}
-
-	MantleStartTransform = Owner->GetActorTransform();
-
-	MantleBlockComponent = BlockComponent;
-
-	bMantleBlockIgnore = false == CharacterCapsule->GetMoveIgnoreComponents().Contains(BlockComponent);
-
-	if (bMantleBlockIgnore)
-	{
-		CharacterCapsule->IgnoreComponentWhenMoving(BlockComponent, true);
-	}
-
-	PreviousMovementMode = CharacterMovement->MovementMode;
-
-	PreviousCustomMovementMode = CharacterMovement->CustomMovementMode;
-
-	CharacterMovement->SetMovementMode(MOVE_Flying);
-
-	MantleController = Owner->GetController();
-
-	if (MantleController.IsValid())
-	{
-		MantleController->SetIgnoreMoveInput(true);
-	}
-
-	bMantleActive = true;
-
-	FOnMontageEnded EndDelegate;
-
-	EndDelegate.BindUObject(this, &UMantleComponent::OnMantleEnded);
-
-	AnimInstance->Montage_SetEndDelegate(EndDelegate, ActiveMantleMontage.Get());
-}
-
-void UMantleComponent::OnMantleEnded(UAnimMontage* Montage, bool bInterrupted)
-{
-	if (Montage != ActiveMantleMontage.Get())
-	{
-		return;
-	}
-
-	ACharacter* Owner = Cast<ACharacter>(GetOwner());
-	if (IsValid(Owner))
-	{
-		// 중단됐다면 장애물 충돌이 무시된 상태에서 안전한 시점으로 되돌리기
-		if (bInterrupted)
-		{
-			Owner->SetActorTransform(MantleStartTransform, false, nullptr, ETeleportType::TeleportPhysics);
-		}
-
-		UCapsuleComponent* CharacterCapsule = Owner->GetCapsuleComponent();
-		if (bMantleBlockIgnore)
-		{
-			if (IsValid(CharacterCapsule))
-			{
-				if (MantleBlockComponent.IsValid())
-				{
-					CharacterCapsule->IgnoreComponentWhenMoving(MantleBlockComponent.Get(), false);
-				}
-			}
-		}
-
-		UCharacterMovementComponent* CharacterMovement = Owner->GetCharacterMovement();
-		if (IsValid(CharacterMovement))
-		{
-			CharacterMovement->SetMovementMode(PreviousMovementMode.GetValue(), PreviousCustomMovementMode);
-		}
-
-		UMotionWarpingComponent* MotionWarping = Owner->FindComponentByClass<UMotionWarpingComponent>();
-		if (IsValid(MotionWarping))
-		{
-			MotionWarping->RemoveWarpTarget(TEXT("MantleTop"));
-		}
-	}
-
-	if (MantleController.IsValid())
-	{
-		MantleController->SetIgnoreMoveInput(false);
-	}
-
-	MantleController.Reset();
-
-	MantleBlockComponent.Reset();
-
-	ActiveMantleMontage = nullptr;
-
-	bMantleActive = false;
-
-	bMantleBlockIgnore = false;
-}
-
-
 

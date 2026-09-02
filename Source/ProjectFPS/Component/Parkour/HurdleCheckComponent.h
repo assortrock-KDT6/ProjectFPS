@@ -35,7 +35,7 @@ public:
 	/**
 	 * Vault 장애물의 뒷면과 깊이를 검사한다.
 	 */
-	bool CheckVaultBackBlock(const const FTraversalBaseQuery& BaseQuery, const FVaultTraceSettings& Settings, FHitResult& OutBackHit, float& OutDepth) const;
+	bool CheckVaultBackBlock(const FTraversalBaseQuery& BaseQuery, const FVaultTraceSettings& Settings, FHitResult& OutBackHit, float& OutDepth) const;
 	//bool CheckVaultBackBlock(const FHitResult& FrontHit, FHitResult& TopHit, FHitResult& OutBackHit, float& OutDepth) const;
 	
 	/**

@@ -55,6 +55,10 @@ struct FTraversalRepState
 	UPROPERTY()
 	float _ServerStartTimeSeconds = 0.f;
 
+	/* 서버가 시작 예약을 만들 때 사용한 편도 지연 추정값. 액션 도중에는 바뀌지 않는다. */
+	UPROPERTY()
+	float _EstimatedOneWaySeconds = 0.f;
+
 	UPROPERTY()
 	float _Duration = 0.f;
 
