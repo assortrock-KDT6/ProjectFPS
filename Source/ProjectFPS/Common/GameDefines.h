@@ -67,6 +67,23 @@ enum class EItemType : uint8
 	Bullet,		// 탄약 (정사각형 슬롯)
 };
 
+UENUM(BlueprintType)
+enum class  EProjectCustomMovementMode : uint8
+{
+	None = 0	UMETA(DisplayName = "NONE"),
+	Vault		UMETA(DisplayName = "Vault"),
+	Mantle		UMETA(DisplayName = "Mantle"),
+	Hanging		UMETA(DisplayName = "Hanging")
+};
+
+UENUM(BlueprintType)
+enum class ETraversalVariant : uint8
+{
+	Default		= 0	UMETA(DisplayName = "Default"),
+	MantleLow	= 1	UMETA(DisplayName = "MantleLow"),
+	MantleHigh	= 2	UMETA(DisplayName = "MantleHigh"),
+	MantleInAir = 3 UMETA(DisplayName = "MantleInAir"),
+};
 
 
 // OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.

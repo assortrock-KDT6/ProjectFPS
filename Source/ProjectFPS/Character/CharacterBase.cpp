@@ -1,16 +1,16 @@
 #include "Character/CharacterBase.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
 
-ACharacterBase::ACharacterBase()
+ACharacterBase::ACharacterBase(const FObjectInitializer& ObjectInitializer)
 {
+	// TODO : private 함수로 빼두기
+
 	PrimaryActorTick.bCanEverTick = true;
 
 	// Ability System Component를 생성하고 명시적으로 복제되도록 설정한다.
 	_AbilitySystemComponent = CreateDefaultSubobject<UFPSAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	_AbilitySystemComponent->SetIsReplicated(true);
 	_AbilitySystemComponent->SetReplicationMode(_AbilitySystemComponentReplicationMode);
-
-	// _AbilitySystemComponent->InitAbilityActorInfo(this, this);
 }
 
 void ACharacterBase::BeginPlay()
