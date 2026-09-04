@@ -42,6 +42,11 @@ protected:
 
 public:
 
+	/**
+	 * Comment : 현재 SwitchTo를 호출하는 곳이 어느곳에도 존재하지않음.
+	 * 임의로 호출을 넣겠습니다.
+	 * 블루프린트 단계에서 넣었습니다. 2026 09 04
+	 */
 	// 매치 단계에 맞는 화면으로 전환 (로비, 게임화면)
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SwitchTo(EMatchPhase Phase);

@@ -23,8 +23,7 @@ class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
 {
 	GENERATED_BODY()
 public:
-	ACharacterPlayer();
-
+	ACharacterPlayer(const FObjectInitializer& ObjectInitializer);
 public:
 // 카메라 회전 감도 조절 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
@@ -48,7 +47,7 @@ protected:
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
-	TObjectPtr<class UParkourComponent> _ParkourComponent;
+	TObjectPtr<class UVaultComponent> _VaultComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UMantleComponent> _MantleComponent;
@@ -56,14 +55,14 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Interact")
 	TObjectPtr<class UInteractionComponent> _InteractionComponent;
 
-
-
-	
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "FPS | AbilitySystem | Attribute")
+	TObjectPtr<class UFPSAttributeSet> _HealthAttribute;
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	
+	virtual void OnRep_PlayerState() override;
 public:
 	virtual void Jump() override;
 
@@ -97,5 +96,7 @@ protected:
 
 	UFUNCTION()
 	void InteractAction(const FInputActionValue& value);
+
+private:
 
 };
