@@ -55,4 +55,11 @@ UDefaultInput::UDefaultInput()
 		_Map = MapAction.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> InteractAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Interact.IA_Interact'"));
+	if (InteractAction.Succeeded())
+	{
+		_Interact = InteractAction.Object;
+	}
+
+
 }

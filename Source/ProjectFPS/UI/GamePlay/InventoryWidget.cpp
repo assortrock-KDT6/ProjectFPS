@@ -3,8 +3,11 @@
 
 #include "UI/GamePlay/InventoryWidget.h"
 #include "UI/GamePlay/ItemObject.h"
-#include "Gamemode/PlayerStateBase.h"
+#include "UI/GamePlay/ItemSlotWidget.h"
+#include "GameMode/PlayerStateBase.h"
+#include "Component/Inventory/InventoryComponent.h"
 #include "Components/TileView.h"
+
 
 void UInventoryWidget::NativeConstruct()
 {
@@ -17,7 +20,6 @@ void UInventoryWidget::Refresh()
 {
 	if (nullptr == _ItemTileView)
 		return;
-
 	_ItemTileView->ClearListItems();
 
 	APlayerController* PC = GetOwningPlayer();
@@ -28,13 +30,25 @@ void UInventoryWidget::Refresh()
 	if (nullptr == PS)
 		return;
 
-	// 보유 아이템 순회확인 -> UItemObject -> 타일에 추가
-	for(auto&  Pair : PS->GetItems())
+	UInventoryComponent* Inv = PS->GetInventory();
+	if (nullptr == Inv)
+		return;
+
+	// 소모품 슬롯으로
+	for (const FInventorySlot& InvSlot : Inv->GetItems()) 
 	{
 		UItemObject* Obj = NewObject<UItemObject>(this);
-		Obj->_TID = Pair.Key;
-		Obj->_Count = Pair.Value;
+		Obj->_TID = InvSlot._TID;
+		Obj->_Count = InvSlot._Count;
 		_ItemTileView->AddItem(Obj);
 	}
-		
+	
+	// 무기 슬롯으로
+	const TArray<FName>& Weapons = Inv->GetWeapons();
+	if (_WeaponSlot1)
+		_WeaponSlot1->SetSlot(Weapons.IsValidIndex(0) ? Weapons[0]: NAME_None);
+
+	if (_WeaponSlot2)
+		_WeaponSlot2->SetSlot(Weapons.IsValidIndex(1) ? Weapons[1] : NAME_None);
+
 }

@@ -13,5 +13,11 @@ UCLASS()
 class PROJECTFPS_API UGameMainWidget : public UUserWidget
 {
 	GENERATED_BODY()
-	
+private:
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UPlayerStatusWidget> _HpWidget;
+
+protected:
+	virtual void NativeConstruct() override;
+
 };

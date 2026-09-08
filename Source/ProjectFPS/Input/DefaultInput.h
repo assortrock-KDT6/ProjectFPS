@@ -40,4 +40,7 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _Map;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Interact;
 };
