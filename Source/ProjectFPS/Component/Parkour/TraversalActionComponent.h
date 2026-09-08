@@ -79,7 +79,7 @@ protected:
 	virtual void BeginPlay() override;
 
 protected:
-	const	FTraversalActionDefinition* FindDefinition(uint8 Variant) const;
+	const	FTraversalActionDefinition* FindDefinition(ETraversalVariant Variant) const;
 
 	/**
 	 * 몽타주가 실제로 재생되는 시간(초).

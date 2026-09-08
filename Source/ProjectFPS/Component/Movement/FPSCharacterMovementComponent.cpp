@@ -31,6 +31,7 @@ void UFPSCharacterMovementComponent::RequestTraversal()
 	 * 예약 대기 구간(_TraversalState는 활성이지만 아직 시작 시각 전)에도 재요청을 막는다.
 	 * IsTraversing()만 보면 이 구간에서 두 번째 요청이 서버로 나간다.
 	 */
+
 	if (true == IsTraversing() || true == _TraversalState.IsActive())
 	{
 		return;

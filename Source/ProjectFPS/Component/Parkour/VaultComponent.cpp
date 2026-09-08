@@ -30,7 +30,7 @@ bool UVaultComponent::BuildCandidate(const FTraversalBaseQuery& BaseQuery, FTrav
 {
 	OutCandidate = FTraversalCandidate();
 
-	const FTraversalActionDefinition* Definition = FindDefinition(static_cast<uint8>(ETraversalVariant::Default));
+	const FTraversalActionDefinition* Definition = FindDefinition(ETraversalVariant::Default);
 
 	if (nullptr == Definition || false == IsValid(Definition->_Montage))
 	{
