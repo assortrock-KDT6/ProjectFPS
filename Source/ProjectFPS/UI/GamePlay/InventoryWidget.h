@@ -20,11 +20,13 @@ class PROJECTFPS_API UInventoryWidget : public UUserWidget
 	TObjectPtr<class UTileView> _ItemTileView; // 소모품.
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<class UItemSlotWidget> _WeaponSlot1;
+	TObjectPtr<class UItemSlotWidget> _MainWeaponSlot;
 
 	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<class UItemSlotWidget> _WeaponSlot2;
+	TObjectPtr<class UItemSlotWidget> _SubWeaponSlot;
 
+
+	
 protected:
 	virtual void NativeConstruct() override;
 

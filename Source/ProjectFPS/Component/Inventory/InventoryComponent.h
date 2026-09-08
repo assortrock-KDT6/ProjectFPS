@@ -32,8 +32,17 @@ private:
 	FOnInventoryChanger _OnInventoryChanged;
 
 public:
-	void AddItem(FName TID, int32 Count = 1);
-	void EquipWeapon(FName TID);
+	// Add -> 
+	bool AddItem(FName TID, int32 Count = 1);
+	bool EquipItem(FName TID);
+
+	// 현재 장비 중인 상태 체크 
+	// bool CurItem(FName TID);
+
+
+
+	FName RemoveWeapon(int32 Index);
+	FName RemoveItem(int32 Index);
 
 	// 복제할 변수 등록
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

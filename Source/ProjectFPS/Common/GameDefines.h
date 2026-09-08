@@ -17,7 +17,6 @@ class PROJECTFPS_API UGameDefines : public UObject
 };
 
 // 언리얼 enun
-
 // 인게임 화면
 UENUM(BlueprintType)
 enum class EMatchPhase : uint8
@@ -63,9 +62,20 @@ UENUM(BlueprintType)
 enum class EItemType : uint8
 {
 	Weapon,		// 무기 (가로형 슬롯)
+	
 	Consumable,	// 소모품 (정사각형 슬롯)
-	Bullet,		// 탄약 (정사각형 슬롯)
+
+
 };
+// 장착 상태 on/off
+// 장비창이 2개일 경우 ->x키로 파지 해제
+// 장비칭이 1개일 경우 -> 비어있는 슬롯 으로 파지해제 
+UENUM(BlueprintType)
+enum class EItemState : uint8
+{
+
+};
+
 
 
 

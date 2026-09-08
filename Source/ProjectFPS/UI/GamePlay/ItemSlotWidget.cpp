@@ -34,9 +34,12 @@ void UItemSlotWidget::SetSlot(FName TID)
 	{
 		if (IconImage)
 			IconImage->SetVisibility(ESlateVisibility::Hidden);
+
 		if (CountText)
 			CountText->SetText(FText::GetEmpty());
+
 		return;
+
 	}
 
 	// 테이블에서 직접 조회 (*헬퍼 예정)

@@ -45,10 +45,10 @@ void UInventoryWidget::Refresh()
 	
 	// 무기 슬롯으로
 	const TArray<FName>& Weapons = Inv->GetWeapons();
-	if (_WeaponSlot1)
-		_WeaponSlot1->SetSlot(Weapons.IsValidIndex(0) ? Weapons[0]: NAME_None);
+	if (_MainWeaponSlot)
+		_MainWeaponSlot->SetSlot(Weapons.IsValidIndex(0) ? Weapons[0]: NAME_None);
 
-	if (_WeaponSlot2)
-		_WeaponSlot2->SetSlot(Weapons.IsValidIndex(1) ? Weapons[1] : NAME_None);
+	if (_SubWeaponSlot)
+		_SubWeaponSlot->SetSlot(Weapons.IsValidIndex(1) ? Weapons[1] : NAME_None);
 
 }

@@ -63,13 +63,15 @@ void AItemPickUp::Interact_Implementation(AActor* Interactor)
 	const FItemData* Row = Sub ? Sub->FindTableRow<FItemData>(TEXT("ItemTable"), _TID) : nullptr;
 
 	// 타입 분기 : 무기 -> 장비슬롯, 그 외 아이템 슬롯
-	if (Row && Row->_ItemType == EItemType::Weapon)
-		Inv->EquipWeapon(_TID);						// 장비 슬롯
+	bool bPicked = false;
+	if (Row && Row->_ItemType == EItemType::Weapon)	// *투척류, 방어구
+		bPicked = Inv->EquipItem(_TID);				// 무기 슬롯
 	else
-		Inv->AddItem(_TID, _Count);					// 아이템 슬롯
-
-	Destroy();					// 제거(PickUp)
-
+		bPicked = Inv->AddItem(_TID, _Count);		// 아이템 슬롯
+	
+	if(bPicked)
+		Destroy();				// 제거(PickUp)
+	
 }
 
 void AItemPickUp::OnConstruction(const FTransform& Transform)
