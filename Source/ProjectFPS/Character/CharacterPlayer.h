@@ -98,5 +98,5 @@ protected:
 	void InteractAction(const FInputActionValue& value);
 
 private:
-
+	void SetupPlayerMesh();
 };

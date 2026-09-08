@@ -115,7 +115,7 @@ struct FTraversalCandidate
 {
 	EProjectCustomMovementMode	_Mode = EProjectCustomMovementMode::None;
 
-	uint8						_Variant = 0;
+	ETraversalVariant			_Variant = ETraversalVariant::Default;
 
 	FVector						_TargetLocation = FVector::ZeroVector;
 
@@ -148,7 +148,7 @@ struct FTraversalActionDefinition
 	EProjectCustomMovementMode _Mode = EProjectCustomMovementMode::None;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	uint8 _Variant = 0;
+	ETraversalVariant			_Variant = ETraversalVariant::Default;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UAnimMontage> _Montage = nullptr;
@@ -157,7 +157,7 @@ struct FTraversalActionDefinition
 	float _PlayRate = 1.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	FName _WarapTargetName = NAME_None;
+	FName _WarpTargetName = NAME_None;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float _MinHeight = 0.f;

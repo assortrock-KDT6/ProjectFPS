@@ -31,7 +31,7 @@ struct FTraversalRepState
 	EProjectCustomMovementMode _Mode = EProjectCustomMovementMode::None;
 
 	UPROPERTY()
-	uint8 _Variant = 0;
+	ETraversalVariant _Variant = ETraversalVariant::Default;
 
 	/* 서버에서만 생성하고 증가시킨다. */
 	UPROPERTY()

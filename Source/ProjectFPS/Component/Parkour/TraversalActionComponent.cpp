@@ -56,7 +56,7 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 
 	const FTraversalActionDefinition* Definition = FindDefinition(State._Variant);
 
-	if (nullptr == Definition || false == IsValid(Definition->_Montage) || true == Definition->_WarapTargetName.IsNone())
+	if (nullptr == Definition || false == IsValid(Definition->_Montage) || true == Definition->_WarpTargetName.IsNone())
 	{
 		return;
 	}
@@ -73,15 +73,15 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 	// 같은 Action의 서버 확인 상태가 다시 들어와도 서버 Target을 항상 반영한다.
 	if (State._ActionID == _ActivePresentationActionId)
 	{
-		_MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(Definition->_WarapTargetName, State._TargetLocation, State._TargetRotation);
+		_MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(Definition->_WarpTargetName, State._TargetLocation, State._TargetRotation);
 		return;
 	}
 
 	ExitPresentation();
 	
-	_MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(Definition->_WarapTargetName, State._TargetLocation, State._TargetRotation);
+	_MotionWarpingComponent->AddOrUpdateWarpTargetFromLocationAndRotation(Definition->_WarpTargetName, State._TargetLocation, State._TargetRotation);
 
-	_ActiveWarpTargetName = Definition->_WarapTargetName;
+	_ActiveWarpTargetName = Definition->_WarpTargetName;
 	ApplyObstacleIgnore(State);
 
 	ACharacter* Owner = Cast<ACharacter>(GetOwner());
@@ -158,7 +158,7 @@ void UTraversalActionComponent::ExitPresentation()
 	_ActiveBlendOutTime			= 0.1f;
 }
 
-const FTraversalActionDefinition* UTraversalActionComponent::FindDefinition(uint8 Variant) const
+const FTraversalActionDefinition* UTraversalActionComponent::FindDefinition(ETraversalVariant Variant) const
 {
 	return _Definitions.FindByPredicate(
 		[this, Variant](const FTraversalActionDefinition& Definition)

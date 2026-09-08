@@ -86,6 +86,8 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
+
+	SetupPlayerMesh();
 }
 
 void ACharacterPlayer::OnRep_PlayerState()
@@ -260,4 +262,23 @@ void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 
 	if (_InteractionComponent)
 		_InteractionComponent->TryInteract();
+}
+
+void ACharacterPlayer::SetupPlayerMesh()
+{
+	if (false == IsLocallyControlled())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComponent = GetMesh();
+	if (false == IsValid(MeshComponent))
+	{
+		return;
+	}
+
+	MeshComponent->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
+
+	// TODO
+	// 플레이어 몸통은 마테리얼로 나누는 걸 추천.
 }

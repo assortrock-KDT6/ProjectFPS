@@ -31,6 +31,7 @@ void UFPSCharacterMovementComponent::RequestTraversal()
 	 * 예약 대기 구간(_TraversalState는 활성이지만 아직 시작 시각 전)에도 재요청을 막는다.
 	 * IsTraversing()만 보면 이 구간에서 두 번째 요청이 서버로 나간다.
 	 */
+
 	if (true == IsTraversing() || true == _TraversalState.IsActive())
 	{
 		return;
@@ -427,11 +428,8 @@ void UFPSCharacterMovementComponent::RefreshTraversalPresentation()
 	 * MOVE_Custom 보정이 늦게 도착할 수 있다. 이때 MovementMode만 다시 Custom이 되어도
 	 * 끝난 몽타주를 0부터 재생하지 않도록 표현 계층에서도 완료 ActionID를 차단한다.
 	 */
-	const bool IsCompletedAutonomousAction = ROLE_AutonomousProxy == CharacterOwner->GetLocalRole()
-		&& _TraversalState._ActionID == _CompletedAutonomousActionId;
-	const bool HasReachedWatchdogEnd = _TraversalState.IsActive()
-		&& GetServerTimeSeconds() >= _TraversalState._ServerStartTimeSeconds
-			+ _TraversalState._Duration + _TraversalEndWatchdogDelay;
+	const bool IsCompletedAutonomousAction = ROLE_AutonomousProxy == CharacterOwner->GetLocalRole() && _TraversalState._ActionID == _CompletedAutonomousActionId;
+	const bool HasReachedWatchdogEnd = _TraversalState.IsActive() && GetServerTimeSeconds() >= _TraversalState._ServerStartTimeSeconds + _TraversalState._Duration + _TraversalEndWatchdogDelay;
 
 	/* 상태가 끝났거나 Notify 종료가 처리됐거나 watchdog에 도달한 경우에만 표현을 종료한다. */
 	if (false == _TraversalState.IsActive() || true == IsCompletedAutonomousAction || true == HasReachedWatchdogEnd)
