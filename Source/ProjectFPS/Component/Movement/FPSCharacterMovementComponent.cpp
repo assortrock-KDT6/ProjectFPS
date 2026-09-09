@@ -4,10 +4,16 @@
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
+
+#include "Components/CapsuleComponent.h"
+
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/GameStateBase.h"
+
 #include "Net/UnrealNetwork.h"
+
+#include "Engine/World.h"
 
 UFPSCharacterMovementComponent::UFPSCharacterMovementComponent()
 {
@@ -69,6 +75,64 @@ void UFPSCharacterMovementComponent::NotifyTraversalEnded()
 		_CompletedAutonomousActionId = _TraversalState._ActionID;
 		ExitTraversalMovementMode();
 	}
+}
+
+const FCharacterGroundInfo& UFPSCharacterMovementComponent::GetGroundInfomation()
+{
+	if (nullptr == CharacterOwner || (GFrameCounter == _CurrentGroundInformation._LastUpdateFrame))
+	{
+		return _CurrentGroundInformation;
+	}
+
+	if (MOVE_Walking == MovementMode)
+	{
+		_CurrentGroundInformation._GroundHitResult = CurrentFloor.HitResult;
+		_CurrentGroundInformation._GroundDistance = 0.f;
+	}
+	else
+	{
+		const UCapsuleComponent* CapsuleComponent = CharacterOwner->GetCapsuleComponent();
+		if (nullptr == CapsuleComponent)
+		{
+			return _CurrentGroundInformation;
+		}
+
+		const float CapsuleHalfHeight = CapsuleComponent->GetUnscaledCapsuleHalfHeight();
+		const ECollisionChannel CollisionChannel = (UpdatedComponent ? UpdatedComponent->GetCollisionObjectType() : ECC_Pawn);
+		const FVector TraceStart(GetActorLocation());
+		const FVector TraceEnd(TraceStart.X, TraceStart.Y, (TraceStart.Z - 100000.0f - CapsuleHalfHeight));
+		
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(FPSCharacterMovementComponent_GetGroundInfo), false, CharacterOwner);
+		FCollisionResponseParams ResponseParam;
+		InitCollisionParams(QueryParams, ResponseParam);
+
+		FHitResult HitResult;
+		UWorld* World = GetWorld();
+
+		if (nullptr == World)
+		{
+			return _CurrentGroundInformation;
+		}
+
+		World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, CollisionChannel, QueryParams, ResponseParam);
+
+		_CurrentGroundInformation._GroundHitResult = HitResult;
+		_CurrentGroundInformation._GroundDistance = 100000.0f;
+
+		if (MOVE_Walking == MovementMode)
+		{
+			_CurrentGroundInformation._GroundDistance = 0.f;
+		}
+		else if (true == HitResult.bBlockingHit)
+		{
+			_CurrentGroundInformation._GroundDistance = FMath::Max((HitResult.Distance - CapsuleHalfHeight), 0.f);
+		}
+
+	}
+
+	_CurrentGroundInformation._LastUpdateFrame = GFrameCounter;
+
+	return _CurrentGroundInformation;
 }
 
 void UFPSCharacterMovementComponent::OnRep_TraversalState()

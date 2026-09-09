@@ -281,4 +281,5 @@ void ACharacterPlayer::SetupPlayerMesh()
 
 	// TODO
 	// 플레이어 몸통은 마테리얼로 나누는 걸 추천.
+	// MeshComponent->SetMaterial(TorsoMaterialIndex, InvisibleMaterial);
 }

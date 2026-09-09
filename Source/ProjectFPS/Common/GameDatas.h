@@ -201,3 +201,21 @@ struct FMantleTraceSettings
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.0"))
 	float _TopFloorTraceHalfDistance = 50.f;
 };
+
+/**
+ * 애니메이션에 Ground 정보를 전달해주기 위한 구조체
+ */
+USTRUCT(BlueprintType)
+struct FCharacterGroundInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	float _GroundDistance;
+
+	uint64 _LastUpdateFrame = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	FHitResult _GroundHitResult;
+
+};
