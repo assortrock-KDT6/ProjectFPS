@@ -28,7 +28,7 @@ public:
 	void ServerInteract_Implementation(AActor* Target);
 
 public:
-	void TryInteract();
+	void PickUpInteract();
 	
 
 

@@ -11,7 +11,7 @@
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
 
-AItemPickUp::AItemPickUp()
+AItemBase::AItemBase()
 {
 	_Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(_Mesh);
@@ -19,7 +19,7 @@ AItemPickUp::AItemPickUp()
 
 }
 
-void AItemPickUp::BeginPlay()
+void AItemBase::BeginPlay()
 {
 	Super::BeginPlay();
 	
@@ -34,7 +34,7 @@ void AItemPickUp::BeginPlay()
 		_Mesh->SetStaticMesh(Row->_WorldMesh);
 }
 
-void AItemPickUp::Interact_Implementation(AActor* Interactor)
+void AItemBase::Interact_Implementation(AActor* Interactor)
 {
 	// 서버에서만 체크
 	if (false == HasAuthority())
@@ -52,29 +52,32 @@ void AItemPickUp::Interact_Implementation(AActor* Interactor)
 	APlayerStateBase* PS = PC->GetPlayerState<APlayerStateBase>();
 	if (nullptr == PS)
 		return;
-
+	
 	// 상호작용 추가 예정
 	UInventoryComponent* Inv = PS->GetInventory();
 	if (nullptr == Inv)
 		return;
 	
+
+
 	// 테이블에서 타입 조회 
 	UTableSubsystem* Sub = UTableSubsystem::Get(this);
 	const FItemData* Row = Sub ? Sub->FindTableRow<FItemData>(TEXT("ItemTable"), _TID) : nullptr;
 
 	// 타입 분기 : 무기 -> 장비슬롯, 그 외 아이템 슬롯
 	bool bPicked = false;
+
 	if (Row && Row->_ItemType == EItemType::Weapon)	// *투척류, 방어구
 		bPicked = Inv->EquipItem(_TID);				// 무기 슬롯
 	else
 		bPicked = Inv->AddItem(_TID, _Count);		// 아이템 슬롯
 	
 	if(bPicked)
-		Destroy();				// 제거(PickUp)
+		Destroy();									// 제거(PickUp)
 	
 }
 
-void AItemPickUp::OnConstruction(const FTransform& Transform)
+void AItemBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 

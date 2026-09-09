@@ -57,7 +57,7 @@ bool AMainHUD::ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<U
     {
         OverlayPtr->AddToViewport(ZOrder);
     }
-    return OverlayPtr != nullptr;   //열렸다고 알림
+    return OverlayPtr != nullptr;   // 열렸다고 알림
 }
 
 void AMainHUD::ApplyInputMode(bool bUIMode)

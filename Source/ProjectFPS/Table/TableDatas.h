@@ -6,6 +6,7 @@
 #include "UObject/Object.h"
 #include "Engine/DataTable.h"
 #include "Common/GameDefines.h"
+#include "GameFramework/Actor.h"
 #include "TableDatas.generated.h"
 
 
@@ -39,26 +40,44 @@ struct FItemData  : public  FTableRowBase
 {
 	GENERATED_BODY()
 
-	// 아이템 식별자
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName _ItemID;
+	//// 아이템 식별자
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	//FName _ItemID;
 
+	// 아이템의 이름
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	FText _DisplayName;
+
+	// 아이템 설명
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	FText _Description;
+	
 	// 아이템 아이콘
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<UTexture2D> _Icon = nullptr;			 
-
-	// 메시 정보 
-	UPROPERTY(EditAnyWhere, BlueprintReadOnly)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	TObjectPtr<UTexture2D> _Icon = nullptr;
+	
+	// 바닥에 놓인 아이템의 메시
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	TObjectPtr<UStaticMesh> _WorldMesh = nullptr;
 
-	// 아이템 종류
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	EItemType _ItemType = EItemType::Consumable;
+	// 아이템 타입.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	EItemType _ItemType = EItemType::None;
 
-	//  *나중에 지울예정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 _Count = 1;
+	// 아이템 최대 수량.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (ClampMin = "1"))
+	int32 _MaxStackcount = 1;
+
+	// 손에 장착할 Actor 클래스
+
+	
 };
+
+
+
+
+
+
 
 USTRUCT(BlueprintType)
 struct FStartItemRow : public FTableRowBase

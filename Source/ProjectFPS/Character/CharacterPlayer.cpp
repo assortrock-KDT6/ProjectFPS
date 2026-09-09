@@ -233,5 +233,5 @@ void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
 
 	if (_InteractionComponent)
-		_InteractionComponent->TryInteract();
+		_InteractionComponent->PickUpInteract();
 }

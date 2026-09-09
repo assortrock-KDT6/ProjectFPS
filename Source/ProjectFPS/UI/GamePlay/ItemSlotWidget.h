@@ -10,24 +10,52 @@
 /**
  * 
  */
+
+// 정보를 전달하기 위한 용도 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSlotHovered, FName, TID);
+
+
 UCLASS()
 class PROJECTFPS_API UItemSlotWidget : public UUserWidget, public IUserObjectListEntry
 {
 	GENERATED_BODY()
 
-	//
+	// 테두리 이미지
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UImage> Highlight;
+
+	// 아이콘 이미지
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UImage> IconImage;
 
-	//
+	// 아이템 수량 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UTextBlock> CountText;
-	
+
+	// 이 슬롯이 표시 중인 아이템의 키 조회
+	FName _TID = NAME_None;
+
+public:
+	// 정보 위젯 읽는 용도
+	// 마우스 상호작용 On
+	UPROPERTY(BlueprintAssignable)
+	FOnSlotHovered _OnSlotHovered;
+
+	// 마우스 상호작용 Off
+	UPROPERTY(BlueprintAssignable)
+	FOnSlotHovered _OnSlotUnHovered;
 
 
 	// 함수 선언
 protected:
+	virtual void NativeConstruct() override;
 	virtual void NativeOnListItemObjectSet(UObject* ListItemObject) override;
+	virtual void NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override; 
+	virtual void NativeOnMouseLeave(const FPointerEvent& InMouseEvent) override;
+
+
 public:
 	void SetSlot(FName TID);
+	void SetHighlight(bool bOn);
+	FName GetTID() const { return _TID; }
 };

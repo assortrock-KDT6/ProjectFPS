@@ -8,26 +8,26 @@
 #include "ItemPickUp.generated.h"
 
 UCLASS()
-class PROJECTFPS_API AItemPickUp : public AActor, public IInteractable
+class PROJECTFPS_API AItemBase : public AActor, public IInteractable
 {
 	GENERATED_BODY()
 
 public:
-	AItemPickUp();
+	AItemBase();
 
 private:
-	UPROPERTY(VisibleAnywhere, Category = "PickUp")
+	UPROPERTY(VisibleAnywhere, Category = "ItemInfo")
 	TObjectPtr<class UStaticMeshComponent> _Mesh;
 
 	// 아이템 (테이블 행)
-	UPROPERTY(EditAnywhere, Category = "PickUp")
+	UPROPERTY(EditAnywhere, Category = "ItemInfo")
 	FName _TID;
 
 	//BP에서 DT_ItemTable 지정
-	UPROPERTY(EditDefaultsOnly, Category = "PickUp")
+	UPROPERTY(EditDefaultsOnly, Category = "ItemInfo")
 	TObjectPtr<UDataTable> _ItemTable;
 
-	UPROPERTY(EditAnywhere, Category = "PickUp")
+	UPROPERTY(EditAnywhere, Category = "ItemInfo")
 	int32 _Count = 1;
 
 public:
