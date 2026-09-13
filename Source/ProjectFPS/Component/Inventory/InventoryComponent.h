@@ -27,7 +27,7 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_Weapons)
 	TArray<FName> _Weapons;
 
-	
+	// 장비교체
 	UPROPERTY(BlueprintAssignable)
 	FOnInventoryChanger _OnInventoryChanged;
 
@@ -35,11 +35,7 @@ public:
 	// Add -> 
 	bool AddItem(FName TID, int32 Count = 1);
 	bool EquipItem(FName TID);
-
-	// 현재 장비 중인 상태 체크 
-	// bool CurItem(FName TID);
-
-
+	bool TryAquire(FName TID, int32 Count = 1);
 
 	FName RemoveWeapon(int32 Index);
 	FName RemoveItem(int32 Index);

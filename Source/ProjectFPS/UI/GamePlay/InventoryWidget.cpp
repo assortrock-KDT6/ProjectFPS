@@ -4,6 +4,7 @@
 #include "UI/GamePlay/InventoryWidget.h"
 #include "UI/GamePlay/ItemObject.h"
 #include "UI/GamePlay/ItemSlotWidget.h"
+#include "UI/GamePlay/ItemInfoWidget.h"
 #include "GameMode/PlayerStateBase.h"
 #include "Component/Inventory/InventoryComponent.h"
 #include "Components/TileView.h"
@@ -13,7 +14,27 @@ void UInventoryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	// WBP에 고정 배ㅣ된 슬롯은 지금바로 
+	BindSlot(_MainWeaponSlot);
+	BindSlot(_SubWeaponSlot);
+
+	// TileView 슬롯은 런타임 생성 
+	if (nullptr != _ItemTileView)
+		_ItemTileView->OnEntryWidgetGenerated().AddUObject(this, &UInventoryWidget::HandleEntryGenerated);
+
 	Refresh();
+}
+
+void UInventoryWidget::BindSlot(UItemSlotWidget*  InSlot)
+{
+	if (nullptr == InSlot)
+		return;
+	InSlot->SetInfoPanel(_ItemInfoPanel);
+}
+
+void UInventoryWidget::HandleEntryGenerated(UUserWidget& EntryWidget)
+{
+	BindSlot(Cast<UItemSlotWidget>(&EntryWidget));
 }
 
 void UInventoryWidget::Refresh()

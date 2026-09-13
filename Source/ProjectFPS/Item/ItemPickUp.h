@@ -8,17 +8,17 @@
 #include "ItemPickUp.generated.h"
 
 UCLASS()
-class PROJECTFPS_API AItemBase : public AActor, public IInteractable
+class PROJECTFPS_API AItemPickUp : public AActor, public IInteractable
 {
 	GENERATED_BODY()
 
 public:
-	AItemBase();
+	AItemPickUp();
 
 private:
 	UPROPERTY(VisibleAnywhere, Category = "ItemInfo")
 	TObjectPtr<class UStaticMeshComponent> _Mesh;
-
+	
 	// 아이템 (테이블 행)
 	UPROPERTY(EditAnywhere, Category = "ItemInfo")
 	FName _TID;
@@ -32,7 +32,7 @@ private:
 
 public:
 	virtual void BeginPlay() override;
-	virtual void Interact_Implementation(AActor* Interactor) override; // 인터페이스 구현 -> void -> bool
+	virtual void Interact_Implementation(AActor* Interactor) override; //  void -> bool
 	virtual void OnConstruction(const FTransform& Transform) override;
 
 

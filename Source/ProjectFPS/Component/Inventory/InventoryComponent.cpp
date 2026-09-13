@@ -2,6 +2,9 @@
 
 
 #include "Component/Inventory/InventoryComponent.h"
+#include "Table/TableSubsystem.h"
+#include "Table/TableDatas.h"
+#include "Common/GameDefines.h"
 #include "Net/UnrealNetwork.h"
 
 
@@ -18,6 +21,7 @@ bool UInventoryComponent::AddItem(FName TID, int32 Count)
 {
 	if (!GetOwner()->HasAuthority())	// 서버만 체크
 		return false;
+
 	if (TID.IsNone() || Count <= 0)
 		return false;
 
@@ -51,6 +55,7 @@ bool UInventoryComponent::EquipItem(FName TID)
 {
 	if (!GetOwner()->HasAuthority())
 		return false;
+
 	if (TID.IsNone())
 		return false;
 
@@ -70,6 +75,33 @@ bool UInventoryComponent::EquipItem(FName TID)
 	// 방어구
 
 	return false;
+
+}
+
+bool UInventoryComponent::TryAquire(FName TID, int32 Count)
+{
+	// 서버가 아니면 거부 아이템 획득은 서버만 결정하고, 결과를 복제로 내보냄 -> 클라를 막음.
+	if (false == GetOwner()->HasAuthority())
+		return false;
+
+	// TID가 없거나 0보다 수량이 적을 경우 실패처리
+	if (TID.IsNone() || Count <= 0)
+		return false;
+
+	// 테이블 조회를 위함. 
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	if (nullptr == Sub)
+		return false;
+
+	// 테이블에 TID로 행 찾기 없거나 오타 -> 실패처리
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+	if (nullptr == Row)
+		return false;
+	
+	if (EItemType::Weapon == Row->_ItemType)
+		return EquipItem(TID);
+
+	return AddItem(TID, Count);
 
 }
 

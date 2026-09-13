@@ -100,24 +100,5 @@ void UInteractionComponent::PickUpInteract() // -> *TraceInteract
 			}
 		}
 	}
-
-	//if ()
-	//{
-	//	// 캐릭터 몸에서 실제 사거리인지 확인 (카메라 거리와 별도)
-	//	if (FVector::Dist(Owner->GetActorLocation(), Hit.ImpactPoint) > _InteractDistance)
-	//		return;
-
-	//	AActor* HitActor = Hit.GetActor();
-
-	//	if (HitActor && HitActor->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
-	//		ServerInteract(HitActor);
-
-	//}
-	
-
-	// 라인 트레이서
-
-	// 스페어 트레이서
-
 }
 
