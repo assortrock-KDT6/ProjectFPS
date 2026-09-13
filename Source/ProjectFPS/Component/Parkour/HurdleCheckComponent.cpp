@@ -323,7 +323,13 @@ bool UHurdleCheckComponent::CheckVaultBackBlock(const FTraversalBaseQuery& BaseQ
 	
 	const FVector IntoObstacle = BaseQuery._Direction.GetSafeNormal();
 
-	if (true == IntoObstacle.IsNearlyZero())
+	// Front ImpactNormal 의 반대 방향이 장애물 안쪽의 방향. 
+	// - 를 붙이면 반대(안쪽으로)로감 --> ImpactPoint는 라인트레이스의 충돌지점이고 Normal은 해당 면이 수직으로 바라보는 방향 이걸로 장애물의 기울기를 얻을 수 있다.
+	// VectorPlaneProject() : 주어진 벡터값을 평면위에 투영하는 함수 UpVector(여기선 평면의 법선 방향)를 통해 x,z 평면에 투영한다.
+	// GetSafeNormal()      : 투영한 벡터의 길이를 1로 만든다. 사용하는 이유는 다음 계산에서 정확히 TopCheckInset 만큼 이동하기 위해서 
+	const FVector IntoBlock = FVector::VectorPlaneProject(-FrontHit.ImpactNormal, UpVector).GetSafeNormal();
+
+	if (IntoBlock.IsNearlyZero())	// IsNearZero : 유효한 수평 방향인지 0의 근사값으로 판단하기 위해서 사용
 	{
 		return false;
 	}

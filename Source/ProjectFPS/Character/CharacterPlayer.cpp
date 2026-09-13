@@ -8,7 +8,8 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
-#include "Component/Interaction/InteractionComponent.h"
+#include "Camera/CameraComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/VaultComponent.h"
 //#include "Component/Parkour/HangingComponent.h
@@ -44,13 +45,15 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
 	_CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 
-#pragma region ROTATION_SETTING
 
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
+
+#pragma region ROTATION_SETTING
+
 	if (IsValid(CapsuleComp))
 	{
 		_SpringArmComponent->SetupAttachment(CapsuleComp);
-		_CameraComponent->SetupAttachment(_SpringArmComponent);
+		//_CameraComponent->SetupAttachment(_SpringArmComponent);
 
 		_SpringArmComponent->TargetArmLength = 0.f;
 		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
@@ -59,7 +62,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 		_SpringArmComponent->bInheritPitch = true;
 		_SpringArmComponent->bInheritYaw = true;
 
-		_CameraComponent->bUsePawnControlRotation = false;
+		//_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
 	}
 
@@ -72,15 +75,65 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 
 #pragma endregion
 
+#pragma region Mesh Visible Toggle // Arm SkeletalMesh 만 1인칭에게 그려주고 다른 사람은 Full Mesh 를 그리게 하기
+	//// 팔의 위치와 회전은 카메라를 기준으로 조정합니다.
+	//_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
+	//_FirstPersonMesh->SetupAttachment(_CameraComponent);
+	//// 자신의 화면에만 팔을 표시한다.
+	//_FirstPersonMesh->SetOnlyOwnerSee(true);
+	//// 화면 표현용 팔은 충돌과 그림자를 만들지 않는다.
+	//_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	//_FirstPersonMesh->SetGenerateOverlapEvents(false);
+	//_FirstPersonMesh->SetCastShadow(false);
+	//// 기존 전신은 자신에게 숨기고 다른 플레이어에게 표시한다.
+	//MeshComp->SetOwnerNoSee(true);
+
+	_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
+	_FirstPersonMesh->SetupAttachment(MeshComp);
+	_CameraComponent->SetupAttachment(_FirstPersonMesh);
+	_CameraComponent->bUsePawnControlRotation = true;
+	_FirstPersonMesh->SetOnlyOwnerSee(true);
+	_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_FirstPersonMesh->SetGenerateOverlapEvents(false);
+	_FirstPersonMesh->SetCastShadow(false);
+	MeshComp->SetOwnerNoSee(true);
+
+#pragma endregion
+
+
+
 	// Parkour
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
 	_VaultComponent = CreateDefaultSubobject<UVaultComponent>(TEXT("VaultComponent"));
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
-	//Interaction
-	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
-	_HealthAttribute = CreateDefaultSubobject<UFPSHealthSet>(TEXT("HealthAttributeSet"));
+}
+
+void ACharacterPlayer::SetAiming(bool bAniming)
+{
+}
+
+FVector ACharacterPlayer::GetAnimPoint(float WeaponRange) const
+{
+	const FVector CameraLocation = _CameraComponent->GetComponentLocation();
+
+	const FVector TraceEnd = CameraLocation + _CameraComponent->GetForwardVector() * WeaponRange;
+
+	FHitResult HitResult;
+
+	FCollisionQueryParams QueryParams;
+
+	QueryParams.AddIgnoredActor(this);
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, TraceEnd, ECC_Visibility, QueryParams);
+
+	if (bHit)
+	{
+		return HitResult.ImpactPoint;
+	}
+
+	return TraceEnd;
 }
 
 void ACharacterPlayer::BeginPlay()
