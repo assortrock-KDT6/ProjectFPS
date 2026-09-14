@@ -704,6 +704,21 @@ bool UFPSCharacterMovementComponent::IsTraversing(uint8 Mode) const
 	}
 }
 
+bool UFPSCharacterMovementComponent::GetTraversalContactTargets(FTraversalContactTargets& OutTargets) const
+{
+	if (false == _TraversalState.IsActive())
+	{
+		return false;
+	}
+
+	if (nullptr == _ActivePresentationComponent)
+	{
+		return false;
+	}
+
+	return _ActivePresentationComponent->BuildContactTargets(_TraversalState, OutTargets);
+}
+
 void FSavedMove_FPS::Clear()
 {
 	FSavedMove_Character::Clear();

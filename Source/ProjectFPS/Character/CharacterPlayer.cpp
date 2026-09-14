@@ -8,13 +8,18 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
-#include "Component/Interaction/InteractionComponent.h"
+#include "Camera/CameraComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/VaultComponent.h"
 //#include "Component/Parkour/HangingComponent.h
+#include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/MantleComponent.h"
 #include "Component/Ability/Attributes/FPSHealthSet.h"
 #include "UI/GameHUD.h"
+#include "Weapons/Weaponactor.h"
+#include "Weapons/WeaponInterface.h"
+
 
 ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -44,13 +49,15 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
 	_CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 
-#pragma region ROTATION_SETTING
 
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
+
+#pragma region ROTATION_SETTING
+
 	if (IsValid(CapsuleComp))
 	{
 		_SpringArmComponent->SetupAttachment(CapsuleComp);
-		_CameraComponent->SetupAttachment(_SpringArmComponent);
+		//_CameraComponent->SetupAttachment(_SpringArmComponent);
 
 		_SpringArmComponent->TargetArmLength = 0.f;
 		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
@@ -59,7 +66,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 		_SpringArmComponent->bInheritPitch = true;
 		_SpringArmComponent->bInheritYaw = true;
 
-		_CameraComponent->bUsePawnControlRotation = false;
+		//_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
 	}
 
@@ -72,15 +79,115 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 
 #pragma endregion
 
+#pragma region Mesh Visible Toggle // Arm SkeletalMesh 만 1인칭에게 그려주고 다른 사람은 Full Mesh 를 그리게 하기
+	//// 팔의 위치와 회전은 카메라를 기준으로 조정합니다.
+	//_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
+	//_FirstPersonMesh->SetupAttachment(_CameraComponent);
+	//// 자신의 화면에만 팔을 표시한다.
+	//_FirstPersonMesh->SetOnlyOwnerSee(true);
+	//// 화면 표현용 팔은 충돌과 그림자를 만들지 않는다.
+	//_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	//_FirstPersonMesh->SetGenerateOverlapEvents(false);
+	//_FirstPersonMesh->SetCastShadow(false);
+	//// 기존 전신은 자신에게 숨기고 다른 플레이어에게 표시한다.
+	//MeshComp->SetOwnerNoSee(true);
+
+	_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
+	_FirstPersonMesh->SetupAttachment(MeshComp);
+	_CameraComponent->SetupAttachment(_FirstPersonMesh);
+	_CameraComponent->bUsePawnControlRotation = true;
+	_FirstPersonMesh->SetOnlyOwnerSee(true);
+	_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_FirstPersonMesh->SetGenerateOverlapEvents(false);
+	_FirstPersonMesh->SetCastShadow(false);
+	MeshComp->SetOwnerNoSee(true);
+
+#pragma endregion
+	
 	// Parkour
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
 	_VaultComponent = CreateDefaultSubobject<UVaultComponent>(TEXT("VaultComponent"));
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
-	//Interaction
 	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
-	_HealthAttribute = CreateDefaultSubobject<UFPSHealthSet>(TEXT("HealthAttributeSet"));
+}
+
+void ACharacterPlayer::SetAiming(bool bAniming)
+{
+}
+
+FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
+{
+	const FVector CameraLocation = _CameraComponent->GetComponentLocation();
+
+	const FVector TraceEnd = CameraLocation + _CameraComponent->GetForwardVector() * WeaponRange;
+
+	FHitResult HitResult;
+
+	FCollisionQueryParams QueryParams;
+
+	QueryParams.AddIgnoredActor(this);
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, TraceEnd, ECC_Visibility, QueryParams);
+
+	if (bHit)
+	{
+		return HitResult.ImpactPoint;
+	}
+
+	return TraceEnd;
+}
+
+bool ACharacterPlayer::EquipWeapon(FName WeaponID)
+{
+	if (nullptr == _WeaponActorClass || WeaponID.IsNone())
+	{
+		return false;
+	}
+	
+	if (false == IsValid(GetWorld()) || false == IsValid(_FirstPersonMesh) || false == _FirstPersonMesh->DoesSocketExist(TEXT("Shooter_Socket")))
+	{
+		return false;
+	}
+	
+	FActorSpawnParameters SpawnParameters;
+	
+	SpawnParameters.Owner = this;
+	SpawnParameters.Instigator = this;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	
+	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
+	
+	if (false == IsValid(NewWeapon))
+	{
+		return false;
+	}
+	
+	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
+	
+	if (false == bInitialized)
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+	
+	const bool bAttached = NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Shooter_Socket"));
+	
+	if (false == bAttached)
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+	
+	if (IsValid(_CurrentWeapon))
+	{
+		_CurrentWeapon->Destroy();
+	}
+	
+	_CurrentWeapon = NewWeapon;
+	
+	return true;
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -160,6 +267,16 @@ void ACharacterPlayer::PossessedBy(AController* Newcontroller)
 	}
 }
 
+USkeletalMeshComponent* ACharacterPlayer::Get_FirstPersonMesh() const
+{
+	return _FirstPersonMesh;
+}
+
+USkeletalMeshComponent* ACharacterPlayer::Get_ThirtPersonMesh() const
+{
+	return GetMesh();
+}
+
 void ACharacterPlayer::MoveAction(const FInputActionValue& Value)
 {
 	FVector2D Axis = Value.Get<FVector2D>();
@@ -187,13 +304,15 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 
 void ACharacterPlayer::CharacterMouseZoomAction(const FInputActionValue& Value)
 {
+	
+	// Jisoo's Code : 조준으로 확대가 힘들다면 돋보기로 키우기
 	// if (IsValid(_SpringArmComponent))
 	// {
 	// 	const float ZoomValue = Value.Get<float>() * _ZoomSensitivity;
-	// 	//const float Length = _SprintArmComponent->TargetArmLength;
+	// 	const float Length = _SpringArmComponent->TargetArmLength;
 	//
 	// 	// [Todo] : 최대 거리, 최소 거리 변수로 분리할 것.
-	// 	//_SprintArmComponent->TargetArmLength = FMath::Clamp(_SprintArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
+	// 	_SpringArmComponent->TargetArmLength = FMath::Clamp(_SpringArmComponent->TargetArmLength + ZoomValue, Length - 300.f, Length + 200.f);
 	// }
 }
 
@@ -261,7 +380,7 @@ void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
 
 	if (_InteractionComponent)
-		_InteractionComponent->TryInteract();
+		_InteractionComponent->PickUpInteract();
 }
 
 void ACharacterPlayer::SetupPlayerMesh()

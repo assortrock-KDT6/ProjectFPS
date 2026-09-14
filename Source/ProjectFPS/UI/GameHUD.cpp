@@ -29,17 +29,45 @@ void AGameHUD::SwitchTo(EMatchPhase Phase)
 
 void AGameHUD::ToggleInventory()
 {
+	UE_LOG(LogTemp, Warning, TEXT("ToggleInventory 호출"));
+
 	CloseOverlay(_MapWidget); //맵이 열려있으면 닫기 -> *나중에 묶던가 고민.
 	
-	ToggleOverlay(_InventoryWidgetClass, _InventoryWidget);
+	const bool bOpen = ToggleOverlay(_InventoryWidgetClass, _InventoryWidget);
+	
+	ApplyInputMode(bOpen);
 
-	//const bool bOpen = ToggleOverlay(_InventoryWidgetClass, _InventoryWidget);
-	//ApplyInputMode(bOpen); //열림 -> UI 커서 On 닫흠 -> 게임 입력.
+	UE_LOG(LogTemp, Warning, TEXT("결과: bOpen=%d, Widget=%s"),
+		bOpen, _InventoryWidget ? TEXT("생성됨") : TEXT("null"));
 }
 
 void AGameHUD::ToggleMap()
 {
-	CloseOverlay(_InventoryWidget); // 인베토리 열려있으면 닫기 -> "" 동일
+	CloseOverlay(_InventoryWidget); // 인벤토리 열려있으면 닫기 -> "" 동일
 
 	ToggleOverlay(_MapWidgetClass, _MapWidget);
 }
+
+void AGameHUD::ApplyInputMode(bool bUIMode)
+{
+	
+	APlayerController* PC = GetOwningPlayerController();
+	if (nullptr == PC)
+		return;
+
+	if (bUIMode)
+	{
+		// 커서를 쓰면서 게임 입력(닫기 키)도 유지
+		FInputModeGameAndUI Mode;
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		Mode.SetHideCursorDuringCapture(false);
+		PC->SetInputMode(Mode);
+		PC->SetShowMouseCursor(true);
+	}
+	else
+	{
+		PC->SetInputMode(FInputModeGameOnly());
+		PC->SetShowMouseCursor(false);
+	}
+}
+

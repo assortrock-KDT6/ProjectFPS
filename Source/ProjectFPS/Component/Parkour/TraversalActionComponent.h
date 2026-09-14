@@ -42,6 +42,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Definitions")
 	TArray<FTraversalActionDefinition>	_Definitions;
 
+	// 중심에서 한 손 까지의 거리. (단위: cm)
+	UPROPERTY(EditDefaultsOnly, Category = "Traversal|IK")
+	float _HandSpacing = 18.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Traversal|IK")
+	float _HandInset = 5.f;
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> _ActiveMontage;
@@ -73,6 +79,7 @@ public:
 public:
 	void EnterPresentation(const FTraversalRepState& State);
 	void ExitPresentation();
+	bool BuildContactTargets(const FTraversalRepState& State, FTraversalContactTargets& OutTargets) const;
 
 protected:
 	// Called when the game starts

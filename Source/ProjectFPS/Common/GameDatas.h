@@ -74,7 +74,7 @@ struct FFPSSessionCreateOptions
 	FString _GameModeId;
 };
 
-// 아이템 슬롯.
+// 인벤토리 슬롯.
 USTRUCT(BlueprintType)
 struct FInventorySlot
 {
@@ -82,11 +82,9 @@ struct FInventorySlot
 	UPROPERTY(BlueprintReadOnly) FName _TID= NAME_None;
 	UPROPERTY(BlueprintReadOnly) int32 _Count = 0;
 
+
+
 };
-
-
-#pragma endregion
-
 
 /**
  * Front / Top처럼 모든 Traversal 액션이 공유하는 서버 로컬 Trace 결과다.
@@ -117,6 +115,22 @@ struct FTraversalCandidate
 
 	ETraversalVariant			_Variant = ETraversalVariant::Default;
 
+	TWeakObjectPtr<UPrimitiveComponent> _ObstacleComponent = nullptr;
+	
+	float	_Duration = 0.f;
+	
+	/**
+	 * 파쿠르 Control Rig을 맞춰주기 위해 빼주는 변수 
+	 */
+
+	float	_ObstacleHeight = 0.f;
+	
+	float	_ObstacleDepth	= 0.f;
+
+	FVector						_TopPoint = FVector::ZeroVector;
+
+	FVector						_TopNormal = FVector::UpVector;
+
 	FVector						_TargetLocation = FVector::ZeroVector;
 
 	FRotator					_TargetRotation = FRotator::ZeroRotator;
@@ -125,9 +139,7 @@ struct FTraversalCandidate
 
 	FVector						_ObstacleNormal = FVector::ZeroVector;;
 
-	TWeakObjectPtr<UPrimitiveComponent> _ObstacleComponent = nullptr;
 
-	float	_Duration = 0.f;
 
 	bool IsValid() const
 	{
@@ -218,4 +230,16 @@ struct FCharacterGroundInfo
 	UPROPERTY(BlueprintReadOnly)
 	FHitResult _GroundHitResult;
 
+};
+
+/**
+ * 접촉점 계산을 위한 struct
+ */
+struct FTraversalContactTargets
+{
+	FTransform _LeftHand = FTransform::Identity;
+	FTransform _RightHand = FTransform::Identity;
+	//FTransform _LeftFoot = FTransform::Identity;
+	//FTransform _RightFoot = FTransform::Identity;
+	//FTransform _Pelvis = FTransform::Identity;
 };

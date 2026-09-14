@@ -27,13 +27,18 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_Weapons)
 	TArray<FName> _Weapons;
 
-	
+	// 장비교체
 	UPROPERTY(BlueprintAssignable)
 	FOnInventoryChanger _OnInventoryChanged;
 
 public:
-	void AddItem(FName TID, int32 Count = 1);
-	void EquipWeapon(FName TID);
+	// Add -> 
+	bool AddItem(FName TID, int32 Count = 1);
+	bool EquipItem(FName TID);
+	bool TryAquire(FName TID, int32 Count = 1);
+
+	FName RemoveWeapon(int32 Index);
+	FName RemoveItem(int32 Index);
 
 	// 복제할 변수 등록
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

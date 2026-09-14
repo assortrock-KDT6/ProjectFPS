@@ -88,6 +88,7 @@ public:
 	void  RequestTraversal();
 	bool  IsTraversing() const;
 	bool  IsTraversing(uint8 Mode) const;
+	bool  GetTraversalContactTargets(FTraversalContactTargets& OutTargets) const;
 	const FTraversalRepState& GetTraversalState() const;
 	const FCharacterGroundInfo& GetGroundInfomation();
 	void  NotifyTraversalEnded();

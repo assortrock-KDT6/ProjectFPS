@@ -22,19 +22,35 @@ public:
 	UFPSAnimInstance(const FObjectInitializer& ObjectInitializer);
 
 protected:
-
-	virtual void InitializeWithAbilitySystem(UAbilitySystemComponent* AbilitySystemComponent);
-
-#if WITH_EDITOR
 	/**
-	 * 태그 오류를 잡아주는 역할을 한다. 
+	 * 컨트롤 릭 
 	 */
-	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
-#endif //WITH_EDITOR
 
-	virtual void NativeInitializeAnimation() override;
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	FTransform _LeftHandTarget;
 
-	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	FTransform _RightHandTarget;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	FTransform _LeftFootTarget;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	FTransform _RightFootTarget;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	FTransform _PelvisTarget;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	float _TraversalIKAlpha = 0.f;
+
+protected:
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Anim")
+	TObjectPtr<ACharacter> _Owner = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Anim")
+	TObjectPtr<UFPSCharacterMovementComponent> _OwnerMovement = nullptr;
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "FPS|Anim|GameplayTags")
 	FGameplayTagBlueprintPropertyMap _GameplayTagPropertyMap;
@@ -43,9 +59,20 @@ protected:
 	float _GroundDistance = -1.f;
 
 protected:
-	UPROPERTY(BlueprintReadOnly, Category = "FPS|Anim")
-	TObjectPtr<ACharacter> _Owner = nullptr;
 
-	UPROPERTY(BlueprintReadOnly, Category = "FPS|Anim")
-	TObjectPtr<UFPSCharacterMovementComponent> _OwnerMovement = nullptr;
+	virtual void InitializeWithAbilitySystem(UAbilitySystemComponent* AbilitySystemComponent);
+
+#if WITH_EDITOR
+	/**
+	 * 태그 오류를 잡아주는 역할을 한다.
+	 */
+	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
+#endif //WITH_EDITOR
+
+	virtual void NativeInitializeAnimation() override;
+
+	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds) override;
+
+private:
+	void UpdateTraversalIK();
 };

@@ -42,24 +42,29 @@ void UFPSAnimInstance::NativeInitializeAnimation()
     Super::NativeInitializeAnimation();
 
     _Owner = Cast<ACharacter>(GetOwningActor());
-
-    if (nullptr != _Owner)
+    
+    if (nullptr == _Owner)
     {
-        UAbilitySystemComponent* AbilitySystemComponent = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(_Owner);
-        if (nullptr != AbilitySystemComponent)
-        {
-            InitializeWithAbilitySystem(AbilitySystemComponent);
-        }
+        return;
+    }
+
+    UAbilitySystemComponent* AbilitySystemComponent = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(_Owner);
+    if (nullptr != AbilitySystemComponent)
+    {
+        InitializeWithAbilitySystem(AbilitySystemComponent);
     }
 
     _OwnerMovement = Cast<UFPSCharacterMovementComponent>(_Owner->GetCharacterMovement());
     if (false == IsValid(_OwnerMovement))
     {
-        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("캐릭터 Movement Component 캐스트 실패"));
+        if (nullptr != GEngine)
+        {
+            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("캐릭터 Movement Component 캐스트 실패"));
+        }
     }
 }
 
-void UFPSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
+void UFPSAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 {
     Super::NativeUpdateAnimation(DeltaSeconds);
 
@@ -70,4 +75,35 @@ void UFPSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 
     const FCharacterGroundInfo& GroundInfomation = _OwnerMovement->GetGroundInfomation();
     _GroundDistance = GroundInfomation._GroundDistance;
+
+    UpdateTraversalIK();
+}
+
+void UFPSAnimInstance::UpdateTraversalIK()
+{
+    _TraversalIKAlpha = 0.f;
+
+    if (nullptr == _OwnerMovement)
+    {
+        return;
+    }
+
+    FTraversalContactTargets Contacts;
+
+    if (false == _OwnerMovement->GetTraversalContactTargets(Contacts))
+    {
+        return;
+    }
+
+    const USkeletalMeshComponent* Mesh = GetSkelMeshComponent();
+    if (nullptr == Mesh)
+    {
+        return;
+    }
+
+    const FTransform MeshWorld = Mesh->GetComponentTransform();
+
+    _LeftHandTarget = Contacts._LeftHand.GetRelativeTransform(MeshWorld);
+    _RightHandTarget = Contacts._RightHand.GetRelativeTransform(MeshWorld);
+    _TraversalIKAlpha = GetCurveValue(TEXT("TraversalIK"));
 }
