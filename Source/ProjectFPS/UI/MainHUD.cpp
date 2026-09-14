@@ -45,6 +45,13 @@ void AMainHUD::RemoveCurrentScreen()
 
 bool AMainHUD::ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<UUserWidget>& OverlayPtr, int32 ZOrder)
 {
+    
+    UE_LOG(LogTemp, Warning, TEXT("[Toggle] Class=%s / 기존Ptr=%s / PC=%s"),
+        *GetNameSafe(OverlayClass),
+        OverlayPtr ? TEXT("있음") : TEXT("없음"),
+        *GetNameSafe(GetOwningPlayerController()));
+
+
     if(OverlayPtr)  //이미 창이 존재함.
     {
         OverlayPtr->RemoveFromParent();
@@ -53,11 +60,15 @@ bool AMainHUD::ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<U
     }
     
     OverlayPtr = CreateWidget<UUserWidget>(GetOwningPlayerController(), OverlayClass);
+
+    UE_LOG(LogTemp, Warning, TEXT("[Toggle] -> CreateWidget %s"),
+        OverlayPtr ? TEXT("성공") : TEXT("실패"));
+
     if (OverlayPtr)
     {
         OverlayPtr->AddToViewport(ZOrder);
     }
-    return OverlayPtr != nullptr;   //열렸다고 알림
+    return OverlayPtr != nullptr;   // 열렸다고 알림
 }
 
 void AMainHUD::ApplyInputMode(bool bUIMode)
