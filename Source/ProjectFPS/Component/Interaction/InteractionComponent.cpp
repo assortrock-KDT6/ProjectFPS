@@ -4,6 +4,7 @@
 #include "Component/Interaction/InteractionComponent.h"
 #include "Interface/Interactable.h"
 #include "Camera/CameraComponent.h"
+#include "Engine/OverlapResult.h"
 #include "GameFramework/Actor.h"
 
 
@@ -30,7 +31,7 @@ void UInteractionComponent::ServerInteract_Implementation(AActor* Target)
 	IInteractable::Execute_Interact(Target, Owner); 
 }
 
-void UInteractionComponent::TryInteract() // -> *TraceInteract
+void UInteractionComponent::PickUpInteract() // -> *TraceInteract
 {
 	AActor* Owner = GetOwner();
 	if (nullptr == Owner)
@@ -47,28 +48,57 @@ void UInteractionComponent::TryInteract() // -> *TraceInteract
 	const float TotalDistance = _InteractDistance + FVector::Dist(Start, Owner->GetActorLocation());
 	const FVector End = Start + Camera->GetForwardVector() * TotalDistance;
 	
-	FHitResult Hit;
+	FHitResult GroundHit;
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(Owner);
 
-	if (GetWorld()->LineTraceSingleByChannel(Hit, Start, End, ECC_Visibility, Params))
+	bool bHit = GetWorld()->LineTraceSingleByChannel(GroundHit, Start, End, ECC_Visibility, Params);
+
+	DrawDebugLine(
+		GetWorld(),
+		Start,
+		End,
+		bHit ? FColor::Green : FColor::Red,
+		false,
+		3.f,    // 표시 시간
+		0,
+		2.f     // 선 두께
+	);
+
+	if (false == bHit)
 	{
-		// 캐릭터 몸에서 실제 사거리인지 확인 (카메라 거리와 별도)
-		if (FVector::Dist(Owner->GetActorLocation(), Hit.ImpactPoint) > _InteractDistance)
-			return;
-
-		AActor* HitActor = Hit.GetActor();
-
-		if (HitActor && HitActor->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
-			ServerInteract(HitActor);
-
-		
+		return;
 	}
-	
 
-	// 라인 트레이서
+	const FVector SphereCenter = GroundHit.ImpactPoint;
+	const float SphereRadius = 50.f;
 
-	// 스페어 트레이서
+	TArray<FOverlapResult> Overlaps;
 
+	if (GetWorld()->OverlapMultiByObjectType(Overlaps, SphereCenter, FQuat::Identity, FCollisionObjectQueryParams::AllObjects, FCollisionShape::MakeSphere(SphereRadius), Params))
+	{
+		DrawDebugSphere(
+			GetWorld(),
+			GroundHit.ImpactPoint,   // 중심: 충돌 지점
+			50.f,              // 반지름: 50cm
+			24,                // 구체 분할 수
+			FColor::Yellow,
+			false,             // 영구 표시 여부
+			3.f,               // 표시 시간: 3초
+			0,
+			1.f                // 선 두께
+		);
+
+		for (auto& Overlap : Overlaps)
+		{
+			AActor* HitActor = Overlap.GetActor();
+
+			if (HitActor && HitActor->GetClass()->ImplementsInterface(UInteractable::StaticClass()))
+			{
+				ServerInteract(HitActor);
+				return;
+			}
+		}
+	}
 }
 

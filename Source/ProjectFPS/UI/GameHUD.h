@@ -62,6 +62,8 @@ public:
 	// 지도 오버레이
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleMap();
-
+private:
+	// 게임중 전용으로 변경.
+	virtual void ApplyInputMode(bool bUIMode);
 	
 };

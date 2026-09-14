@@ -29,6 +29,7 @@ void AItemPickUp::BeginPlay()
 
 
 	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), _TID);
+
 	// 테이블 메시로 설정.
 	if (Row && _Mesh && Row->_WorldMesh)
 		_Mesh->SetStaticMesh(Row->_WorldMesh);
@@ -52,24 +53,17 @@ void AItemPickUp::Interact_Implementation(AActor* Interactor)
 	APlayerStateBase* PS = PC->GetPlayerState<APlayerStateBase>();
 	if (nullptr == PS)
 		return;
-
+	
 	// 상호작용 추가 예정
 	UInventoryComponent* Inv = PS->GetInventory();
 	if (nullptr == Inv)
 		return;
+
+	// 인벤토리에 요청하고 결과에만 반응 ->
+	if (Inv->TryAquire(_TID, _Count))
+		Destroy();
 	
-	// 테이블에서 타입 조회 
-	UTableSubsystem* Sub = UTableSubsystem::Get(this);
-	const FItemData* Row = Sub ? Sub->FindTableRow<FItemData>(TEXT("ItemTable"), _TID) : nullptr;
-
-	// 타입 분기 : 무기 -> 장비슬롯, 그 외 아이템 슬롯
-	if (Row && Row->_ItemType == EItemType::Weapon)
-		Inv->EquipWeapon(_TID);						// 장비 슬롯
-	else
-		Inv->AddItem(_TID, _Count);					// 아이템 슬롯
-
-	Destroy();					// 제거(PickUp)
-
+	
 }
 
 void AItemPickUp::OnConstruction(const FTransform& Transform)

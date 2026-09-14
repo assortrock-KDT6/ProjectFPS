@@ -13,9 +13,13 @@
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/VaultComponent.h"
 //#include "Component/Parkour/HangingComponent.h
+#include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/MantleComponent.h"
 #include "Component/Ability/Attributes/FPSHealthSet.h"
 #include "UI/GameHUD.h"
+#include "Weapons/Weaponactor.h"
+#include "Weapons/WeaponInterface.h"
+
 
 ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -99,22 +103,21 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	MeshComp->SetOwnerNoSee(true);
 
 #pragma endregion
-
-
-
+	
 	// Parkour
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
 	_VaultComponent = CreateDefaultSubobject<UVaultComponent>(TEXT("VaultComponent"));
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
+	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 }
 
 void ACharacterPlayer::SetAiming(bool bAniming)
 {
 }
 
-FVector ACharacterPlayer::GetAnimPoint(float WeaponRange) const
+FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
 {
 	const FVector CameraLocation = _CameraComponent->GetComponentLocation();
 
@@ -134,6 +137,57 @@ FVector ACharacterPlayer::GetAnimPoint(float WeaponRange) const
 	}
 
 	return TraceEnd;
+}
+
+bool ACharacterPlayer::EquipWeapon(FName WeaponID)
+{
+	if (nullptr == _WeaponActorClass || WeaponID.IsNone())
+	{
+		return false;
+	}
+	
+	if (false == IsValid(GetWorld()) || false == IsValid(_FirstPersonMesh) || false == _FirstPersonMesh->DoesSocketExist(TEXT("Shooter_Socket")))
+	{
+		return false;
+	}
+	
+	FActorSpawnParameters SpawnParameters;
+	
+	SpawnParameters.Owner = this;
+	SpawnParameters.Instigator = this;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	
+	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
+	
+	if (false == IsValid(NewWeapon))
+	{
+		return false;
+	}
+	
+	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
+	
+	if (false == bInitialized)
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+	
+	const bool bAttached = NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Shooter_Socket"));
+	
+	if (false == bAttached)
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+	
+	if (IsValid(_CurrentWeapon))
+	{
+		_CurrentWeapon->Destroy();
+	}
+	
+	_CurrentWeapon = NewWeapon;
+	
+	return true;
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -316,7 +370,7 @@ void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
 
 	if (_InteractionComponent)
-		_InteractionComponent->TryInteract();
+		_InteractionComponent->PickUpInteract();
 }
 
 void ACharacterPlayer::SetupPlayerMesh()

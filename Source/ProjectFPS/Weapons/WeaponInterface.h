@@ -23,6 +23,8 @@ class PROJECTFPS_API IWeaponInterface
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
 	// WeaponID를 받아서 무기 데이터와 능력치 데이터를 초기화한다.
+	// initialize 는 언리얼이 호출 경로를 관리하는 함수에요
+	// WeaponActor에서 _Implementation은 C++에서 실제 동작을 작성하는 함수입니다.
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Weapon")
-	void InitializeWeapon(FName _WeaponID);
+	bool InitializeWeapon(FName _WeaponID);
 };

@@ -58,6 +58,10 @@ struct FItemData  : public  FTableRowBase
 	//  *나중에 지울예정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 _Count = 1;
+	
+	// 아이템 테이블과 무기를 연결하는 외래키
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FName _WeaponId = NAME_None;
 };
 
 USTRUCT(BlueprintType)

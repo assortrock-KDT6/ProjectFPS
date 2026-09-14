@@ -57,15 +57,6 @@ enum class EFPSOnlineTravelState : uint8
 	Traveling	UMETA(DisplayName = "TRAVELING")
 };
 
-// 아이템 종류 --> 
-UENUM(BlueprintType)
-enum class EItemType : uint8
-{
-	Weapon,		// 무기 (가로형 슬롯)
-	Consumable,	// 소모품 (정사각형 슬롯)
-	Bullet,		// 탄약 (정사각형 슬롯)
-};
-
 UENUM(BlueprintType)
 enum class  EProjectCustomMovementMode : uint8
 {
@@ -85,6 +76,28 @@ enum class ETraversalVariant : uint8
 };
 
 
+// 아이템 종류
+UENUM(BlueprintType)
+enum class EItemType : uint8
+{
+	Weapon	= 0,	// 무기 (가로형 슬롯)
+	
+	Ammo	= 1,	// 탄약 (정사각형 슬롯)
+	Grenade = 2,	// 폭탄 (투척물)
+	Healing = 3,	// 회복
+	None	= 10,
+
+};
+
+// 장착 상태 on/off
+// 장비창이 2개일 경우 ->x키로 파지 해제
+// 장비칭이 1개일 경우 -> 비어있는 슬롯 으로 파지해제 
+UENUM(BlueprintType)
+enum class EItemState : uint8
+{
+	None
+};
+
 // OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.
 namespace FCharacterStateUtils
 {
@@ -92,3 +105,6 @@ namespace FCharacterStateUtils
 	const TCHAR* ToString(EFPSOnlineConnectionState Type);
 	const TCHAR* ToString(EFPSOnlineTravelState Type);
 }
+// Fill out your copyright notice in the Description page of Project Settings.
+
+

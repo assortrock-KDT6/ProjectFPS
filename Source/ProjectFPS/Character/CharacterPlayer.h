@@ -17,6 +17,7 @@ class UDefaultInput;
 class USpringArmComponent;
 class UCameraComponent;
 class USkeletalMeshComponent;
+class AWeaponActor;
 struct FInputActionValue;
 
 UCLASS()
@@ -40,8 +41,12 @@ public:
 
 
 	// 카메라 중앙이 가리키는 월드 위치를 구하기
-	FVector GetAnimPoint(float WeaponRange) const;
+	FVector GetAimPoint(float WeaponRange) const;
 
+	// 무기를 생성하고 초기화한 뒤, FirstPersonMesh에 장착
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	bool EquipWeapon(FName WeaponID);
+	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<USpringArmComponent> _SpringArmComponent;
@@ -54,7 +59,15 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "First Person")
 	TObjectPtr<USkeletalMeshComponent> _FirstPersonMesh;
-
+	
+	// 장착되는 모든 총기의 공통 Actor 클래스다. 시작 무기를 의미하지않는다.
+	// 실제 무기 Actor를 생성할 공통 Blueprint 클래스
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+	TSubclassOf<AWeaponActor> _WeaponActorClass;
+	// 현재 장착된 무기
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<AWeaponActor> _CurrentWeapon;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
 
