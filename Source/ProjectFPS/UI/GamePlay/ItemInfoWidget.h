@@ -28,8 +28,23 @@ class PROJECTFPS_API UItemInfoWidget : public UUserWidget
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UTextBlock> _DescText;
 
+	// 툴팁 능력치
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UTextBlock> _AbilityText;
+
+
+	// 커서에서 띄우는 오프셋.
+	UPROPERTY(EditAnywhere, Category = "Info")
+	FVector2D _CursorOffset = FVector2D(16.f, 16.f); 
+private:
+	// 무기 테이블 -> 능력치 테이블 순으로 조회해서 채움.
+	void SetWeaponAbility(FName TID);
+	void HideAbility();
+
+
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 public:
 	// TID로 테이블 조회해서 표시.

@@ -40,10 +40,6 @@ struct FItemData  : public  FTableRowBase
 {
 	GENERATED_BODY()
 
-	//// 아이템 식별자
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	//FName _ItemID;
-
 	// 아이템의 이름
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	FText _DisplayName;
@@ -71,20 +67,4 @@ struct FItemData  : public  FTableRowBase
 	// 손에 장착할 Actor 클래스
 
 	
-};
-
-
-
-
-
-
-
-USTRUCT(BlueprintType)
-struct FStartItemRow : public FTableRowBase
-{
-	GENERATED_BODY()
-
-	// *시작 아이템 수량. -> 삭제예정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 _Count = 1;				
 };

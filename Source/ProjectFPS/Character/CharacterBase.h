@@ -24,7 +24,7 @@ class PROJECTFPS_API ACharacterBase : public ACharacter, public IAbilitySystemIn
 	GENERATED_BODY()
 
 public:
-	ACharacterBase();
+	ACharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
 protected:
 	// 캐릭터의 고유 아이디

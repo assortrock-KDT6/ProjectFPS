@@ -22,6 +22,7 @@ struct FGameplayTagContainer;
  * 실제 이동 처리 -> Character Movement Component
  * 파티클.사운드 -> Gameplay Cue
  * 
+ * 캐릭터가 가진 능리겨, 상태, 태그를 관리한다.
  */
 UCLASS()
 class PROJECTFPS_API UFPSAbilitySystemComponent : public UAbilitySystemComponent

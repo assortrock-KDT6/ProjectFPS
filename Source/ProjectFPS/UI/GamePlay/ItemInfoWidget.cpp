@@ -4,11 +4,63 @@
 #include "UI/GamePlay/ItemInfoWidget.h"
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
+#include "Weapons/WeaponTypes.h"
+#include "Common/GameDefines.h"
+#include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
 
 
 
+
+void UItemInfoWidget::SetWeaponAbility(FName TID)
+{
+	// 테이블에서 무기 능력치 가져오기
+	if (nullptr == _AbilityText)
+		return;
+
+	// 테이블 조회 시스템 가져오기
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	if (nullptr == Sub)
+	{
+		HideAbility();
+		return;
+	}
+
+	// ItemTable 과 같은 TID로 무기 테이블 조회.
+	const FWeaponData* Weapon = Sub->FindTableRow<FWeaponData>(TEXT("WeaponData"), TID);	// WeaponTable 에서 TID에 해당하는 정보 찾기.
+	if (nullptr == Weapon)
+	{
+		HideAbility();
+		return;
+	}
+
+	// 무기 행에 적힌 ID로 능력치 찾기 
+	const FWeaponAbilityDataTable* Abil = Sub->FindTableRow<FWeaponAbilityDataTable>(TEXT("WeaponAbilityDataTable"), Weapon->_WeaponAbilId);
+	if (nullptr == Abil)
+	{
+		HideAbility();
+		return;
+	}
+	
+	FString Ability;
+	Ability += FString::Printf(TEXT("데미지   %.0f\n"), Abil->_Damage);
+	Ability += FString::Printf(TEXT("사거리   %.0f m\n"), Abil->_Range / 100.f);   // cm -> m
+	Ability += FString::Printf(TEXT("장탄수   %d\n"), (int32)Abil->_BulletCount);
+	Ability += FString::Printf(TEXT("재장전   %.1f s"), Abil->_ReloadTime);
+	
+	_AbilityText->SetText(FText::FromString(Ability));
+	_AbilityText->SetVisibility(ESlateVisibility::HitTestInvisible);
+	
+}
+
+void UItemInfoWidget::HideAbility()
+{
+	// Collapsed : 위젯을 숨기면서 배치할떄 공간도 차지하지 않게함 -> Hidden은 공백으로보이고, 이건 공백이 땡겨짐.
+	if (nullptr != _AbilityText)
+		_AbilityText->SetVisibility(ESlateVisibility::Collapsed);
+}
 
 void UItemInfoWidget::NativeConstruct()
 {
@@ -16,6 +68,28 @@ void UItemInfoWidget::NativeConstruct()
 
 	// 시작은 숨김 처리.
 	HideInfo();	
+}
+
+void UItemInfoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+{
+	// 매 프레임마다 처리 및 갱신. 
+	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// 숨겨진 상태이면 마우스에서 x 
+	if (ESlateVisibility::Hidden == GetVisibility())
+		return;
+
+	// 이 위젯이 캔버스 패널에 놓여 있어야 위치를 바꿀 수 있음.
+	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Slot);
+	if (nullptr == CanvasSlot)
+		return;
+
+	// 뷰포트 기준 마우스 좌표(DPI 스케일 반영됨)
+	const FVector2D MousePos = UWidgetLayoutLibrary::GetMousePositionOnViewport(this);
+	// 정보창 위치 변경.
+	CanvasSlot->SetPosition(MousePos + _CursorOffset);
+
+
 }
 
 void UItemInfoWidget::SetInfoByTID(FName TID)
@@ -63,6 +137,13 @@ void UItemInfoWidget::SetInfoByTID(FName TID)
 			_IconImage->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
+
+	//무기면 능력치 정보 추가 없을 경우 접음.
+	if (EItemType::Weapon == Row->_ItemType)
+		SetWeaponAbility(TID);
+	else
+		HideAbility();
+
 	SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 

@@ -3,3 +3,8 @@
 
 #include "UI/GamePlay/GameMainWidget.h"
 
+void UGameMainWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+}

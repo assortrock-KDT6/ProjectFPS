@@ -27,8 +27,13 @@ void AItemPickUp::BeginPlay()
 	if (nullptr == Sub)
 		return;
 
-
-	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), _TID);
+	_ItemTable = Sub->FindTable(TEXT("ItemTable"));
+	if (nullptr == _ItemTable)
+	{
+		return;
+	}
+	
+	const FItemData* Row = _ItemTable->FindRow<FItemData>(_TID,TEXT("not Found row"));
 
 	// 테이블 메시로 설정.
 	if (Row && _Mesh && Row->_WorldMesh)
