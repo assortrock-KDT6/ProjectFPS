@@ -4,6 +4,7 @@
 #include "Weapons/WeaponActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Table/TableSubsystem.h"
+#include "GameFramework/Pawn.h"
 
 // Sets default values
 AWeaponActor::AWeaponActor()
@@ -13,6 +14,10 @@ AWeaponActor::AWeaponActor()
 
 	_WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
 	SetRootComponent(_WeaponMesh);
+	
+	// 멀티플레이 복제
+	bReplicates = true;
+	SetReplicateMovement(true);
 }
 
 bool AWeaponActor::InitializeWeapon_Implementation(FName _WeaponID)
@@ -47,6 +52,43 @@ bool AWeaponActor::InitializeWeapon_Implementation(FName _WeaponID)
 FVector AWeaponActor::GetMuzzleLocation() const
 {
 	return _WeaponMesh->GetSocketLocation(TEXT("Muzzle"));
+}
+
+float AWeaponActor::GetWeaponRange() const
+{
+	return _WeaponAbilityData._Range;
+}
+
+bool AWeaponActor::Fire(const FVector& AimPoint)
+{
+	if (false == HasAuthority())
+	{
+		return false;
+	}
+	
+	if (false == IsValid(GetWorld()) || false == IsValid(_WeaponMesh) || nullptr == _ProjectileClass || false == _WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
+	{
+		return false;
+	}
+	
+	const FVector MuzzleLocation = GetMuzzleLocation();
+	
+	// 카메라 Trace 로 구한 AimPoint를 향하도록 총구 기준 발사 방향을 계산
+	const FVector FireDirection = (AimPoint - MuzzleLocation).GetSafeNormal();
+	
+	if (FireDirection.IsNearlyZero())
+	{
+		return false;
+	}
+	
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.Owner = GetOwner();
+	SpawnParameters.Instigator = GetInstigator();
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	
+	AActor* Projectile = GetWorld()->SpawnActor<AActor>(_ProjectileClass, MuzzleLocation, FireDirection.Rotation(), SpawnParameters);
+	
+	return IsValid(Projectile);
 }
 
 // Called when the game starts or when spawned

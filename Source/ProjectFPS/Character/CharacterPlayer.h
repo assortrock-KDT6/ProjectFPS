@@ -18,6 +18,7 @@ class USpringArmComponent;
 class UCameraComponent;
 class USkeletalMeshComponent;
 class AWeaponActor;
+class AWeaponPickUp;
 struct FInputActionValue;
 
 UCLASS()
@@ -47,6 +48,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool EquipWeapon(FName WeaponID);
 	
+	// 무기 장착 성공 후에 Blueprint에 애니메이션 상태 변경을 알리기
+	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon")
+	void OnWeaponEquiped();
+	
+	// WeaponPickUp의 상호작용 범위에 들어온 무기를 등록한다.
+	void SetNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
+	
+	// 등록된 WeaponPickUp의 범위에서 벗어나면 해제된다.
+	void ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
+	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<USpringArmComponent> _SpringArmComponent;
@@ -68,6 +79,10 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<AWeaponActor> _CurrentWeapon;
 	
+	// 현재 상호작용 범위 안에 있는 월드 무기
+	UPROPERTY()
+	TObjectPtr<AWeaponPickUp> _NearbyWeaponPickUp;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
 
@@ -88,6 +103,8 @@ protected:
 	virtual void BeginPlay() override;
 	
 	virtual void OnRep_PlayerState() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 public:
 	virtual void Jump() override;
 
@@ -100,6 +117,10 @@ public:
 
 	virtual void PossessedBy(AController* Newcontroller) override;
 
+public:
+	USkeletalMeshComponent* Get_FirstPersonMesh() const;
+	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
+
 protected:
 	UFUNCTION()
 	void MoveAction(const FInputActionValue& Value);
@@ -111,7 +132,7 @@ protected:
 	void CharacterMouseZoomAction(const FInputActionValue& Value);
 
 	UFUNCTION()
-	virtual void ParkourAction(const struct FInputActionValue& Value);
+	virtual void ParkourAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void ToggleInventoryAction(const FInputActionValue& value);
@@ -122,6 +143,16 @@ protected:
 	UFUNCTION()
 	void InteractAction(const FInputActionValue& value);
 
+	UFUNCTION()
+	void HandleOutOfHealth();
+
+	UFUNCTION()
+	void FireAction(const FInputActionValue& value);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerFire();
+	void ServerFire_Implementation();
+	
 private:
 	void SetupPlayerMesh();
 };

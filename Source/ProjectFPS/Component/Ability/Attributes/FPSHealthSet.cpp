@@ -78,13 +78,13 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 
 			if (DamageToApply > 0.f)
 			{
-				const float NewHealth = FMath::Clamp(CurrentHealth, CurrentHealth - DamageToApply, 0.f);
+				const float NewHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.f, Get_MaxHealth());
 				Set_Health(NewHealth);
-
-				if (NewHealth <= 0.f)
+				
+				if (NewHealth <= 0.f && CurrentHealth > 0.f)
 				{
 					// TODO : 캐릭터 사망 이벤트.
-
+					_OnOutOfHealth.Broadcast();
 				}
 
 			}

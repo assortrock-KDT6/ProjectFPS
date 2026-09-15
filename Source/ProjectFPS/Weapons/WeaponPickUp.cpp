@@ -17,17 +17,43 @@ AWeaponPickUp::AWeaponPickUp()
 	SetRootComponent(_InteractionSphere);
 
 	// 플레이어만 상호작용 범위에 들어왔는지 감지한다.
-	_InteractionSphere->SetSphereRadius(200.0f);
+	_InteractionSphere->SetSphereRadius(70.0f);
 	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	_InteractionSphere->SetGenerateOverlapEvents(true);
-
-	_StaticMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
-	_StaticMesh->SetupAttachment(_InteractionSphere);
+	_InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereBeginOverlap);
+	_InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereEndOverlap);
+	
+	_Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
+	_Mesh->SetupAttachment(_InteractionSphere);
 
 	// 무기 Mesh는 외형만 담당하고 상호작용 판정은 Sphere가 담당한다.
-	_StaticMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void AWeaponPickUp::OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	ACharacterPlayer* Character = Cast<ACharacterPlayer>(OtherActor);
+	if (false == IsValid(Character))
+	{
+		return;
+	}
+	
+	Character->SetNearbyWeaponPickUp(this);
+}
+
+void AWeaponPickUp::OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex)
+{
+	ACharacterPlayer* Character = Cast<ACharacterPlayer>(OtherActor);
+	if (false == IsValid(Character))
+	{
+		return;
+	}
+	
+	Character->ClearNearbyWeaponPickUp(this);
 }
 
 void AWeaponPickUp::Interact_Implementation(AActor* Interactor)
@@ -49,51 +75,49 @@ void AWeaponPickUp::Interact_Implementation(AActor* Interactor)
 		return;
 	}
 	
-	const FItemData* ItemData = TableSubsystem->FindTableRow<FItemData>(TEXT("ItemTable"), _ItemId);
+	const FItemData* ItemData = TableSubsystem->FindTableRow<FItemData>(TEXT("ItemTable"), _TID);
 	
 	if (nullptr == ItemData || EItemType::Weapon != ItemData->_ItemType || ItemData->_WeaponId.IsNone())
 	{
 		return;
 	}
 	
-	if (Character->EquipWeapon(ItemData->_WeaponId))
-	{
-		Destroy();
-	}
+	Character->EquipWeapon(ItemData->_WeaponId);
+
+	Super::Interact_Implementation(Interactor);
 }
 
 void AWeaponPickUp::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 	
-	if (false == IsValid(_StaticMesh))
+	if (false == IsValid(_Mesh))
 	{
 		return;
 	}
 	
 	// ItemId가 바뀌었을때 이전 Mesh가 남지 않도록 먼저 비운다.
-	_StaticMesh->SetStaticMesh(nullptr);
+	_Mesh->SetStaticMesh(nullptr);
 	
-	if (false == IsValid(_ItemTable) || _ItemId.IsNone())
+	if (false == IsValid(_ItemTable) || _TID.IsNone())
 	{
 		return;
 	}
 	
-	const FItemData* ItemData = _ItemTable->FindRow<FItemData>(_ItemId, TEXT("WeaponPickUp"));
+	const FItemData* ItemData = _ItemTable->FindRow<FItemData>(_TID, TEXT("WeaponPickUp"));
 	
 	if (nullptr == ItemData || EItemType::Weapon != ItemData->_ItemType)
 	{
 		return;
 	}
 	
-	_StaticMesh->SetStaticMesh(ItemData->_WorldMesh);
+	_Mesh->SetStaticMesh(ItemData->_WorldMesh);
 }
 
 // Called when the game starts or when spawned
 void AWeaponPickUp::BeginPlay()
 {
 	Super::BeginPlay();
-	
 }
 
 // Called every frame

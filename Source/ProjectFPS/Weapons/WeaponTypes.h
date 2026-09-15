@@ -71,8 +71,8 @@ struct FWeaponData : public FTableRowBase
 {
 	GENERATED_BODY()
 
-	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisplayName = "WeaponInfomation | ID"))
-	FName _WeaponId;*/
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisplayName = "WeaponInfomation | ID"))
+	FName _WeaponId;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisplayName = "WeaponAbilInfomation | TID"))
 	FName _WeaponAbilId;
@@ -80,11 +80,11 @@ struct FWeaponData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisplayName = "WeaponInfomation | Type"))
 	EWeaponType _WeaponType = EWeaponType::None;
 
-	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisplayName = "WeaponInfomation | Icon"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisplayName = "WeaponInfomation | Icon"))
 	TObjectPtr<UTexture2D> _Icon = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisPlayName = "WeaponInfomation | StaticMesh"))
-	TObjectPtr<UStaticMesh> _StaticMesh = nullptr;*/
+	TObjectPtr<UStaticMesh> _StaticMesh = nullptr;
 };
 
 // todo : 나중에 GAS 로 변동값 옮기기

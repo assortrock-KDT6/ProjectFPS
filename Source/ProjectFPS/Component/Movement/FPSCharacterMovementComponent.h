@@ -63,12 +63,14 @@ private:
 	bool	_WantsTraversal = false;
 	uint16	_NextAuthorityActionId = 1;
 	uint16	_CompletedAutonomousActionId = 0;
+	FCharacterGroundInfo _CurrentGroundInformation;
 
 	/* 트래버설 중 bOrientRotationToMovement를 끄고 되돌리기 위한 캐시. */
 	bool	_CachedOrientRotationToMovement = false;
 	bool	_TraversalRotationOverridden = false;
 
 	TWeakObjectPtr<UTraversalActionComponent> _ActivePresentationComponent;
+
 private:
 	UFUNCTION()
 	void OnRep_TraversalState();
@@ -86,7 +88,9 @@ public:
 	void  RequestTraversal();
 	bool  IsTraversing() const;
 	bool  IsTraversing(uint8 Mode) const;
+	bool  GetTraversalContactTargets(FTraversalContactTargets& OutTargets) const;
 	const FTraversalRepState& GetTraversalState() const;
+	const FCharacterGroundInfo& GetGroundInfomation();
 	void  NotifyTraversalEnded();
 
 	/* 트래버설 예약에 쓰는 서버 시각. 소유 클라이언트에서는 예상 편도 지연을 보상한다. */

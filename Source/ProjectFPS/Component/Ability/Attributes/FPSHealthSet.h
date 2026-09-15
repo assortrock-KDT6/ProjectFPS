@@ -34,7 +34,7 @@ public:
 	ATTRIBUTE_ACCESSORS(UFPSHealthSet, _MaxShield);
 	ATTRIBUTE_ACCESSORS(UFPSHealthSet, _DamageIn);
 
-	mutable FOutOfHealthDelegate OnOutOfHealth;
+	mutable FOutOfHealthDelegate _OnOutOfHealth;
 protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Attributes|Health", ReplicatedUsing = OnRep_Health, meta = (ArrayClamp = true))
 	FGameplayAttributeData _Health;

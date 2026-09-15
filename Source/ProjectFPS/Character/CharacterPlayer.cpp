@@ -1,4 +1,5 @@
 #include "Character/CharacterPlayer.h"
+#include "GameMode/FPSGameMode.h"
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -18,6 +19,7 @@
 #include "Component/Ability/Attributes/FPSHealthSet.h"
 #include "UI/GameHUD.h"
 #include "Weapons/Weaponactor.h"
+#include "Weapons/WeaponPickUp.h"
 #include "Weapons/WeaponInterface.h"
 
 
@@ -62,9 +64,9 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 		_SpringArmComponent->TargetArmLength = 0.f;
 		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
 
-		_SpringArmComponent->bUsePawnControlRotation = true;
-		_SpringArmComponent->bInheritPitch = true;
-		_SpringArmComponent->bInheritYaw = true;
+		_SpringArmComponent->bUsePawnControlRotation = false;
+		_SpringArmComponent->bInheritPitch = false;
+		_SpringArmComponent->bInheritYaw = false;
 
 		//_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
@@ -187,6 +189,8 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	
 	_CurrentWeapon = NewWeapon;
 	
+	OnWeaponEquiped();
+	
 	return true;
 }
 
@@ -194,7 +198,12 @@ void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
 
-	SetupPlayerMesh();
+	UFPSHealthSet* HealAttribute = Cast<UFPSHealthSet>(_HealthAttribute);
+
+	if (true == HasAuthority() && IsValid(HealAttribute))
+	{
+		HealAttribute->_OnOutOfHealth.AddUniqueDynamic(this, &ACharacterPlayer::HandleOutOfHealth);
+	}
 }
 
 void ACharacterPlayer::OnRep_PlayerState()
@@ -205,6 +214,17 @@ void ACharacterPlayer::OnRep_PlayerState()
 	{
 		_AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	}
+}
+
+void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UFPSHealthSet* HealthAttribute = Cast<UFPSHealthSet>(_HealthAttribute);
+	if (true == IsValid(HealthAttribute))
+	{
+		HealthAttribute->_OnOutOfHealth.RemoveDynamic(this, &ACharacterPlayer::HandleOutOfHealth);
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ACharacterPlayer::Jump()
@@ -235,23 +255,27 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	}
 
 	_DefaultInput = NewObject<UDefaultInput>(this);
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = 
-		ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
-	if (false == IsValid(Subsystem))
-	{
-		return;
-	}
 
-	Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
+	//UEnhancedInputLocalPlayerSubsystem* Subsystem = 
+	//	ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
+	//if (false == IsValid(Subsystem))
+	//{
+	//	return;
+	//}
 
-	InputComp->BindAction(_DefaultInput->_Move,      ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
-	InputComp->BindAction(_DefaultInput->_Jump,      ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
-	InputComp->BindAction(_DefaultInput->_MouseLook, ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
-	InputComp->BindAction(_DefaultInput->_MouseZoom, ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
-	InputComp->BindAction(_DefaultInput->_Parkour,   ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
-	InputComp->BindAction(_DefaultInput->_Inventory, ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
+	//Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
+
+	InputComp->BindAction(_DefaultInput->_Move,       ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
+	InputComp->BindAction(_DefaultInput->_Jump,       ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
+	InputComp->BindAction(_DefaultInput->_MouseLook,  ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
+	InputComp->BindAction(_DefaultInput->_MouseZoom,  ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
+	InputComp->BindAction(_DefaultInput->_Parkour,    ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
+	InputComp->BindAction(_DefaultInput->_Inventory,  ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
 	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
+	InputComp->BindAction(_DefaultInput->_Interact,   ETriggerEvent::Started,   this, &ACharacterPlayer::InteractAction);
+	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Interact,  ETriggerEvent::Started,    this, &ACharacterPlayer::InteractAction);
+	PlayerController->RefreshInputMappingcontext();
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -267,11 +291,27 @@ void ACharacterPlayer::PossessedBy(AController* Newcontroller)
 	}
 }
 
+USkeletalMeshComponent* ACharacterPlayer::Get_FirstPersonMesh() const
+{
+	return _FirstPersonMesh;
+}
+
+USkeletalMeshComponent* ACharacterPlayer::Get_ThirtPersonMesh() const
+{
+	return GetMesh();
+}
+
 void ACharacterPlayer::MoveAction(const FInputActionValue& Value)
 {
 	FVector2D Axis = Value.Get<FVector2D>();
 
-	const FRotator Rotation		= Controller->GetControlRotation();
+	AController* CurrentController = GetController();
+	if (!IsValid(CurrentController))
+	{
+		return;
+	}
+
+	const FRotator Rotation		= CurrentController->GetControlRotation();
 	const FRotator YawRotation	= FRotator(0.f, Rotation.Yaw, 0.f);
 
 	FVector Forward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
@@ -366,11 +406,96 @@ void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
 	}
 }
 
+void ACharacterPlayer::SetNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp)
+{
+	if (IsValid(WeaponPickUp))
+	{
+		_NearbyWeaponPickUp = WeaponPickUp;
+	}
+}
+
+void ACharacterPlayer::ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp)
+{
+	if (_NearbyWeaponPickUp == WeaponPickUp)
+	{
+		_NearbyWeaponPickUp = nullptr;
+	}
+}
+
 void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
+	// 이전 코드인데 제가 우선은 WeaponPickUp한다고 수정하느라 기존코드는 전부 주석걸고 예외처리식으로 빼놨어요. 
+	// 나중에 필요하면 WeaponPickUp 이랑 ItemPickUp 합칠때 주석 풀고 수정하면 될것같아요 - 건영 
+	// Todo : MergeCode
+	// if (_InteractionComponent)
+	// 	_InteractionComponent->PickUpInteract();
+	
+	if (false == IsValid(_InteractionComponent))
+	{
+		return;
+	}
+	
+	// WeaponPickUp 범위 안에서는 해당 무기를 우선 상호작용한다.
+	//if (IsValid(_NearbyWeaponPickUp))
+	//{
+	//	_InteractionComponent->ServerInteract(_NearbyWeaponPickUp);
+	//	
+	//	return;
+	//}
+	
+	// 범위 내에 무기가 없으면 기존 작성되었던 Ray형식의 상호작용 방식을 사용하기
+	_InteractionComponent->PickUpInteract();
+}
 
+void ACharacterPlayer::FireAction(const FInputActionValue& value)
+{
+	ServerFire();
+}
+
+void ACharacterPlayer::ServerFire_Implementation()
+{
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return;
+	}
+	
+	const FVector AimPoint = GetAimPoint(_CurrentWeapon->GetWeaponRange());
+	
+	_CurrentWeapon->Fire(AimPoint);
 	if (_InteractionComponent)
 		_InteractionComponent->PickUpInteract();
+}
+
+void ACharacterPlayer::HandleOutOfHealth()
+{
+	if (false == HasAuthority())
+	{
+		return;
+	}
+
+	if (false == IsValid(_AbilitySystemComponent))
+	{
+		return;
+	}
+	
+	const FGameplayTag DeadTag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"));
+
+	// 중복 사망 처리 방지
+	if (_AbilitySystemComponent->HasMatchingGameplayTag(DeadTag))
+	{
+		return;
+	}
+
+	_AbilitySystemComponent->AddLooseGameplayTag(DeadTag);
+
+	// 진행 중인 사격, 재정전, 파쿠르 Ability 취소
+	_AbilitySystemComponent->CancelAllAbilities();
+
+	AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
+	if (true == IsValid(GameMode))
+	{
+		GameMode->HandlePlayerDeath(this);
+	}
 }
 
 void ACharacterPlayer::SetupPlayerMesh()
@@ -386,8 +511,9 @@ void ACharacterPlayer::SetupPlayerMesh()
 		return;
 	}
 
-	MeshComponent->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
+	// MeshComponent->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
 
 	// TODO
 	// 플레이어 몸통은 마테리얼로 나누는 걸 추천.
+	// MeshComponent->SetMaterial(TorsoMaterialIndex, InvisibleMaterial);
 }

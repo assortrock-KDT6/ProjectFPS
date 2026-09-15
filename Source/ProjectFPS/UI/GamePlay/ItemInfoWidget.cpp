@@ -29,7 +29,7 @@ void UItemInfoWidget::SetWeaponAbility(FName TID)
 	}
 
 	// ItemTable 과 같은 TID로 무기 테이블 조회.
-	const FWeaponData* Weapon = Sub->FindTableRow<FWeaponData>(TEXT("WeaponData"), TID);	// WeaponTable 에서 TID에 해당하는 정보 찾기.
+	const FWeaponData* Weapon = Sub->FindTableRow<FWeaponData>(TEXT("WeaponDataTable"), TID);	// WeaponTable 에서 TID에 해당하는 정보 찾기.
 	if (nullptr == Weapon)
 	{
 		HideAbility();
@@ -74,6 +74,10 @@ void UItemInfoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	// 매 프레임마다 처리 및 갱신. 
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// 따라가기 꺼진 인스턴스 자리는 고정.
+	if (false == _bFollowMouse)
+		return;
 
 	// 숨겨진 상태이면 마우스에서 x 
 	if (ESlateVisibility::Hidden == GetVisibility())

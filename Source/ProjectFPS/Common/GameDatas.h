@@ -86,12 +86,6 @@ struct FInventorySlot
 
 };
 
-
-
-
-#pragma endregion
-
-
 /**
  * Front / Top처럼 모든 Traversal 액션이 공유하는 서버 로컬 Trace 결과다.
  * 포인터와 FHitResult를 포험하므로 네트워크로 복제하지 않는다.
@@ -121,6 +115,22 @@ struct FTraversalCandidate
 
 	ETraversalVariant			_Variant = ETraversalVariant::Default;
 
+	TWeakObjectPtr<UPrimitiveComponent> _ObstacleComponent = nullptr;
+	
+	float	_Duration = 0.f;
+	
+	/**
+	 * 파쿠르 Control Rig을 맞춰주기 위해 빼주는 변수 
+	 */
+
+	float	_ObstacleHeight = 0.f;
+	
+	float	_ObstacleDepth	= 0.f;
+
+	FVector						_TopPoint = FVector::ZeroVector;
+
+	FVector						_TopNormal = FVector::UpVector;
+
 	FVector						_TargetLocation = FVector::ZeroVector;
 
 	FRotator					_TargetRotation = FRotator::ZeroRotator;
@@ -129,9 +139,7 @@ struct FTraversalCandidate
 
 	FVector						_ObstacleNormal = FVector::ZeroVector;;
 
-	TWeakObjectPtr<UPrimitiveComponent> _ObstacleComponent = nullptr;
 
-	float	_Duration = 0.f;
 
 	bool IsValid() const
 	{
@@ -204,4 +212,34 @@ struct FMantleTraceSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.0"))
 	float _TopFloorTraceHalfDistance = 50.f;
+};
+
+/**
+ * 애니메이션에 Ground 정보를 전달해주기 위한 구조체
+ */
+USTRUCT(BlueprintType)
+struct FCharacterGroundInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	float _GroundDistance;
+
+	uint64 _LastUpdateFrame = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	FHitResult _GroundHitResult;
+
+};
+
+/**
+ * 접촉점 계산을 위한 struct
+ */
+struct FTraversalContactTargets
+{
+	FTransform _LeftHand = FTransform::Identity;
+	FTransform _RightHand = FTransform::Identity;
+	//FTransform _LeftFoot = FTransform::Identity;
+	//FTransform _RightFoot = FTransform::Identity;
+	//FTransform _Pelvis = FTransform::Identity;
 };
