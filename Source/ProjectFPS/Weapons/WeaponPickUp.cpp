@@ -17,17 +17,43 @@ AWeaponPickUp::AWeaponPickUp()
 	SetRootComponent(_InteractionSphere);
 
 	// 플레이어만 상호작용 범위에 들어왔는지 감지한다.
-	_InteractionSphere->SetSphereRadius(200.0f);
+	_InteractionSphere->SetSphereRadius(70.0f);
 	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	_InteractionSphere->SetGenerateOverlapEvents(true);
-
+	_InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereBeginOverlap);
+	_InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereEndOverlap);
+	
 	_StaticMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	_StaticMesh->SetupAttachment(_InteractionSphere);
 
 	// 무기 Mesh는 외형만 담당하고 상호작용 판정은 Sphere가 담당한다.
 	_StaticMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void AWeaponPickUp::OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	ACharacterPlayer* Character = Cast<ACharacterPlayer>(OtherActor);
+	if (false == IsValid(Character))
+	{
+		return;
+	}
+	
+	Character->SetNearbyWeaponPickUp(this);
+}
+
+void AWeaponPickUp::OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex)
+{
+	ACharacterPlayer* Character = Cast<ACharacterPlayer>(OtherActor);
+	if (false == IsValid(Character))
+	{
+		return;
+	}
+	
+	Character->ClearNearbyWeaponPickUp(this);
 }
 
 void AWeaponPickUp::Interact_Implementation(AActor* Interactor)

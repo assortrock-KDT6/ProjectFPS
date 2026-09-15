@@ -8,6 +8,8 @@
 #include "WeaponPickUp.generated.h"
 
 class USphereComponent;
+class UPrimitiveComponent;
+
 UCLASS()
 class PROJECTFPS_API AWeaponPickUp : public AActor, public IInteractable
 {
@@ -22,6 +24,13 @@ public:
 	
 	// 에디터에서 ItemId에 해당하는 월드 Mesh를 미리 표시한다
 	virtual void OnConstruction(const FTransform& Transform) override;
+	
+protected:
+	UFUNCTION()
+	void OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	
+	UFUNCTION()
+	void OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex);
 	
 protected:
 	// 플레이어가 무기의 상호작용할 수 있는 범위 콜라이더 

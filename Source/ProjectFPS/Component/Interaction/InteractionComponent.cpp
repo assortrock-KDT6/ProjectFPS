@@ -62,7 +62,7 @@ void UInteractionComponent::PickUpInteract() // -> *TraceInteract
 		false,
 		3.f,    // 표시 시간
 		0,
-		2.f     // 선 두께
+		0.05f     // 선 두께
 	);
 
 	if (false == bHit)
