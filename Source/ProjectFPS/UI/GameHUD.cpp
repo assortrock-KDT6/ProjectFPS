@@ -1,7 +1,9 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-
 #include "UI/GameHUD.h"
+#include "UI/GamePlay/GameMainWidget.h"
+
+
 
 void AGameHUD::SwitchTo(EMatchPhase Phase)
 {
@@ -34,8 +36,15 @@ void AGameHUD::ToggleInventory()
 	CloseOverlay(_MapWidget); //맵이 열려있으면 닫기 -> *나중에 묶던가 고민.
 	
 	const bool bOpen = ToggleOverlay(_InventoryWidgetClass, _InventoryWidget);
-	
 	ApplyInputMode(bOpen);
+
+	// 인벤이 열리면 툴팁도 정리
+	if (bOpen)
+		HideItemInfo();
+
+	// 맵이 열리면 툴팁도 정리
+	if (bOpen)
+		HideItemInfo();
 
 	UE_LOG(LogTemp, Warning, TEXT("결과: bOpen=%d, Widget=%s"),
 		bOpen, _InventoryWidget ? TEXT("생성됨") : TEXT("null"));
@@ -46,6 +55,30 @@ void AGameHUD::ToggleMap()
 	CloseOverlay(_InventoryWidget); // 인벤토리 열려있으면 닫기 -> "" 동일
 
 	ToggleOverlay(_MapWidgetClass, _MapWidget);
+}
+
+void AGameHUD::ShowItemInfo(FName TID)
+{
+	// 인벤,맵이 떠 있는 동안 월드 툴팁을 안띄움.
+	if (nullptr != _InventoryWidget || nullptr != _MapWidget)
+		return;
+
+	UGameMainWidget* Main = Cast<UGameMainWidget>(_CurrentScreen);
+	if (nullptr == Main)
+		return;
+
+	// MainWidget로 보냄
+	Main->ShowItemInfo(TID);
+}
+
+void AGameHUD::HideItemInfo()
+{
+	UGameMainWidget* Main = Cast<UGameMainWidget>(_CurrentScreen);
+	if (nullptr == Main)
+		return;
+
+	// MainWidget로 보냄
+	Main->HideItemInfo();
 }
 
 void AGameHUD::ApplyInputMode(bool bUIMode)

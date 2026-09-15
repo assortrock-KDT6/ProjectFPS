@@ -38,10 +38,14 @@ USTRUCT(BlueprintType)
 struct FItemData  : public  FTableRowBase
 {
 	GENERATED_BODY()
+	
+	// 아이템의 이름
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	FText _DisplayName;
 
-	// 아이템 식별자
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName _ItemID;
+	// 아이템 설명
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	FText _Description;
 
 	// 아이템 아이콘
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -53,7 +57,7 @@ struct FItemData  : public  FTableRowBase
 
 	// 아이템 종류
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	EItemType _ItemType = EItemType::Consumable;
+	EItemType _ItemType = EItemType::None;
 
 	//  *나중에 지울예정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)

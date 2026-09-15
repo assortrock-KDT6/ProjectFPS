@@ -36,6 +36,12 @@ class PROJECTFPS_API UItemInfoWidget : public UUserWidget
 	// 커서에서 띄우는 오프셋.
 	UPROPERTY(EditAnywhere, Category = "Info")
 	FVector2D _CursorOffset = FVector2D(16.f, 16.f); 
+
+	// 마우스를 따라갈지 (인벤 true / 인게임 false)
+	UPROPERTY(EditAnywhere, Category = "Info")
+	bool _bFollowMouse = true;
+
+
 private:
 	// 무기 테이블 -> 능력치 테이블 순으로 조회해서 채움.
 	void SetWeaponAbility(FName TID);

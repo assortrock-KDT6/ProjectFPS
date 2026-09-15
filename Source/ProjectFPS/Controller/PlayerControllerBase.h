@@ -25,6 +25,9 @@
   *																		Controller는 플레이어 (조작자)가 살아있으면 계속 유지된다.
   *
   */
+
+class UInputMappingContext;
+
 UCLASS()
 class PROJECTFPS_API APlayerControllerBase : public APlayerController
 {
@@ -37,11 +40,21 @@ protected:
 	UPROPERTY(BlueprintReadWrite)
 	uint8 _TeamId = 0;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	TObjectPtr<UInputMappingContext> _PlayerMappingContext;
+
 public:
+	virtual void ChangeState(FName NewState) override;
+
 	virtual void BeginPlay() override;
 
 	virtual void OnPossess(APawn* InPawn) override;
 
 	virtual void OnUnPossess() override;
 
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+public:
+	void EnterDeathSpectating(const FVector& CameraaLocation, const FRotator& CameraRotation);
+	void RefreshInputMappingcontext();
 };

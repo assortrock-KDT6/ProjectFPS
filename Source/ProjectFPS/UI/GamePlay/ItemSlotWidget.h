@@ -64,7 +64,7 @@ protected:
 public:
 	void SetSlot(FName TID);
 	
-	void SetHighlight(bool bOn);
+	void SetHighlight(bool bOn);	// 쉐이더로 변경해야함 지금은 꼼수상태.	
 	
 	void SetInfoPanel(class UItemInfoWidget* Panel) { _InfoPanel = Panel; }
 	FName GetTID() const { return _TID; }

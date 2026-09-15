@@ -24,6 +24,12 @@ public:
 	// Muzzle Socket의 월드 위치를 반환
 	FVector GetMuzzleLocation() const;
 	
+	// 현재 무기의 데이터 테이블 사거리를 반환
+	float GetWeaponRange() const;
+	
+	// 총구에서 AimPoint 방향으로 Projectile Fire
+	bool Fire(const FVector& AimPoint);
+	
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Weapon")
 	TObjectPtr<UStaticMeshComponent> _WeaponMesh;
@@ -33,6 +39,10 @@ protected:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Weapon | Data")
 	FWeaponAbilityDataTable _WeaponAbilityData;
+	
+	// Blueprint에서 실제 발사할 EffectArea 기반 Projectile 을 지정한다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Projectile")
+	TSubclassOf<AActor> _ProjectileClass;
 	
 protected:
 	// Called when the game starts or when spawned
