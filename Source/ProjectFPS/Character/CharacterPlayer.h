@@ -16,6 +16,9 @@
 class UDefaultInput;
 class USpringArmComponent;
 class UCameraComponent;
+class USkeletalMeshComponent;
+class AWeaponActor;
+class AWeaponPickUp;
 struct FInputActionValue;
 
 UCLASS()
@@ -25,14 +28,36 @@ class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
 public:
 	ACharacterPlayer(const FObjectInitializer& ObjectInitializer);
 public:
-// 카메라 회전 감도 조절 변수
+	// 카메라 회전 감도 조절 변수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	float _LookSensitivity = 1.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	float _ZoomSensitivity = 30.f;
 
+	// 줌 견착
+	// 입력은 조준을 시작/해제한다 는 의도만 전달 -> 실제 화면 전환은 Tick에서 부드럽게 처리한다.
+	UFUNCTION(BlueprintCallable, Category = "Aim")
+	void SetAiming(bool bAniming);
 
+
+	// 카메라 중앙이 가리키는 월드 위치를 구하기
+	FVector GetAimPoint(float WeaponRange) const;
+
+	// 무기를 생성하고 초기화한 뒤, FirstPersonMesh에 장착
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	bool EquipWeapon(FName WeaponID);
+	
+	// 무기 장착 성공 후에 Blueprint에 애니메이션 상태 변경을 알리기
+	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon")
+	void OnWeaponEquiped();
+	
+	// WeaponPickUp의 상호작용 범위에 들어온 무기를 등록한다.
+	void SetNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
+	
+	// 등록된 WeaponPickUp의 범위에서 벗어나면 해제된다.
+	void ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
+	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<USpringArmComponent> _SpringArmComponent;
@@ -43,6 +68,21 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UDefaultInput> _DefaultInput;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "First Person")
+	TObjectPtr<USkeletalMeshComponent> _FirstPersonMesh;
+	
+	// 장착되는 모든 총기의 공통 Actor 클래스다. 시작 무기를 의미하지않는다.
+	// 실제 무기 Actor를 생성할 공통 Blueprint 클래스
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+	TSubclassOf<AWeaponActor> _WeaponActorClass;
+	// 현재 장착된 무기
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<AWeaponActor> _CurrentWeapon;
+	
+	// 현재 상호작용 범위 안에 있는 월드 무기
+	UPROPERTY()
+	TObjectPtr<AWeaponPickUp> _NearbyWeaponPickUp;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
 
@@ -86,7 +126,7 @@ protected:
 	void CharacterMouseZoomAction(const FInputActionValue& Value);
 
 	UFUNCTION()
-	virtual void ParkourAction(const struct FInputActionValue& Value);
+	virtual void ParkourAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void ToggleInventoryAction(const FInputActionValue& value);
@@ -97,6 +137,13 @@ protected:
 	UFUNCTION()
 	void InteractAction(const FInputActionValue& value);
 
+	UFUNCTION()
+	void FireAction(const FInputActionValue& value);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerFire();
+	void ServerFire_Implementation();
+	
 private:
 	void SetupPlayerMesh();
 };

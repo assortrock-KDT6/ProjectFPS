@@ -17,6 +17,15 @@ private:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UPlayerStatusWidget> _HpWidget;
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UItemInfoWidget> _ItemInfoPanel;
+
+public:
+	void ShowItemInfo(FName TID);
+	void HideItemInfo();
+	
+
+
 protected:
 	virtual void NativeConstruct() override;
 

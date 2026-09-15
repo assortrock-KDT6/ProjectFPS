@@ -61,5 +61,16 @@ UDefaultInput::UDefaultInput()
 		_Interact = InteractAction.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> FireAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Fire.IA_Fire'"));
+	if (FireAction.Succeeded())
+	{
+		_Fire = FireAction.Object;
+	}
+	
+	ConstructorHelpers::FObjectFinder<UInputAction> FireToggleAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_FireToggle.IA_FireToggle'"));
+	if (FireToggleAction.Succeeded())
+	{
+		_FireToggle = FireToggleAction.Object;
+	}
 
 }

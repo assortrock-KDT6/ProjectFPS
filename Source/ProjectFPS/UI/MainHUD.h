@@ -40,7 +40,7 @@ protected:
 	bool ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<UUserWidget>& OverlayPtr, int32 ZOrder = 10);
 
 	// UI 조작용 커서와 게임중에는 안나오게 구분 
-	void ApplyInputMode(bool bUIMode);
+	virtual void ApplyInputMode(bool bUIMode);
 
 	bool IsLocalHUD() const;
 

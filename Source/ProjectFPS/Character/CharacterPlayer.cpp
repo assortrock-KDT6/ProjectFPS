@@ -8,13 +8,19 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
-#include "Component/Interaction/InteractionComponent.h"
+#include "Camera/CameraComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/VaultComponent.h"
 //#include "Component/Parkour/HangingComponent.h
+#include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/MantleComponent.h"
 #include "Component/Ability/Attributes/FPSHealthSet.h"
 #include "UI/GameHUD.h"
+#include "Weapons/Weaponactor.h"
+#include "Weapons/WeaponPickUp.h"
+#include "Weapons/WeaponInterface.h"
+
 
 ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -44,22 +50,24 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
 	_CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 
-#pragma region ROTATION_SETTING
 
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
+
+#pragma region ROTATION_SETTING
+
 	if (IsValid(CapsuleComp))
 	{
 		_SpringArmComponent->SetupAttachment(CapsuleComp);
-		_CameraComponent->SetupAttachment(_SpringArmComponent);
+		//_CameraComponent->SetupAttachment(_SpringArmComponent);
 
 		_SpringArmComponent->TargetArmLength = 0.f;
 		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
 
-		_SpringArmComponent->bUsePawnControlRotation = true;
-		_SpringArmComponent->bInheritPitch = true;
-		_SpringArmComponent->bInheritYaw = true;
+		_SpringArmComponent->bUsePawnControlRotation = false;
+		_SpringArmComponent->bInheritPitch = false;
+		_SpringArmComponent->bInheritYaw = false;
 
-		_CameraComponent->bUsePawnControlRotation = false;
+		//_CameraComponent->bUsePawnControlRotation = false;
 		_LookSensitivity = 0.75f;
 	}
 
@@ -72,15 +80,117 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 
 #pragma endregion
 
+#pragma region Mesh Visible Toggle // Arm SkeletalMesh 만 1인칭에게 그려주고 다른 사람은 Full Mesh 를 그리게 하기
+	//// 팔의 위치와 회전은 카메라를 기준으로 조정합니다.
+	//_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
+	//_FirstPersonMesh->SetupAttachment(_CameraComponent);
+	//// 자신의 화면에만 팔을 표시한다.
+	//_FirstPersonMesh->SetOnlyOwnerSee(true);
+	//// 화면 표현용 팔은 충돌과 그림자를 만들지 않는다.
+	//_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	//_FirstPersonMesh->SetGenerateOverlapEvents(false);
+	//_FirstPersonMesh->SetCastShadow(false);
+	//// 기존 전신은 자신에게 숨기고 다른 플레이어에게 표시한다.
+	//MeshComp->SetOwnerNoSee(true);
+
+	_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
+	_FirstPersonMesh->SetupAttachment(MeshComp);
+	_CameraComponent->SetupAttachment(_FirstPersonMesh);
+	_CameraComponent->bUsePawnControlRotation = true;
+	_FirstPersonMesh->SetOnlyOwnerSee(true);
+	_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_FirstPersonMesh->SetGenerateOverlapEvents(false);
+	_FirstPersonMesh->SetCastShadow(false);
+	MeshComp->SetOwnerNoSee(true);
+
+#pragma endregion
+	
 	// Parkour
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
 	_VaultComponent = CreateDefaultSubobject<UVaultComponent>(TEXT("VaultComponent"));
 	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
 
-	//Interaction
 	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
-	_HealthAttribute = CreateDefaultSubobject<UFPSHealthSet>(TEXT("HealthAttributeSet"));
+}
+
+void ACharacterPlayer::SetAiming(bool bAniming)
+{
+}
+
+FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
+{
+	const FVector CameraLocation = _CameraComponent->GetComponentLocation();
+
+	const FVector TraceEnd = CameraLocation + _CameraComponent->GetForwardVector() * WeaponRange;
+
+	FHitResult HitResult;
+
+	FCollisionQueryParams QueryParams;
+
+	QueryParams.AddIgnoredActor(this);
+
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, TraceEnd, ECC_Visibility, QueryParams);
+
+	if (bHit)
+	{
+		return HitResult.ImpactPoint;
+	}
+
+	return TraceEnd;
+}
+
+bool ACharacterPlayer::EquipWeapon(FName WeaponID)
+{
+	if (nullptr == _WeaponActorClass || WeaponID.IsNone())
+	{
+		return false;
+	}
+	
+	if (false == IsValid(GetWorld()) || false == IsValid(_FirstPersonMesh) || false == _FirstPersonMesh->DoesSocketExist(TEXT("Shooter_Socket")))
+	{
+		return false;
+	}
+	
+	FActorSpawnParameters SpawnParameters;
+	
+	SpawnParameters.Owner = this;
+	SpawnParameters.Instigator = this;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	
+	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
+	
+	if (false == IsValid(NewWeapon))
+	{
+		return false;
+	}
+	
+	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
+	
+	if (false == bInitialized)
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+	
+	const bool bAttached = NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Shooter_Socket"));
+	
+	if (false == bAttached)
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+	
+	if (IsValid(_CurrentWeapon))
+	{
+		_CurrentWeapon->Destroy();
+	}
+	
+	_CurrentWeapon = NewWeapon;
+	
+	OnWeaponEquiped();
+	
+	return true;
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -137,14 +247,15 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
 	Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
 
-	InputComp->BindAction(_DefaultInput->_Move,      ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
-	InputComp->BindAction(_DefaultInput->_Jump,      ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
-	InputComp->BindAction(_DefaultInput->_MouseLook, ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
-	InputComp->BindAction(_DefaultInput->_MouseZoom, ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
-	InputComp->BindAction(_DefaultInput->_Parkour,   ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
-	InputComp->BindAction(_DefaultInput->_Inventory, ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
+	InputComp->BindAction(_DefaultInput->_Move,       ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
+	InputComp->BindAction(_DefaultInput->_Jump,       ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
+	InputComp->BindAction(_DefaultInput->_MouseLook,  ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
+	InputComp->BindAction(_DefaultInput->_MouseZoom,  ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
+	InputComp->BindAction(_DefaultInput->_Parkour,    ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
+	InputComp->BindAction(_DefaultInput->_Inventory,  ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
 	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
-	InputComp->BindAction(_DefaultInput->_Interact,  ETriggerEvent::Started,    this, &ACharacterPlayer::InteractAction);
+	InputComp->BindAction(_DefaultInput->_Interact,   ETriggerEvent::Started,   this, &ACharacterPlayer::InteractAction);
+	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -259,11 +370,62 @@ void ACharacterPlayer::ToggleMapAction(const FInputActionValue& value)
 	}
 }
 
+void ACharacterPlayer::SetNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp)
+{
+	if (IsValid(WeaponPickUp))
+	{
+		_NearbyWeaponPickUp = WeaponPickUp;
+	}
+}
+
+void ACharacterPlayer::ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp)
+{
+	if (_NearbyWeaponPickUp == WeaponPickUp)
+	{
+		_NearbyWeaponPickUp = nullptr;
+	}
+}
+
 void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
+	// 이전 코드인데 제가 우선은 WeaponPickUp한다고 수정하느라 기존코드는 전부 주석걸고 예외처리식으로 빼놨어요. 
+	// 나중에 필요하면 WeaponPickUp 이랑 ItemPickUp 합칠때 주석 풀고 수정하면 될것같아요 - 건영 
+	// Todo : MergeCode
+	// if (_InteractionComponent)
+	// 	_InteractionComponent->PickUpInteract();
+	
+	if (false == IsValid(_InteractionComponent))
+	{
+		return;
+	}
+	
+	// WeaponPickUp 범위 안에서는 해당 무기를 우선 상호작용한다.
+	//if (IsValid(_NearbyWeaponPickUp))
+	//{
+	//	_InteractionComponent->ServerInteract(_NearbyWeaponPickUp);
+	//	
+	//	return;
+	//}
+	
+	// 범위 내에 무기가 없으면 기존 작성되었던 Ray형식의 상호작용 방식을 사용하기
+	_InteractionComponent->PickUpInteract();
+}
 
-	if (_InteractionComponent)
-		_InteractionComponent->PickUpInteract();
+void ACharacterPlayer::FireAction(const FInputActionValue& value)
+{
+	ServerFire();
+}
+
+void ACharacterPlayer::ServerFire_Implementation()
+{
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return;
+	}
+	
+	const FVector AimPoint = GetAimPoint(_CurrentWeapon->GetWeaponRange());
+	
+	_CurrentWeapon->Fire(AimPoint);
 }
 
 void ACharacterPlayer::SetupPlayerMesh()

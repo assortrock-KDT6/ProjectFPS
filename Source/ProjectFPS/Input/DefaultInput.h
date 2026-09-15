@@ -43,4 +43,10 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _Interact;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Fire;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _FireToggle;
 };

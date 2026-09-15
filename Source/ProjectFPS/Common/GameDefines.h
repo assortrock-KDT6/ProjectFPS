@@ -81,7 +81,6 @@ UENUM(BlueprintType)
 enum class EItemType : uint8
 {
 	Weapon	= 0,	// 무기 (가로형 슬롯)
-	
 	Ammo	= 1,	// 탄약 (정사각형 슬롯)
 	Grenade = 2,	// 폭탄 (투척물)
 	Healing = 3,	// 회복

@@ -47,6 +47,7 @@ public:
 	 * 임의로 호출을 넣겠습니다.
 	 * 블루프린트 단계에서 넣었습니다. 2026 09 04
 	 */
+
 	// 매치 단계에 맞는 화면으로 전환 (로비, 게임화면)
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SwitchTo(EMatchPhase Phase);
@@ -62,8 +63,12 @@ public:
 	// 지도 오버레이
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleMap();
+
+public:
+	void ShowItemInfo(FName TID);
+	void HideItemInfo();
 private:
 	// 게임중 전용으로 변경.
-	virtual void ApplyInputMode(bool bUIMode);
+	virtual void ApplyInputMode(bool bUIMode) override;
 	
 };
