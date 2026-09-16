@@ -91,6 +91,10 @@ bool UVaultComponent::BuildCandidate(const FTraversalBaseQuery& BaseQuery, FTrav
 	OutCandidate._ObstaclePoint = BaseQuery._FrontHit.ImpactPoint;
 	OutCandidate._ObstacleNormal = BaseQuery._FrontHit.ImpactNormal;
 	OutCandidate._ObstacleComponent = BaseQuery._FrontHit.GetComponent();
+	OutCandidate._TopPoint = BaseQuery._TopHit.ImpactPoint;
+	OutCandidate._TopNormal = BaseQuery._TopHit.ImpactNormal;
+	OutCandidate._ObstacleHeight = BaseQuery._ObstacleHeight;
+	OutCandidate._ObstacleDepth = ObstacleDepth;
 	OutCandidate._Duration = Duration;
 	
 	return OutCandidate.IsValid();

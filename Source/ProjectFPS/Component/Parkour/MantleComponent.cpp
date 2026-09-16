@@ -100,6 +100,10 @@ bool UMantleComponent::BuildCandidate(const FTraversalBaseQuery& BaseQuery, FTra
 	OutCandidate._ObstaclePoint = BaseQuery._FrontHit.ImpactPoint;
 	OutCandidate._ObstacleNormal = BaseQuery._FrontHit.ImpactNormal;
 	OutCandidate._ObstacleComponent = BaseQuery._FrontHit.GetComponent();
+	OutCandidate._TopPoint = TopFloorHit.ImpactPoint;
+	OutCandidate._TopNormal = TopFloorHit.ImpactNormal;
+	OutCandidate._ObstacleHeight = BaseQuery._ObstacleHeight;
+	OutCandidate._ObstacleDepth = 0.f;
 	OutCandidate._Duration = Duration;
 
 	return OutCandidate.IsValid();

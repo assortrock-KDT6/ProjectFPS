@@ -103,6 +103,8 @@ protected:
 	virtual void BeginPlay() override;
 	
 	virtual void OnRep_PlayerState() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 public:
 	virtual void Jump() override;
 
@@ -114,6 +116,10 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void PossessedBy(AController* Newcontroller) override;
+
+public:
+	USkeletalMeshComponent* Get_FirstPersonMesh() const;
+	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
 
 protected:
 	UFUNCTION()
@@ -136,6 +142,9 @@ protected:
 
 	UFUNCTION()
 	void InteractAction(const FInputActionValue& value);
+
+	UFUNCTION()
+	void HandleOutOfHealth();
 
 	UFUNCTION()
 	void FireAction(const FInputActionValue& value);
