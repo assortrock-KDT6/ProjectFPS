@@ -29,7 +29,7 @@ void UItemInfoWidget::SetWeaponAbility(FName TID)
 	}
 
 	// ItemTable 과 같은 TID로 무기 테이블 조회.
-	const FWeaponData* Weapon = Sub->FindTableRow<FWeaponData>(TEXT("WeaponTable"), TID);	// WeaponTable 에서 TID에 해당하는 정보 찾기.
+	const FWeaponData* Weapon = Sub->FindTableRow<FWeaponData>(TEXT("WeaponDataTable"), TID);	// WeaponTable 에서 TID에 해당하는 정보 찾기.
 	if (nullptr == Weapon)
 	{
 		HideAbility();
@@ -45,8 +45,13 @@ void UItemInfoWidget::SetWeaponAbility(FName TID)
 	}
 	
 	FString Ability;
-
-
+	Ability += FString::Printf(TEXT("데미지   %.0f\n"), Abil->_Damage);
+	Ability += FString::Printf(TEXT("사거리   %.0f m\n"), Abil->_Range / 100.f);   // cm -> m
+	Ability += FString::Printf(TEXT("장탄수   %d\n"), (int32)Abil->_BulletCount);
+	Ability += FString::Printf(TEXT("재장전   %.1f s"), Abil->_ReloadTime);
+	
+	_AbilityText->SetText(FText::FromString(Ability));
+	_AbilityText->SetVisibility(ESlateVisibility::HitTestInvisible);
 	
 }
 
@@ -69,6 +74,10 @@ void UItemInfoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	// 매 프레임마다 처리 및 갱신. 
 	Super::NativeTick(MyGeometry, InDeltaTime);
+
+	// 따라가기 꺼진 인스턴스 자리는 고정.
+	if (false == _bFollowMouse)
+		return;
 
 	// 숨겨진 상태이면 마우스에서 x 
 	if (ESlateVisibility::Hidden == GetVisibility())
@@ -132,6 +141,13 @@ void UItemInfoWidget::SetInfoByTID(FName TID)
 			_IconImage->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
+
+	//무기면 능력치 정보 추가 없을 경우 접음.
+	if (EItemType::Weapon == Row->_ItemType)
+		SetWeaponAbility(TID);
+	else
+		HideAbility();
+
 	SetVisibility(ESlateVisibility::HitTestInvisible);
 }
 

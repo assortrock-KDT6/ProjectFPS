@@ -15,9 +15,17 @@
  * 
  */
 
+class ACharacterPlayer;
+
 UCLASS()
 class PROJECTFPS_API AFPSGameMode : public AGameMode
 {
 	GENERATED_BODY()
+
+public:
+	AFPSGameMode();
 	
+public:
+	void HandlePlayerDeath(ACharacterPlayer* DeadCharacter);
+	void CheckMatchEnd();
 };

@@ -27,42 +27,81 @@ void UPlayerStatusWidget::NativeConstruct()
 		return;
 	}
 
-	_HealthChangedHandle = _AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UFPSHealthSet::Get_HealthAttribute()).AddUObject(this, &UPlayerStatusWidget::HandleHealthChanged);
-
-	RefreshHealth(_AbilitySystemComponent->GetNumericAttribute(UFPSHealthSet::Get_HealthAttribute()));
+	InitializeGauge(_AbilitySystemComponent);
 }
 
 void UPlayerStatusWidget::NativeDestruct()
 {
-	if (nullptr != _AbilitySystemComponent && true == _HealthChangedHandle.IsValid())
-	{
-		_AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UFPSHealthSet::Get_HealthAttribute()).Remove(_HealthChangedHandle);
-	}
+	Super::NativeDestruct();
+
+	RefreshGauge();
 
 	_AbilitySystemComponent = nullptr;
-	Super::NativeDestruct();
 }
 
-void UPlayerStatusWidget::HandleHealthChanged(const FOnAttributeChangeData& Data)
-{
-	RefreshHealth(Data.NewValue);
-}
-
-void UPlayerStatusWidget::RefreshHealth(float Health)
+void UPlayerStatusWidget::HandleGaugeChanged(const FOnAttributeChangeData& Data)
 {
 	if (nullptr == _AbilitySystemComponent)
 	{
 		return;
 	}
 
-	const float MaxHealth = _AbilitySystemComponent->GetNumericAttribute(UFPSHealthSet::Get_MaxHealthAttribute());
-	SetHpBarUpdate(MaxHealth > 0.f ? FMath::Clamp(Health / MaxHealth, 0.f, 1.f) : 0.f);
+	float CurrentValue	= _AbilitySystemComponent->GetNumericAttribute(_TargetAttribute);
+	float MaxValue		= _AbilitySystemComponent->GetNumericAttribute(_TargetMaxAttribute);
+
+	UpdateGauge(MaxValue > 0.f ? FMath::Clamp(CurrentValue / MaxValue, 0.f, 1.f): 0.f);
 }
 
-void UPlayerStatusWidget::SetHpBarUpdate(float percent)
+void UPlayerStatusWidget::UpdateGauge(float Percent)
+{
+	SetProgressBarUpdate(Percent);
+}
+
+void UPlayerStatusWidget::SetProgressBarUpdate(float Percent)
 {
 	if (nullptr != _Gauge)
 	{
-		_Gauge->SetPercent(percent);
+		_Gauge->SetPercent(Percent);
 	}
+}
+
+void UPlayerStatusWidget::InitializeGauge(UAbilitySystemComponent* AbiltySystemComponent)
+{
+	RefreshGauge();
+
+	if (nullptr == AbiltySystemComponent)
+	{
+		return;
+	}
+
+	_AbilitySystemComponent = AbiltySystemComponent;
+
+	if (true == _TargetAttribute.IsValid() && true == _TargetMaxAttribute.IsValid())
+	{
+		_GaugeChangedHandle = _AbilitySystemComponent->
+							  GetGameplayAttributeValueChangeDelegate(_TargetAttribute).AddUObject(
+							  this, &UPlayerStatusWidget::HandleGaugeChanged);
+
+		float CurrentValue = _AbilitySystemComponent->GetNumericAttribute(_TargetAttribute);
+		float MaxValue = _AbilitySystemComponent->GetNumericAttribute(_TargetMaxAttribute);
+
+		_OnGaugeChanged.Broadcast(CurrentValue, MaxValue);
+
+		/**
+		 * 만약 성장요소가 추가된다면 MaxVaule도 추가해줘야함. 
+		 */
+	}
+}
+
+void UPlayerStatusWidget::RefreshGauge()
+{
+	if (nullptr != _AbilitySystemComponent)
+	{
+		if (true == _TargetAttribute.IsValid())
+		{
+			_AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(_TargetAttribute).Remove(_GaugeChangedHandle);
+		}
+	}
+
+	_GaugeChangedHandle.Reset();
 }

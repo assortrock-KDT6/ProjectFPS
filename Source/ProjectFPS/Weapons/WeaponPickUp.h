@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Item/ItemPickUp.h"
 #include "GameFramework/Actor.h"
 #include "Interface/Interactable.h"
 #include "WeaponPickUp.generated.h"
@@ -11,7 +12,7 @@ class USphereComponent;
 class UPrimitiveComponent;
 
 UCLASS()
-class PROJECTFPS_API AWeaponPickUp : public AActor, public IInteractable
+class PROJECTFPS_API AWeaponPickUp : public AItemPickUp
 {
 	GENERATED_BODY()
 	
@@ -37,16 +38,16 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
 	TObjectPtr<USphereComponent> _InteractionSphere;
 	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
-	TObjectPtr<UStaticMeshComponent> _StaticMesh;
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
+	//TObjectPtr<UStaticMeshComponent> _StaticMesh;
 	
-	// ItemDataTable에서 찾을 무기 아이템의 행 이름
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon PickUp")
-	FName _ItemId = NAME_None;
+	//// ItemDataTable에서 찾을 무기 아이템의 행 이름
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon PickUp")
+	//FName _ItemId = NAME_None;
 	
-	// 에디터 미리보기용 -> BP_WeaponPickUp 기본값에 한번만 지정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon PickUp")
-	TObjectPtr<UDataTable> _ItemTable;
+	//// 에디터 미리보기용 -> BP_WeaponPickUp 기본값에 한번만 지정
+	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon PickUp")
+	//TObjectPtr<UDataTable> _ItemTable;
 	
 protected:
 	// Called when the game starts or when spawned

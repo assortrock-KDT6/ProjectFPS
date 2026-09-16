@@ -59,6 +59,33 @@ float AWeaponActor::GetWeaponRange() const
 	return _WeaponAbilityData._Range;
 }
 
+EWeaponFireMode AWeaponActor::GetFireMode() const
+{
+	return _WeaponAbilityData.FireMode;
+}
+
+float AWeaponActor::GetProjectileInterval() const
+{
+	return _WeaponAbilityData._ProjectileInterval;
+}
+
+void AWeaponActor::ToggleFireMode()
+{
+	switch (_WeaponAbilityData.FireMode)
+	{
+	case EWeaponFireMode::SemiAutomatic:
+		_WeaponAbilityData.FireMode = EWeaponFireMode::Automatic;
+		break;
+		
+	case EWeaponFireMode::Automatic:
+		_WeaponAbilityData.FireMode = EWeaponFireMode::SemiAutomatic;
+		break;
+		
+	default:
+		break;
+	}
+}
+
 bool AWeaponActor::Fire(const FVector& AimPoint)
 {
 	if (false == HasAuthority())

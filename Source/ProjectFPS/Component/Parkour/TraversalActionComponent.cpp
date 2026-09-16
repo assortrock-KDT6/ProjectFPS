@@ -84,7 +84,7 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 	_ActiveWarpTargetName = Definition->_WarpTargetName;
 	ApplyObstacleIgnore(State);
 
-	ACharacter* Owner = Cast<ACharacter>(GetOwner());
+	ACharacterPlayer* Owner = Cast<ACharacterPlayer>(GetOwner());
 	if (false == IsValid(Owner))
 	{
 		ExitPresentation();
@@ -92,11 +92,24 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 	}
 
 	const float Duration = Owner->PlayAnimMontage(Definition->_Montage, Definition->_PlayRate);
+	
+	if (true == Owner->IsLocallyControlled())
+	{
+		USkeletalMeshComponent* FirstPersonMesh = Owner->Get_FirstPersonMesh();
+
+		UAnimInstance* FirstPersonAnimInstance = IsValid(FirstPersonMesh) ? FirstPersonMesh->GetAnimInstance() : nullptr;
+		if (true == IsValid(FirstPersonAnimInstance))
+		{
+			FirstPersonAnimInstance->Montage_Play(Definition->_Montage, Definition->_PlayRate);
+		}
+	}
+
 	if (Duration <= 0.f)
 	{
 		ExitPresentation();
 		return;
 	}
+
 
 	UE_LOG(LogTraversal, Log, TEXT("[Presentation] 몽타주 재생: %s, ActionID %u, Role %d, Duration %.3f"),
 		*GetNameSafe(Definition->_Montage), State._ActionID, static_cast<int32>(Owner->GetLocalRole()), Duration);
@@ -118,14 +131,25 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 
 void UTraversalActionComponent::ExitPresentation()
 {
-	ACharacter* Owner = Cast<ACharacter>(GetOwner());
+	ACharacterPlayer* Owner = Cast<ACharacterPlayer>(GetOwner());
 	if (true == IsValid(Owner) && true == IsValid(_ActiveMontage))
 	{
-		UAnimInstance* AnimInstance = (true == IsValid(Owner->GetMesh()) ? Owner->GetMesh()->GetAnimInstance() : nullptr);
+		UAnimInstance* AnimInstance = (true == IsValid(Owner->Get_ThirtPersonMesh()) ? Owner->Get_ThirtPersonMesh()->GetAnimInstance() : nullptr);
 
 		if (nullptr != AnimInstance && true == AnimInstance->Montage_IsPlaying(_ActiveMontage))
 		{
 			AnimInstance->Montage_Stop(_ActiveBlendOutTime, _ActiveMontage);
+		}
+	}
+
+	if (true == Owner->IsLocallyControlled())
+	{
+		USkeletalMeshComponent* FirstPersonMesh = Owner->Get_FirstPersonMesh();
+
+		UAnimInstance* FirstPersonAnimInstance = IsValid(FirstPersonMesh) ? FirstPersonMesh->GetAnimInstance() : nullptr;
+		if (true == IsValid(FirstPersonAnimInstance) && true == FirstPersonAnimInstance->Montage_IsPlaying(_ActiveMontage))
+		{
+			FirstPersonAnimInstance->Montage_Stop(_ActiveBlendOutTime, _ActiveMontage);
 		}
 	}
 
@@ -156,6 +180,46 @@ void UTraversalActionComponent::ExitPresentation()
 	_ActivePresentationActionId = 0;
 
 	_ActiveBlendOutTime			= 0.1f;
+}
+
+
+bool UTraversalActionComponent::BuildContactTargets(const FTraversalRepState& State, FTraversalContactTargets& OutTargets) const
+{
+	OutTargets = FTraversalContactTargets();
+
+	if (false == State.IsActive())
+	{
+		return false;
+	}
+
+	const FVector Up = FVector(State._TopNormal).GetSafeNormal();
+	if (true == Up.IsNearlyZero())
+	{
+		return false;
+	}
+
+	FVector Forward = FVector::VectorPlaneProject(-FVector(State._ObstacleNormal), Up).GetSafeNormal();
+	if (true == Forward.IsNearlyZero())
+	{
+		Forward = FVector::VectorPlaneProject(State._TargetRotation.Vector(), Up).GetSafeNormal();
+	}
+
+	if (true == Forward.IsNearlyZero())
+	{
+		return false;
+	}
+
+	const FVector Right = FVector::CrossProduct(Up, Forward).GetSafeNormal();
+
+	const FVector Center = FVector(State._TopPoint) + Forward * _HandInset;
+
+	const FQuat ContactRotation = FRotationMatrix::MakeFromXZ(Forward, Up).ToQuat();
+
+	OutTargets._LeftHand = FTransform(ContactRotation, Center - Right * _HandSpacing);
+
+	OutTargets._RightHand = FTransform(ContactRotation, Center + Right * _HandSpacing);
+
+	return true;
 }
 
 const FTraversalActionDefinition* UTraversalActionComponent::FindDefinition(ETraversalVariant Variant) const

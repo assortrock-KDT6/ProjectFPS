@@ -1,4 +1,5 @@
 #include "Character/CharacterPlayer.h"
+#include "GameMode/FPSGameMode.h"
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -197,7 +198,12 @@ void ACharacterPlayer::BeginPlay()
 {
 	Super::BeginPlay();
 
-	SetupPlayerMesh();
+	UFPSHealthSet* HealAttribute = Cast<UFPSHealthSet>(_HealthAttribute);
+
+	if (true == HasAuthority() && IsValid(HealAttribute))
+	{
+		HealAttribute->_OnOutOfHealth.AddUniqueDynamic(this, &ACharacterPlayer::HandleOutOfHealth);
+	}
 }
 
 void ACharacterPlayer::OnRep_PlayerState()
@@ -208,6 +214,17 @@ void ACharacterPlayer::OnRep_PlayerState()
 	{
 		_AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	}
+}
+
+void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UFPSHealthSet* HealthAttribute = Cast<UFPSHealthSet>(_HealthAttribute);
+	if (true == IsValid(HealthAttribute))
+	{
+		HealthAttribute->_OnOutOfHealth.RemoveDynamic(this, &ACharacterPlayer::HandleOutOfHealth);
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ACharacterPlayer::Jump()
@@ -238,14 +255,15 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	}
 
 	_DefaultInput = NewObject<UDefaultInput>(this);
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = 
-		ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
-	if (false == IsValid(Subsystem))
-	{
-		return;
-	}
 
-	Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
+	//UEnhancedInputLocalPlayerSubsystem* Subsystem = 
+	//	ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer());
+	//if (false == IsValid(Subsystem))
+	//{
+	//	return;
+	//}
+
+	//Subsystem->AddMappingContext(_DefaultInput->_DefaultInputMappingContext.Get(), 0);
 
 	InputComp->BindAction(_DefaultInput->_Move,       ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
 	InputComp->BindAction(_DefaultInput->_Jump,       ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
@@ -256,6 +274,10 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
 	InputComp->BindAction(_DefaultInput->_Interact,   ETriggerEvent::Started,   this, &ACharacterPlayer::InteractAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
+	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
+	InputComp->BindAction(_DefaultInput->_Interact,   ETriggerEvent::Started,   this, &ACharacterPlayer::InteractAction);
+	InputComp->BindAction(_DefaultInput->_FireToggle, ETriggerEvent::Started,   this, &ACharacterPlayer::FireToggleAction);
+	PlayerController->RefreshInputMappingcontext();
 }
 
 void ACharacterPlayer::PossessedBy(AController* Newcontroller)
@@ -271,11 +293,27 @@ void ACharacterPlayer::PossessedBy(AController* Newcontroller)
 	}
 }
 
+USkeletalMeshComponent* ACharacterPlayer::Get_FirstPersonMesh() const
+{
+	return _FirstPersonMesh;
+}
+
+USkeletalMeshComponent* ACharacterPlayer::Get_ThirtPersonMesh() const
+{
+	return GetMesh();
+}
+
 void ACharacterPlayer::MoveAction(const FInputActionValue& Value)
 {
 	FVector2D Axis = Value.Get<FVector2D>();
 
-	const FRotator Rotation		= Controller->GetControlRotation();
+	AController* CurrentController = GetController();
+	if (!IsValid(CurrentController))
+	{
+		return;
+	}
+
+	const FRotator Rotation		= CurrentController->GetControlRotation();
 	const FRotator YawRotation	= FRotator(0.f, Rotation.Yaw, 0.f);
 
 	FVector Forward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
@@ -400,12 +438,12 @@ void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 	}
 	
 	// WeaponPickUp 범위 안에서는 해당 무기를 우선 상호작용한다.
-	if (IsValid(_NearbyWeaponPickUp))
-	{
-		_InteractionComponent->ServerInteract(_NearbyWeaponPickUp);
-		
-		return;
-	}
+	//if (IsValid(_NearbyWeaponPickUp))
+	//{
+	//	_InteractionComponent->ServerInteract(_NearbyWeaponPickUp);
+	//	
+	//	return;
+	//}
 	
 	// 범위 내에 무기가 없으면 기존 작성되었던 Ray형식의 상호작용 방식을 사용하기
 	_InteractionComponent->PickUpInteract();
@@ -413,19 +451,106 @@ void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 
 void ACharacterPlayer::FireAction(const FInputActionValue& value)
 {
-	ServerFire();
+	ServerStartFire();
 }
 
-void ACharacterPlayer::ServerFire_Implementation()
+void ACharacterPlayer::StopFireAction(const FInputActionValue& value)
+{
+	ServerStopFire();
+}
+
+void ACharacterPlayer::FireToggleAction(const FInputActionValue& value)
+{
+	ServerToggleFireMode();
+}
+
+void ACharacterPlayer::ServerStartFire_Implementation()
 {
 	if (false == IsValid(_CurrentWeapon))
 	{
 		return;
 	}
-	
+
+	// 버튼을 누른 순간 첫 발은 즉시 발사
+	FireOnce();
+
+	// 단발 무기는 첫 발 이후 반복 타이머를 시작하지 않는다.
+	if (EWeaponFireMode::Automatic != _CurrentWeapon->GetFireMode())
+	{
+		return;
+	}
+
+	const float ProjectileInterval = _CurrentWeapon->GetProjectileInterval();
+
+	if (ProjectileInterval <= 0.f)
+	{
+		return;
+	}
+
+	GetWorldTimerManager().SetTimer(_FireTimerHandle, this, &ACharacterPlayer::FireOnce, ProjectileInterval, true, ProjectileInterval);
+}
+
+void ACharacterPlayer::ServerStopFire_Implementation()
+{
+	GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+}
+
+void ACharacterPlayer::ServerToggleFireMode_Implementation()
+{
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return;
+	}
+
+	// 발사 중 모드를 바꾸면 기존 연사 타이머부터 정지한다.
+	GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+
+	_CurrentWeapon->ToggleFireMode();
+}
+
+void ACharacterPlayer::FireOnce()
+{
+	if (false == HasAuthority() || false == IsValid(_CurrentWeapon))
+	{
+		GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+		return;
+	}
+
 	const FVector AimPoint = GetAimPoint(_CurrentWeapon->GetWeaponRange());
-	
+
 	_CurrentWeapon->Fire(AimPoint);
+}
+
+void ACharacterPlayer::HandleOutOfHealth()
+{
+	if (false == HasAuthority())
+	{
+		return;
+	}
+
+	if (false == IsValid(_AbilitySystemComponent))
+	{
+		return;
+	}
+	
+	const FGameplayTag DeadTag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"));
+
+	// 중복 사망 처리 방지
+	if (_AbilitySystemComponent->HasMatchingGameplayTag(DeadTag))
+	{
+		return;
+	}
+
+	_AbilitySystemComponent->AddLooseGameplayTag(DeadTag);
+
+	// 진행 중인 사격, 재정전, 파쿠르 Ability 취소
+	_AbilitySystemComponent->CancelAllAbilities();
+
+	AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
+	if (true == IsValid(GameMode))
+	{
+		GameMode->HandlePlayerDeath(this);
+	}
 }
 
 void ACharacterPlayer::SetupPlayerMesh()
@@ -441,8 +566,9 @@ void ACharacterPlayer::SetupPlayerMesh()
 		return;
 	}
 
-	MeshComponent->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
+	// MeshComponent->HideBoneByName(TEXT("head"), EPhysBodyOp::PBO_None);
 
 	// TODO
 	// 플레이어 몸통은 마테리얼로 나누는 걸 추천.
+	// MeshComponent->SetMaterial(TorsoMaterialIndex, InvisibleMaterial);
 }

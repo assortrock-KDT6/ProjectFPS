@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Character/CharacterBase.h"
+#include "TimerManager.h"				// 총알 연사를 구현하기 위해서 넣었습니다. - 건영 
 #include "CharacterPlayer.generated.h"
 
 /*
@@ -51,7 +52,7 @@ public:
 	// 무기 장착 성공 후에 Blueprint에 애니메이션 상태 변경을 알리기
 	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon")
 	void OnWeaponEquiped();
-	
+
 	// WeaponPickUp의 상호작용 범위에 들어온 무기를 등록한다.
 	void SetNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
 	
@@ -103,6 +104,8 @@ protected:
 	virtual void BeginPlay() override;
 	
 	virtual void OnRep_PlayerState() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 public:
 	virtual void Jump() override;
 
@@ -114,6 +117,10 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void PossessedBy(AController* Newcontroller) override;
+
+public:
+	USkeletalMeshComponent* Get_FirstPersonMesh() const;
+	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
 
 protected:
 	UFUNCTION()
@@ -138,12 +145,36 @@ protected:
 	void InteractAction(const FInputActionValue& value);
 
 	UFUNCTION()
+	void HandleOutOfHealth();
+
+	UFUNCTION()
 	void FireAction(const FInputActionValue& value);
-	
+
+	UFUNCTION()
+	void StopFireAction(const FInputActionValue& value);
+
+	UFUNCTION()
+	void FireToggleAction(const FInputActionValue& value);
+
 	UFUNCTION(Server, Reliable)
-	void ServerFire();
-	void ServerFire_Implementation();
+	void ServerStartFire();
+	void ServerStartFire_Implementation();
+
+	UFUNCTION(Server, Reliable)
+	void ServerStopFire();
+	void ServerStopFire_Implementation();
+
+	UFUNCTION(Server, Reliable)
+	void ServerToggleFireMode();
+	void ServerToggleFireMode_Implementation();
 	
 private:
+	// 입력함수로 서버에서 시작, 정지만 요청하고 타이머로 발사관리하면서 FireOnce()는 실제로 한발만 발사합니다. 책임을 겹치지 않게 나눈거에요 
+	// 서버에서 연사 간격을 관리하는 타이머
+	FTimerHandle _FireTimerHandle;
+	
+	// 한 발의 조준점 계산과 발사를 실행
+	void FireOnce();
+	
 	void SetupPlayerMesh();
 };
