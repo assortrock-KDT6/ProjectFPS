@@ -1,7 +1,7 @@
 #include "Character/CharacterBase.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
 
-ACharacterBase::ACharacterBase(const FObjectInitializer& ObjectInitializer)
+ACharacterBase::ACharacterBase(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	// TODO : private 함수로 빼두기
 

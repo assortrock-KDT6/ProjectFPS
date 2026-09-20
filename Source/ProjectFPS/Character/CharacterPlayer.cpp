@@ -21,14 +21,14 @@
 #include "Weapons/Weaponactor.h"
 #include "Weapons/WeaponPickUp.h"
 #include "Weapons/WeaponInterface.h"
-
+#include "Component/FOV/FPSViewSkeletalMeshComponent.h"
+#include "Component/FOV/ControlShakeComponent.h"
+#include "Animation/AnimInstance.h"
 
 ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
 {
 	PrimaryActorTick.bCanEverTick = true;
-
-#pragma region MESH_SETTING
 
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(TEXT("/Script/Engine.SkeletalMesh'/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple'"));
@@ -46,72 +46,58 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 		MeshComp->SetAnimInstanceClass(AnimAsset.Class);
 	}
 
-#pragma endregion
-
 	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
 	_CameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
-
-
+	
 	UCapsuleComponent* CapsuleComp = GetCapsuleComponent();
-
-#pragma region ROTATION_SETTING
 
 	if (IsValid(CapsuleComp))
 	{
 		_SpringArmComponent->SetupAttachment(CapsuleComp);
-		//_CameraComponent->SetupAttachment(_SpringArmComponent);
-
 		_SpringArmComponent->TargetArmLength = 0.f;
-		_SpringArmComponent->SetRelativeRotation(FRotator(0.f, 0.f, 0.f));
-
-		_SpringArmComponent->bUsePawnControlRotation = false;
-		_SpringArmComponent->bInheritPitch = false;
-		_SpringArmComponent->bInheritYaw = false;
-
-		//_CameraComponent->bUsePawnControlRotation = false;
-		_LookSensitivity = 0.75f;
+		_SpringArmComponent->SetRelativeRotation(FRotator::ZeroRotator);
+		_SpringArmComponent->bUsePawnControlRotation = true;	// Camera와 1인칭 메시가 같은 ControlRotation을 따라가게 하기
+		_SpringArmComponent->bInheritPitch           = true;
+		_SpringArmComponent->bInheritYaw             = true;
+		_SpringArmComponent->bInheritRoll            = false;
+		_SpringArmComponent->bDoCollisionTest		 = false;	// SpringArmComponent의 길이가 0 인 1인칭 시점에서 SpringArm의 카메라 충돌 보정이 개입하지 않게 하는 설정
+		_LookSensitivity							 = 0.75f;
 	}
 
 	UCharacterMovementComponent* MovementComp = GetCharacterMovement();
 	if (IsValid(MovementComp))
 	{
-		MovementComp->bOrientRotationToMovement = true;
-		bUseControllerRotationYaw = false;
+		MovementComp->bOrientRotationToMovement = false;
+		bUseControllerRotationYaw = true;
 	}
-
-#pragma endregion
-
-#pragma region Mesh Visible Toggle // Arm SkeletalMesh 만 1인칭에게 그려주고 다른 사람은 Full Mesh 를 그리게 하기
-	//// 팔의 위치와 회전은 카메라를 기준으로 조정합니다.
-	//_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
-	//_FirstPersonMesh->SetupAttachment(_CameraComponent);
-	//// 자신의 화면에만 팔을 표시한다.
-	//_FirstPersonMesh->SetOnlyOwnerSee(true);
-	//// 화면 표현용 팔은 충돌과 그림자를 만들지 않는다.
-	//_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	//_FirstPersonMesh->SetGenerateOverlapEvents(false);
-	//_FirstPersonMesh->SetCastShadow(false);
-	//// 기존 전신은 자신에게 숨기고 다른 플레이어에게 표시한다.
-	//MeshComp->SetOwnerNoSee(true);
-
-	_FirstPersonMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonMesh"));
-	_FirstPersonMesh->SetupAttachment(MeshComp);
-	_CameraComponent->SetupAttachment(_FirstPersonMesh);
-	_CameraComponent->bUsePawnControlRotation = true;
-	_FirstPersonMesh->SetOnlyOwnerSee(true);
-	_FirstPersonMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	_FirstPersonMesh->SetGenerateOverlapEvents(false);
-	_FirstPersonMesh->SetCastShadow(false);
-	MeshComp->SetOwnerNoSee(true);
-
-#pragma endregion
 	
-	// Parkour
+	_FirstPersonMesh  = CreateDefaultSubobject<UFPSViewSkeletalMeshComponent>(TEXT("FirstPersonMesh"));	
+	_FirstPersonMesh -> SetupAttachment(_SpringArmComponent);
+	_FirstPersonMesh -> SetOnlyOwnerSee(true);
+	_FirstPersonMesh -> SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_FirstPersonMesh -> SetGenerateOverlapEvents(false);
+	_FirstPersonMesh -> SetCastShadow(false);
+	_FirstPersonMesh -> VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones; // 서버에서도 Arm Bone 에 붙은 발사 Actor의 위치를 갱신해야한다.
+	
+	// 시점 회전은 부모 SpringArm에서 받고, 팔의 Camera 본을 따라간다.
+	_CameraComponent -> SetupAttachment(_FirstPersonMesh, TEXT("camera"));
+	_CameraComponent -> SetRelativeLocation(FVector::ZeroVector);
+	_CameraComponent -> SetRelativeRotation(FRotator::ZeroRotator);
+	_CameraComponent -> bUsePawnControlRotation = false;
+	
+	MeshComp		 -> SetOwnerNoSee(true);
+	
+	_ViewWeaponMesh = CreateDefaultSubobject<UFPSViewSkeletalMeshComponent>(TEXT("ViewWeaponMesh"));
+	_ViewWeaponMesh->SetupAttachment(_FirstPersonMesh,TEXT("weapon"));
+	_ViewWeaponMesh->SetRelativeLocation(FVector::ZeroVector);
+	_ViewWeaponMesh->SetRelativeRotation(FRotator::ZeroRotator);
+	_ViewWeaponMesh->SetRelativeScale3D(FVector::OneVector);
+	
+	_ControlShakeManager = CreateDefaultSubobject<UControlShakeComponent>(TEXT("ControlShakeComponent"));
+	
 	_HurdleCheckComponent = CreateDefaultSubobject<UHurdleCheckComponent>(TEXT("HurdleCheckComponent"));
 	_VaultComponent = CreateDefaultSubobject<UVaultComponent>(TEXT("VaultComponent"));
-	//_HangingComponent   = CreateDefaultSubobject<UHangingComponent>(TEXT("HangingComponent"));
 	_MantleComponent = CreateDefaultSubobject<UMantleComponent>(TEXT("MantleComponent"));
-
 	_InteractionComponent = CreateDefaultSubobject<UInteractionComponent>(TEXT("InteractionComponent"));
 }
 
@@ -141,57 +127,143 @@ FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
 	return TraceEnd;
 }
 
+// bool ACharacterPlayer::EquipWeapon(FName WeaponID)
+// {
+// 	if (nullptr == _WeaponActorClass || WeaponID.IsNone())
+// 	{
+// 		return false;
+// 	}
+// 	
+// 	if (false == IsValid(GetWorld()) || false == IsValid(_FirstPersonMesh) || false == _FirstPersonMesh->DoesSocketExist(TEXT("Shooter_Socket")))
+// 	{
+// 		return false;
+// 	}
+// 	
+// 	FActorSpawnParameters SpawnParameters;
+// 	
+// 	SpawnParameters.Owner = this;
+// 	SpawnParameters.Instigator = this;
+// 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+// 	
+// 	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
+// 	
+// 	if (false == IsValid(NewWeapon))
+// 	{
+// 		return false;
+// 	}
+// 	
+// 	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
+// 	
+// 	if (false == bInitialized)
+// 	{
+// 		NewWeapon->Destroy();
+// 		return false;
+// 	}
+// 	
+// 	const bool bAttached = NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Shooter_Socket"));
+// 	
+// 	if (false == bAttached)
+// 	{
+// 		NewWeapon->Destroy();
+// 		return false;
+// 	}
+// 	
+// 	if (IsValid(_CurrentWeapon))
+// 	{
+// 		_CurrentWeapon->Destroy();
+// 	}
+// 	
+// 	_CurrentWeapon = NewWeapon;
+// 	
+// 	OnWeaponEquiped();
+// 	
+// 	return true;
+// }
+
 bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 {
-	if (nullptr == _WeaponActorClass || WeaponID.IsNone())
+	if (!HasAuthority()
+		|| !_WeaponActorClass
+		|| WeaponID.IsNone()
+		|| !IsValid(GetWorld())
+		|| !IsValid(_FirstPersonMesh)
+		|| _FirstPersonMesh->GetBoneIndex(TEXT("weapon")) == INDEX_NONE)
 	{
 		return false;
 	}
-	
-	if (false == IsValid(GetWorld()) || false == IsValid(_FirstPersonMesh) || false == _FirstPersonMesh->DoesSocketExist(TEXT("Shooter_Socket")))
-	{
-		return false;
-	}
-	
+
 	FActorSpawnParameters SpawnParameters;
-	
 	SpawnParameters.Owner = this;
 	SpawnParameters.Instigator = this;
 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	
+
 	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
-	
-	if (false == IsValid(NewWeapon))
+
+	if (!IsValid(NewWeapon))
 	{
 		return false;
 	}
-	
-	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
-	
-	if (false == bInitialized)
+
+	if (!IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID))
 	{
 		NewWeapon->Destroy();
 		return false;
 	}
-	
-	const bool bAttached = NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Shooter_Socket"));
-	
-	if (false == bAttached)
+
+	const FWeaponData& WeaponData = NewWeapon->GetWeaponData();
+
+	if (!IsValid(WeaponData._ViewMesh))
 	{
 		NewWeapon->Destroy();
 		return false;
 	}
-	
+
+	// 기존 발사 Actor의 장착 위치는 유지한다.
+	if (!NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("weapon")))
+	{
+		NewWeapon->Destroy();
+		return false;
+	}
+
+	// 무기를 바꾸면서 이전 무기의 연사가 이어지지 않게 한다.
+	GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+
 	if (IsValid(_CurrentWeapon))
 	{
 		_CurrentWeapon->Destroy();
 	}
-	
+
 	_CurrentWeapon = NewWeapon;
-	
-	OnWeaponEquiped();
-	
+
+	// 서버 쪽 기존 애니메이션 이벤트를 유지한다.
+	// 로컬 플레이어의 이벤트는 아래 Client 함수에서 한 번 실행한다.
+	if (!IsLocallyControlled())
+	{
+		OnWeaponEquiped();
+	}
+
+	ClientSetViewWeapon(WeaponData._ViewMesh, WeaponData._ViewAnimationInstance);
+
 	return true;
+}
+
+void ACharacterPlayer::ClientSetViewWeapon_Implementation(USkeletalMesh* ViewMesh, TSubclassOf<UAnimInstance> ViewAnimClass)
+{
+	if (!IsLocallyControlled() || !IsValid(_ViewWeaponMesh))
+	{
+		return;
+	}
+
+	// 이전 총기의 애니메이션 인스턴스를 먼저 정리한다.
+	_ViewWeaponMesh->SetAnimInstanceClass(nullptr);
+	_ViewWeaponMesh->SetSkeletalMesh(ViewMesh);
+
+	if (ViewMesh && ViewAnimClass)
+	{
+		_ViewWeaponMesh->SetAnimInstanceClass(ViewAnimClass);
+	}
+
+	OnWeaponEquiped();
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -268,14 +340,13 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Move,       ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveAction);
 	InputComp->BindAction(_DefaultInput->_Jump,       ETriggerEvent::Triggered, this, &ACharacterPlayer::Jump);
 	InputComp->BindAction(_DefaultInput->_MouseLook,  ETriggerEvent::Triggered, this, &ACharacterPlayer::MoveLookAction);
-	InputComp->BindAction(_DefaultInput->_MouseZoom,  ETriggerEvent::Triggered, this, &ACharacterPlayer::CharacterMouseZoomAction);
+	InputComp->BindAction(_DefaultInput->_AimZoom,    ETriggerEvent::Triggered, this, &ACharacterPlayer::AimZoomAction);
 	InputComp->BindAction(_DefaultInput->_Parkour,    ETriggerEvent::Started,   this, &ACharacterPlayer::ParkourAction);
 	InputComp->BindAction(_DefaultInput->_Inventory,  ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleInventoryAction);
 	InputComp->BindAction(_DefaultInput->_Map,		 ETriggerEvent::Started,   this, &ACharacterPlayer::ToggleMapAction);
 	InputComp->BindAction(_DefaultInput->_Interact,   ETriggerEvent::Started,   this, &ACharacterPlayer::InteractAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
-	InputComp->BindAction(_DefaultInput->_Interact,   ETriggerEvent::Started,   this, &ACharacterPlayer::InteractAction);
 	InputComp->BindAction(_DefaultInput->_FireToggle, ETriggerEvent::Started,   this, &ACharacterPlayer::FireToggleAction);
 	PlayerController->RefreshInputMappingcontext();
 }
@@ -334,7 +405,7 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 	}
 }
 
-void ACharacterPlayer::CharacterMouseZoomAction(const FInputActionValue& Value)
+void ACharacterPlayer::AimZoomAction(const FInputActionValue& Value)
 {
 	
 	// Jisoo's Code : 조준으로 확대가 힘들다면 돋보기로 키우기
@@ -426,25 +497,11 @@ void ACharacterPlayer::ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp)
 
 void ACharacterPlayer::InteractAction(const FInputActionValue& value)
 {
-	// 이전 코드인데 제가 우선은 WeaponPickUp한다고 수정하느라 기존코드는 전부 주석걸고 예외처리식으로 빼놨어요. 
-	// 나중에 필요하면 WeaponPickUp 이랑 ItemPickUp 합칠때 주석 풀고 수정하면 될것같아요 - 건영 
-	// Todo : MergeCode
-	// if (_InteractionComponent)
-	// 	_InteractionComponent->PickUpInteract();
-	
 	if (false == IsValid(_InteractionComponent))
 	{
 		return;
 	}
-	
-	// WeaponPickUp 범위 안에서는 해당 무기를 우선 상호작용한다.
-	//if (IsValid(_NearbyWeaponPickUp))
-	//{
-	//	_InteractionComponent->ServerInteract(_NearbyWeaponPickUp);
-	//	
-	//	return;
-	//}
-	
+
 	// 범위 내에 무기가 없으면 기존 작성되었던 Ray형식의 상호작용 방식을 사용하기
 	_InteractionComponent->PickUpInteract();
 }
@@ -517,8 +574,20 @@ void ACharacterPlayer::FireOnce()
 	}
 
 	const FVector AimPoint = GetAimPoint(_CurrentWeapon->GetWeaponRange());
+	
+	// 실제 총알 생성에 성공했을때만 반동을 전달
+	if (_CurrentWeapon->Fire(AimPoint))
+	{
+		ClientWeaponFired(_CurrentWeapon->GetWeaponData()._WeaponId);
+	}
+}
 
-	_CurrentWeapon->Fire(AimPoint);
+void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
+{
+	if (IsLocallyControlled() && IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->WeaponFired(WeaponID);
+	}
 }
 
 void ACharacterPlayer::HandleOutOfHealth()

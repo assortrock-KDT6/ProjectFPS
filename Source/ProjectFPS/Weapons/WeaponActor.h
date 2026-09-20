@@ -27,6 +27,8 @@ public:
 	// 현재 무기의 데이터 테이블 사거리를 반환
 	float GetWeaponRange() const;
 	
+	const FWeaponData& GetWeaponData() const;
+	
 	// 현재 무기의 발사 모드를 반환 
 	EWeaponFireMode GetFireMode() const;
 	

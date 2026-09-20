@@ -82,8 +82,12 @@ void AWeaponPickUp::Interact_Implementation(AActor* Interactor)
 		return;
 	}
 	
-	Character->EquipWeapon(ItemData->_WeaponId);
-
+	// 장착에 실패하면 인벤토리 획득과 바닥 무기 제거도 진행하지 않게 하기
+	if (!Character->EquipWeapon(ItemData->_WeaponId))
+	{
+		return;
+	}
+	
 	Super::Interact_Implementation(Interactor);
 }
 

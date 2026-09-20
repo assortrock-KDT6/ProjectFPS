@@ -5,12 +5,17 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/DataTable.h"
 #include "WeaponTypes.generated.h"
 
 /**
  *  변동 변수가 될 수 있는 값은 Unreal Engine의 GAS로 옮기고
  *  변동되지 않는 변수와 정의, 상태는 이곳에서 Table로 관리한다.
  */
+
+class USkeletalMesh;
+class UAnimInstance;
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class PROJECTFPS_API UWeaponTypes : public UObject
 {
@@ -29,7 +34,7 @@ enum class EWeaponType : uint8
 	Sniper		UMETA(DisplayName = "Sniper")
 };
 
-// 사용할 무기의 따른 총알(Pojectile) 타입
+// 사용할 무기의 따른 총알(Projectile) 타입
 UENUM(BlueprintType)
 enum class EWeaponBulletType : uint8
 {
@@ -85,6 +90,14 @@ struct FWeaponData : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisPlayName = "WeaponInfomation | StaticMesh"))
 	TObjectPtr<UStaticMesh> _StaticMesh = nullptr;
+	
+	// 내 화면에표시할 1인칭 총기
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | View")
+	TObjectPtr<USkeletalMesh> _ViewMesh = nullptr;
+	
+	// 해당 총기 SkeletalMesh의 호환되는 애니메이션 블루프린트
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon| View")
+	TSubclassOf<UAnimInstance> _ViewAnimationInstance;
 };
 
 // todo : 나중에 GAS 로 변동값 옮기기

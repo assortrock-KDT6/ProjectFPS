@@ -20,6 +20,10 @@ class UCameraComponent;
 class USkeletalMeshComponent;
 class AWeaponActor;
 class AWeaponPickUp;
+class UFPSViewSkeletalMeshComponent;
+class UControlShakeComponent;
+class USkeletalMesh;
+class UAnimInstance;
 struct FInputActionValue;
 
 UCLASS()
@@ -68,9 +72,15 @@ protected:
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UDefaultInput> _DefaultInput;
-
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "First Person")
-	TObjectPtr<USkeletalMeshComponent> _FirstPersonMesh;
+	TObjectPtr<UFPSViewSkeletalMeshComponent> _FirstPersonMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "First Person")
+	TObjectPtr<UFPSViewSkeletalMeshComponent> _ViewWeaponMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Recoil")
+	TObjectPtr<UControlShakeComponent> _ControlShakeManager;
 	
 	// 장착되는 모든 총기의 공통 Actor 클래스다. 시작 무기를 의미하지않는다.
 	// 실제 무기 Actor를 생성할 공통 Blueprint 클래스
@@ -130,7 +140,7 @@ protected:
 	void MoveLookAction(const FInputActionValue& Value);
 
 	UFUNCTION()
-	void CharacterMouseZoomAction(const FInputActionValue& Value);
+	void AimZoomAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	virtual void ParkourAction(const FInputActionValue& Value);
@@ -167,6 +177,14 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerToggleFireMode();
 	void ServerToggleFireMode_Implementation();
+	
+	// 서버에서 결정한 1인칭 외형을 소유 플레이어에게 전달하기
+	UFUNCTION(Client, Reliable)
+	void ClientSetViewWeapon(USkeletalMesh* ViewMesh, TSubclassOf<UAnimInstance> ViewAnimationClass);
+	
+	// 서버에서 실제 발사가 성공했을때만 호출
+	UFUNCTION(Client, Reliable)
+	void ClientWeaponFired(FName WeaponID);
 	
 private:
 	// 입력함수로 서버에서 시작, 정지만 요청하고 타이머로 발사관리하면서 FireOnce()는 실제로 한발만 발사합니다. 책임을 겹치지 않게 나눈거에요 
