@@ -30,7 +30,7 @@ protected:
 	TObjectPtr<class UInputAction> _MouseLook;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UInputAction> _MouseZoom;
+	TObjectPtr<class UInputAction> _AimZoom;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UInputAction> _Parkour;
