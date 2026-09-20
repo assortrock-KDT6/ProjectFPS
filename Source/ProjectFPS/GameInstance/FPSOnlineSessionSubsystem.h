@@ -102,7 +102,12 @@ UCLASS()
 class PROJECTFPS_API UFPSOnlineSessionSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
+public:
+	// Preserve the failure reason when a failed connection reloads the lobby.
+	const FString& GetLastSessionError() const { return _LastSessionError; }
+	void SetLastSessionError(const FString& Error) { _LastSessionError = Error; }
 private:
+	FString _LastSessionError;
 	/** 
 	* OnlineSubsystem에 등록한 비동기 완료 Delegate Handle.
 	* 각 요청이 완료되거나 Subsystem이 종료될 때 반드시 해제하여 동일 Callback이 중복 등록되는 것을 방지한다.

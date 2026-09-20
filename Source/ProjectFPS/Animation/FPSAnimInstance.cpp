@@ -66,7 +66,7 @@ void UFPSAnimInstance::NativeInitializeAnimation()
 
 void UFPSAnimInstance::NativeThreadSafeUpdateAnimation(float DeltaSeconds)
 {
-    Super::NativeUpdateAnimation(DeltaSeconds);
+    Super::NativeThreadSafeUpdateAnimation(DeltaSeconds);
 
     if (nullptr == _Owner || nullptr == _OwnerMovement)
     {

@@ -22,6 +22,7 @@ class PROJECTFPS_API ULobbyStartWidget : public UUserWidget
 	GENERATED_BODY()
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
 	// WBP의 "StartButton" 위젯과 연결.
@@ -54,6 +55,9 @@ protected:
 	void HandleSessionTravelFailed(const FString& ErrorMessage);
 
 private:
+	void ShowSessionError(const FString& ErrorMessage);
+	void ClearSessionError();
+	TSharedPtr<class SWidget> SessionErrorOverlay;
 	UFPSOnlineSessionSubsystem* GetSessionSubsystem() const;
 	void SetStartButtonEnabled(bool IsEnabled);
 };
