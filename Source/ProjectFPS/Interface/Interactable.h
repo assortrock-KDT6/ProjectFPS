@@ -14,9 +14,14 @@ class UInteractable : public UInterface
 };
 
 /**
- * 캐릭터와 상호작용 대상을 연결하기 위한 중간다리.
- * 상호작용할 때 어떤 함수를 사용할지 정해 놓는 헤더임
+ * 상호작용 가능한 것 의 약솜 컴포넌트가 대상이 뭔지 몰라도 다룰수 있게하는 중간다리.
  */
+
+
+
+
+
+
 
 class PROJECTFPS_API IInteractable
 {

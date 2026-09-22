@@ -3,6 +3,8 @@
 
 #include "Animation/FPSAnimInstance.h"
 #include "AbilitySystemGlobals.h"
+#include "GameTag/FPSGameplayTag.h"
+#include "UObject/UnrealType.h"
 #include "Character/CharacterBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 
@@ -11,7 +13,6 @@
 #endif // WITH_EDITOR
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(FPSAnimInstance)
-
 
 UFPSAnimInstance::UFPSAnimInstance(const FObjectInitializer& ObjectInitializer)
     :Super(ObjectInitializer)
@@ -23,6 +24,13 @@ void UFPSAnimInstance::InitializeWithAbilitySystem(UAbilitySystemComponent* Abil
     check(AbilitySystemComponent);
 
     _GameplayTagPropertyMap.Initialize(this, AbilitySystemComponent);
+}
+
+void UFPSAnimInstance::NativeUninitializeAnimation()
+{
+    _Owner = nullptr;
+    _OwnerMovement = nullptr;
+    Super::NativeUninitializeAnimation();
 }
 
 #if WITH_EDITOR

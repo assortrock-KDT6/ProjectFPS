@@ -1,5 +1,7 @@
 #include "Character/CharacterBase.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
+#include "GameTag/FPSGameplayTag.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 ACharacterBase::ACharacterBase(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -16,6 +18,7 @@ ACharacterBase::ACharacterBase(const FObjectInitializer& ObjectInitializer) : Su
 void ACharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
+	RefreshMovementTags();
 	
 }
 
@@ -65,5 +68,57 @@ void ACharacterBase::SetId(const FName& Id)
 UAbilitySystemComponent* ACharacterBase::GetAbilitySystemComponent() const
 {
 	return _AbilitySystemComponent;
+}
+
+void ACharacterBase::SetAnimationStateTag(FGameplayTag Tag, bool bActive)
+{
+	if (!HasAuthority() || !IsValid(_AbilitySystemComponent) || !Tag.IsValid())
+	{
+		return;
+	}
+
+	_AbilitySystemComponent->SetLooseGameplayTagCount(Tag, bActive ? 1 : 0, EGameplayTagReplicationState::TagAndCountToAll);
+	ForceNetUpdate();
+}
+
+void ACharacterBase::RefreshMovementTags()
+{
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+
+	if (false == IsValid(_AbilitySystemComponent) || nullptr == Movement)
+	{
+		return;
+	}
+
+	for (const auto& Pair : FPSGameplayTags::MovementModeTagMap)
+	{
+		_AbilitySystemComponent->SetLooseGameplayTagCount(Pair.Value, Movement->MovementMode == Pair.Key ? 1 : 0);
+	}
+
+	for (const auto& Pair : FPSGameplayTags::CustomMovementModeTagMap)
+	{
+		_AbilitySystemComponent->SetLooseGameplayTagCount(Pair.Value,
+			Movement->MovementMode == MOVE_Custom && Movement->CustomMovementMode == Pair.Key ? 1 : 0);
+	}
+
+	_AbilitySystemComponent->SetLooseGameplayTagCount(FPSGameplayTags::Status_Crouching, bIsCrouched ? 1 : 0);
+}
+
+void ACharacterBase::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+	RefreshMovementTags();
+}
+
+void ACharacterBase::OnStartCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnStartCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	RefreshMovementTags();
+}
+
+void ACharacterBase::OnEndCrouch(float HalfHeightAdjust, float ScaledHalfHeightAdjust)
+{
+	Super::OnEndCrouch(HalfHeightAdjust, ScaledHalfHeightAdjust);
+	RefreshMovementTags();
 }
 

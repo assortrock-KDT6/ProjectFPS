@@ -1,5 +1,6 @@
 #include "Character/CharacterPlayer.h"
 #include "GameMode/FPSGameMode.h"
+#include "GameMode/PlayerStateBase.h"
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -9,11 +10,12 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
+#include "Item/ItemPickUp.h"
 #include "Camera/CameraComponent.h"
+#include "Component/Inventory/InventoryComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/VaultComponent.h"
-//#include "Component/Parkour/HangingComponent.h
 #include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/MantleComponent.h"
 #include "Component/Ability/Attributes/FPSHealthSet.h"
@@ -24,6 +26,12 @@
 #include "Component/FOV/FPSViewSkeletalMeshComponent.h"
 #include "Component/FOV/ControlShakeComponent.h"
 #include "Animation/AnimInstance.h"
+#include "GameTag/FPSGameplayTag.h"
+#include "Table/TableSubsystem.h"
+#include "Table/TableDatas.h"
+#include "Net/UnrealNetwork.h"
+
+
 
 ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -31,19 +39,11 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	PrimaryActorTick.bCanEverTick = true;
 
 	USkeletalMeshComponent* MeshComp = GetMesh();
-	ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(TEXT("/Script/Engine.SkeletalMesh'/Game/Characters/Mannequins/Meshes/SKM_Quinn_Simple.SKM_Quinn_Simple'"));
-
-	if (MeshAsset.Succeeded())
+	
+	if (nullptr != MeshComp)
 	{
-		MeshComp->SetSkeletalMesh(MeshAsset.Object);
 		MeshComp->SetRelativeLocation(FVector(0.f, 0.f, -90.f));
 		MeshComp->SetRelativeRotation(FVector(0.f, -90.f, 0.f).Rotation());
-	}
-
-	ConstructorHelpers::FClassFinder<UAnimInstance> AnimAsset(TEXT("/Script/Engine.AnimBlueprint'/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed.ABP_Unarmed_C'"));
-	if (AnimAsset.Succeeded())
-	{
-		MeshComp->SetAnimInstanceClass(AnimAsset.Class);
 	}
 
 	_SpringArmComponent = CreateDefaultSubobject<USpringArmComponent>(TEXT("SprintArm"));
@@ -103,6 +103,24 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 
 void ACharacterPlayer::SetAiming(bool bAniming)
 {
+	if (HasAuthority() && IsValid(_AbilitySystemComponent))
+	{
+		SetAnimationStateTag(FPSGameplayTags::Status_ADS, bAniming && !_AbilitySystemComponent->HasMatchingGameplayTag(FPSGameplayTags::Status_Death));
+	}
+	else if (IsLocallyControlled())
+	{
+		ServerSetAiming(bAniming);
+	}
+}
+
+void ACharacterPlayer::ServerSetAiming_Implementation(bool bAiming)
+{
+	SetAiming(bAiming);
+}
+
+void ACharacterPlayer::ClearFiringTag()
+{
+	SetAnimationStateTag(FPSGameplayTags::Status_Firing, false);
 }
 
 FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
@@ -127,59 +145,6 @@ FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
 	return TraceEnd;
 }
 
-// bool ACharacterPlayer::EquipWeapon(FName WeaponID)
-// {
-// 	if (nullptr == _WeaponActorClass || WeaponID.IsNone())
-// 	{
-// 		return false;
-// 	}
-// 	
-// 	if (false == IsValid(GetWorld()) || false == IsValid(_FirstPersonMesh) || false == _FirstPersonMesh->DoesSocketExist(TEXT("Shooter_Socket")))
-// 	{
-// 		return false;
-// 	}
-// 	
-// 	FActorSpawnParameters SpawnParameters;
-// 	
-// 	SpawnParameters.Owner = this;
-// 	SpawnParameters.Instigator = this;
-// 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-// 	
-// 	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
-// 	
-// 	if (false == IsValid(NewWeapon))
-// 	{
-// 		return false;
-// 	}
-// 	
-// 	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
-// 	
-// 	if (false == bInitialized)
-// 	{
-// 		NewWeapon->Destroy();
-// 		return false;
-// 	}
-// 	
-// 	const bool bAttached = NewWeapon->AttachToComponent(_FirstPersonMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, TEXT("Shooter_Socket"));
-// 	
-// 	if (false == bAttached)
-// 	{
-// 		NewWeapon->Destroy();
-// 		return false;
-// 	}
-// 	
-// 	if (IsValid(_CurrentWeapon))
-// 	{
-// 		_CurrentWeapon->Destroy();
-// 	}
-// 	
-// 	_CurrentWeapon = NewWeapon;
-// 	
-// 	OnWeaponEquiped();
-// 	
-// 	return true;
-// }
-
 bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 {
 	if (!HasAuthority()
@@ -199,12 +164,14 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
 
-	if (!IsValid(NewWeapon))
+
+	if (false == IsValid(NewWeapon))
 	{
 		return false;
 	}
 
-	if (!IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID))
+	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
+	if (false == bInitialized)
 	{
 		NewWeapon->Destroy();
 		return false;
@@ -239,14 +206,12 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	// 로컬 플레이어의 이벤트는 아래 Client 함수에서 한 번 실행한다.
 	if (!IsLocallyControlled())
 	{
-		OnWeaponEquiped();
+		OnWeaponEquiped(WeaponData._WeaponType);
 	}
 
 	ClientSetViewWeapon(WeaponData._ViewMesh, WeaponData._ViewAnimationInstance);
-
 	return true;
 }
-
 void ACharacterPlayer::ClientSetViewWeapon_Implementation(USkeletalMesh* ViewMesh, TSubclassOf<UAnimInstance> ViewAnimClass)
 {
 	if (!IsLocallyControlled() || !IsValid(_ViewWeaponMesh))
@@ -263,7 +228,10 @@ void ACharacterPlayer::ClientSetViewWeapon_Implementation(USkeletalMesh* ViewMes
 		_ViewWeaponMesh->SetAnimInstanceClass(ViewAnimClass);
 	}
 
-	OnWeaponEquiped();
+	if (true == IsValid(_CurrentWeapon))
+	{
+		OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
+	}
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -290,6 +258,7 @@ void ACharacterPlayer::OnRep_PlayerState()
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	GetWorldTimerManager().ClearTimer(_FiringTagTimerHandle);
 	UFPSHealthSet* HealthAttribute = Cast<UFPSHealthSet>(_HealthAttribute);
 	if (true == IsValid(HealthAttribute))
 	{
@@ -307,7 +276,6 @@ void ACharacterPlayer::Jump()
 void ACharacterPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -348,6 +316,7 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
 	InputComp->BindAction(_DefaultInput->_FireToggle, ETriggerEvent::Started,   this, &ACharacterPlayer::FireToggleAction);
+	InputComp->BindAction(_DefaultInput->_DropItem, ETriggerEvent::Started, this, &ACharacterPlayer::DropItemAction);
 	PlayerController->RefreshInputMappingcontext();
 }
 
@@ -363,6 +332,151 @@ void ACharacterPlayer::PossessedBy(AController* Newcontroller)
 		_AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	}
 }
+
+void ACharacterPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ACharacterPlayer, _CurrentWeapon);
+}
+
+void ACharacterPlayer::ClearEquippedWeapon()
+{
+	// 연사 중이면 끊는다
+	GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+
+	if (IsValid(_CurrentWeapon))
+	{
+		_CurrentWeapon->Destroy();
+	}
+	_CurrentWeapon = _PendingWeapon;
+	_PendingWeapon = nullptr;
+
+	if (true == IsValid(_CurrentWeapon))
+	{
+		OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
+	}
+}
+
+bool ACharacterPlayer::TryEquipSlot(int32 Index)
+{
+	// 서버 확인
+	if (false == HasAuthority())
+	{
+		return false;
+	}
+
+	APlayerStateBase* Ps = GetPlayerState<APlayerStateBase>();
+	if (nullptr == Ps)
+		return false;
+
+	UInventoryComponent* Inv = Ps->GetInventory();
+	if (nullptr == Inv)
+		return false;
+
+	// 지점 슬롯에 들어 있는 아이템 TID 확인.
+	const FName TID = Inv->GetWeaponTID(Index);
+	if (TID.IsNone())
+		return false;
+
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	if (nullptr == Sub)
+		return false;
+
+	// 아이템 정보에서 무기 ID 확인.
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+
+	if (nullptr == Row)
+		return false;
+
+	if (Row->_WeaponId.IsNone())
+		return false;
+
+	// 손에 들 새 무기 액터 준비
+	if (false == EquipWeapon(Row->_WeaponId))
+		return false;
+
+	// 실제 장착에 맞춰 인벤토리의 장착 슬롯 번호 기록.
+	Inv->SetEquippedWEaponIndex(Index);
+
+	return true;
+
+}
+
+bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
+{
+	if (false == HasAuthority())
+	{
+		return false;
+	}
+
+	APlayerStateBase* Ps = GetPlayerState<APlayerStateBase>();
+	if (nullptr == Ps)
+	{
+		return false;
+	}
+
+	UInventoryComponent* Inv = Ps->GetInventory();
+	if (nullptr == Inv)
+	{
+		return false;
+	}
+
+	// 검증
+	const FName TID = Inv->GetWeaponTID(Index);
+	if (TID.IsNone())
+	{
+		return false;
+	}
+
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	if (nullptr == Sub)
+	{
+		return false; 
+	}
+
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+	if (nullptr == Row)
+	{
+		return false;
+	}
+
+	// 픽업 준비 
+	FTransform Transform = GetActorTransform();
+	Transform.SetLocation(GetActorLocation() + GetActorForwardVector() * _DropForwardOffset);
+
+	AItemPickUp* Pickup = AItemPickUp::BeginSpawnFromTID(GetWorld(), TID, 1, Transform);
+	if (nullptr == Pickup)
+	{
+		return false;
+	}
+
+	// 인벤 확정 실패시 준비한 픽업 정리.
+	const bool bWasEquipped = (Index == Inv->GetEquippedWeaponIndex());
+	if (false == Inv->RemoveWeapon(Index))
+	{
+		Pickup->Destroy();
+		return false;
+	}
+
+	// 손 확정시 
+	if (bWasEquipped)
+	{
+		ClearEquippedWeapon();
+
+		const int32 NextSlot = Inv->FindFirstWeaponSlot();
+		if (NextSlot != INDEX_NONE)
+		{
+			TryEquipSlot(NextSlot);
+		}
+	}
+
+	// 픽업
+	AItemPickUp::FinishSpawnFromTID(Pickup, Transform);
+	return true;
+
+}
+
 
 USkeletalMeshComponent* ACharacterPlayer::Get_FirstPersonMesh() const
 {
@@ -523,7 +637,7 @@ void ACharacterPlayer::FireToggleAction(const FInputActionValue& value)
 
 void ACharacterPlayer::ServerStartFire_Implementation()
 {
-	if (false == IsValid(_CurrentWeapon))
+	if (false == IsValid(_CurrentWeapon) || true == _AbilitySystemComponent->HasMatchingGameplayTag(FPSGameplayTags::Status_Death))
 	{
 		return;
 	}
@@ -567,7 +681,8 @@ void ACharacterPlayer::ServerToggleFireMode_Implementation()
 
 void ACharacterPlayer::FireOnce()
 {
-	if (false == HasAuthority() || false == IsValid(_CurrentWeapon))
+	if (false == HasAuthority() || false == IsValid(_CurrentWeapon)
+		|| _AbilitySystemComponent->HasMatchingGameplayTag(FPSGameplayTags::Status_Death))
 	{
 		GetWorldTimerManager().ClearTimer(_FireTimerHandle);
 		return;
@@ -578,6 +693,9 @@ void ACharacterPlayer::FireOnce()
 	// 실제 총알 생성에 성공했을때만 반동을 전달
 	if (_CurrentWeapon->Fire(AimPoint))
 	{
+		SetAnimationStateTag(FPSGameplayTags::Status_Firing, true);
+		GetWorldTimerManager().SetTimer(_FiringTagTimerHandle, this, &ACharacterPlayer::ClearFiringTag,
+			FMath::Max(0.1f, _CurrentWeapon->GetProjectileInterval() + 0.05f), false);
 		ClientWeaponFired(_CurrentWeapon->GetWeaponData()._WeaponId);
 	}
 }
@@ -588,6 +706,22 @@ void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
 	{
 		_ControlShakeManager->WeaponFired(WeaponID);
 	}
+}
+
+void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
+{
+	// 인벤 / 맵이 열려 있으면 버리기를 막음.
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (AGameHUD* HUD = Cast<AGameHUD>(PC->GetHUD()))
+		{
+			if(HUD->IsAnyOverlayOpen())
+			{
+				return;
+			}
+		}
+	}
+	ServerDropEquippedWeapon();
 }
 
 void ACharacterPlayer::HandleOutOfHealth()
@@ -602,7 +736,7 @@ void ACharacterPlayer::HandleOutOfHealth()
 		return;
 	}
 	
-	const FGameplayTag DeadTag = FGameplayTag::RequestGameplayTag(TEXT("State.Dead"));
+	const FGameplayTag DeadTag = FPSGameplayTags::Status_Death_Dead;
 
 	// 중복 사망 처리 방지
 	if (_AbilitySystemComponent->HasMatchingGameplayTag(DeadTag))
@@ -610,7 +744,14 @@ void ACharacterPlayer::HandleOutOfHealth()
 		return;
 	}
 
-	_AbilitySystemComponent->AddLooseGameplayTag(DeadTag);
+	SetAnimationStateTag(DeadTag, true);
+	GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+	GetWorldTimerManager().ClearTimer(_FiringTagTimerHandle);
+	ClearFiringTag();
+	SetAiming(false);
+	SetAnimationStateTag(FPSGameplayTags::Status_Reloading, false);
+	SetAnimationStateTag(FPSGameplayTags::Status_Melee, false);
+	SetAnimationStateTag(FPSGameplayTags::Status_Dashing, false);
 
 	// 진행 중인 사격, 재정전, 파쿠르 Ability 취소
 	_AbilitySystemComponent->CancelAllAbilities();
@@ -621,6 +762,20 @@ void ACharacterPlayer::HandleOutOfHealth()
 		GameMode->HandlePlayerDeath(this);
 	}
 }
+
+void ACharacterPlayer::ServerDropEquippedWeapon_Implementation()
+{
+	APlayerStateBase* Ps = GetPlayerState<APlayerStateBase>();
+	if (nullptr == Ps)
+		return;
+	
+	UInventoryComponent* Inv = Ps->GetInventory();
+	if (nullptr == Inv)
+		return;
+
+	TryDropWeaponAt(Inv->GetEquippedWeaponIndex());
+}
+
 
 void ACharacterPlayer::SetupPlayerMesh()
 {
@@ -640,4 +795,14 @@ void ACharacterPlayer::SetupPlayerMesh()
 	// TODO
 	// 플레이어 몸통은 마테리얼로 나누는 걸 추천.
 	// MeshComponent->SetMaterial(TorsoMaterialIndex, InvisibleMaterial);
+}
+
+void ACharacterPlayer::OnRep_CurrentWeapon()
+{
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return;
+	}
+
+	OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
 }

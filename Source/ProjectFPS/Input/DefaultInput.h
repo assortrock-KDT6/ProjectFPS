@@ -49,4 +49,8 @@ protected:
 	
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _FireToggle;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _DropItem;
+
 };

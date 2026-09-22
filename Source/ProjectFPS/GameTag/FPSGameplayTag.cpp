@@ -22,18 +22,23 @@ namespace FPSGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(SetByCaller_Heal,	"SetByCaller.Heal", " ");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Crouching,	"Status.Crouching",		" ");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_ADS, "Status.ADS", "Aiming down sights");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Firing, "Status.Firing", "Weapon firing animation window");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Reloading, "Status.Reloading", "Reload in progress");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Melee, "Status.Melee", "Melee in progress");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Dashing, "Status.Dashing", "Dash in progress");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Death,		"Status.Death",			" ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Death_Dying,	"Status.Death.Dying",	" ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Status_Death_Dead,	"Status.Death.Dead",	" ");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Walking,		"Movement.Mode.Walking",	" ");
-	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_NavWalking,	"Movement.Mode.NavWling",	" ");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_NavWalking,	"Movement.Mode.NavWalking",	" ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Falling,		"Movement.Mode.Falling",	" ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Swimming,		"Movement.Mode.Swimming",	" ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Flying,		"Movement.Mode.Flying",		" ");
-	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Custom,		"Movement.Mode.Walking",	" ");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Custom,		"Movement.Mode.Custom",	" ");
 
-	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Vault,		"Movement.Mode.Valut",	" ");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Vault,		"Movement.Mode.Vault",	" ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Mantle,	"Movement.Mode.Mantle", " ");
 
 	const TMap<uint8, FGameplayTag> MovementModeTagMap =

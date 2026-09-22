@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Table/TableSubsystem.h"
 #include "GameFramework/Pawn.h"
+#include "Net/UnrealNetwork.h"
 
 // Sets default values
 AWeaponActor::AWeaponActor()
@@ -27,35 +28,18 @@ AWeaponActor::AWeaponActor()
 	SetReplicateMovement(true);
 }
 
-bool AWeaponActor::InitializeWeapon_Implementation(FName _WeaponID)
+bool AWeaponActor::InitializeWeapon_Implementation(FName WeaponID)
 {
-	UTableSubsystem* TableSubsystem = UTableSubsystem::Get(this);
-	if (false == IsValid(TableSubsystem))
-	{
-		return false;
-	}
-	
-	const FWeaponData* WeaponData = TableSubsystem->FindTableRow<FWeaponData>(TEXT("WeaponDataTable"), _WeaponID);
-	
-	if (nullptr == WeaponData)
-	{
-		return false;
-	}
-	
-	const FWeaponAbilityDataTable* WeaponAbilityData = TableSubsystem->FindTableRow<FWeaponAbilityDataTable>(TEXT("WeaponAbilityDataTable"), WeaponData->_WeaponAbilId);
-	if (nullptr == WeaponAbilityData)
-	{
-		return false;
-	}
-	
-	// 테이블 조회가 모두 성공한 뒤 무기 액터 내부에 복사
-	_WeaponData = *WeaponData;
-	// 반동 데이터의 Key 와 실제 조회에 사용한 Row Name을 일치시킨다
-	_WeaponData._WeaponId = _WeaponID;
-	_WeaponAbilityData = *WeaponAbilityData;
-	_WeaponMesh->SetStaticMesh(_WeaponData._StaticMesh);
-	
-	return IsValid(_WeaponData._StaticMesh);
+	_WeaponID = WeaponID;
+
+	return !_WeaponID.IsNone() && LoadWeaponData(_WeaponID);
+}
+
+void AWeaponActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AWeaponActor, _WeaponID);
 }
 
 FVector AWeaponActor::GetMuzzleLocation() const
@@ -107,7 +91,10 @@ bool AWeaponActor::Fire(const FVector& AimPoint)
 		return false;
 	}
 	
-	if (false == IsValid(GetWorld()) || false == IsValid(_WeaponMesh) || nullptr == _ProjectileClass || false == _WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
+	if (false == IsValid(GetWorld()) 
+		|| false == IsValid(_WeaponMesh) 
+		|| nullptr == _ProjectileClass 
+		|| false == _WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
 	{
 		return false;
 	}
@@ -130,6 +117,42 @@ bool AWeaponActor::Fire(const FVector& AimPoint)
 	AActor* Projectile = GetWorld()->SpawnActor<AActor>(_ProjectileClass, MuzzleLocation, FireDirection.Rotation(), SpawnParameters);
 	
 	return IsValid(Projectile);
+}
+
+void AWeaponActor::OnRep_WeaponID()
+{
+	LoadWeaponData(_WeaponID);
+}
+
+bool AWeaponActor::LoadWeaponData(FName WeaponID)
+{
+	UTableSubsystem* TableSubsystem = UTableSubsystem::Get(this);
+	if (false == IsValid(TableSubsystem))
+	{
+		return false;
+	}
+
+	const FWeaponData* WeaponData = TableSubsystem->FindTableRow<FWeaponData>(TEXT("WeaponDataTable"), WeaponID);
+
+	if (nullptr == WeaponData)
+	{
+		return false;
+	}
+
+	const FWeaponAbilityDataTable* WeaponAbilityData = TableSubsystem->FindTableRow<FWeaponAbilityDataTable>(TEXT("WeaponAbilityDataTable"), WeaponData->_WeaponAbilId);
+	if (nullptr == WeaponAbilityData)
+	{
+		return false;
+	}
+
+	// 테이블 조회가 모두 성공한 뒤 무기 액터 내부에 복사
+	_WeaponData = *WeaponData;
+	// 반동 데이터의 Key 와 실제 조회에 사용한 Row Name을 일치시킨다
+	_WeaponData._WeaponId = WeaponID;
+	_WeaponAbilityData = *WeaponAbilityData;
+	_WeaponMesh->SetStaticMesh(_WeaponData._StaticMesh);
+
+	return _WeaponData.IsValid();
 }
 
 // Called when the game starts or when spawned

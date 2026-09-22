@@ -70,6 +70,7 @@ protected:
 #endif //WITH_EDITOR
 
 	virtual void NativeInitializeAnimation() override;
+	virtual void NativeUninitializeAnimation() override;
 
 	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds) override;
 

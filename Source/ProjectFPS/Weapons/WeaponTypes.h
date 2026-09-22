@@ -98,6 +98,12 @@ struct FWeaponData : public FTableRowBase
 	// 해당 총기 SkeletalMesh의 호환되는 애니메이션 블루프린트
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon| View")
 	TSubclassOf<UAnimInstance> _ViewAnimationInstance;
+
+	bool IsValid() const
+	{
+		return _WeaponId != NAME_None && _WeaponAbilId != NAME_None && _WeaponType != EWeaponType::None
+			&& _StaticMesh != nullptr && _ViewMesh != nullptr /*&& _ViewAnimationInstance != nullptr && _Icon != nullptr*/;
+	}
 };
 
 // todo : 나중에 GAS 로 변동값 옮기기

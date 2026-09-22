@@ -19,8 +19,10 @@ public:
 
 	// WeaponID 에 해당하는 기본 정보와 능력치를 한번 조회하고 캐싱하기
 	// Implementation 은 IWeaponInterface 구현을 위한 코드 [ WeaponInterface에 Initialize 코드가 있어요 ] 
-	virtual bool InitializeWeapon_Implementation(FName _WeaponID) override;
-	
+	virtual bool InitializeWeapon_Implementation(FName WeaponID) override;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const;
+
 	// Muzzle Socket의 월드 위치를 반환
 	FVector GetMuzzleLocation() const;
 	
@@ -55,6 +57,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Projectile")
 	TSubclassOf<AActor> _ProjectileClass;
 	
+
+	UPROPERTY(ReplicatedUsing = OnRep_WeaponID, BlueprintReadWrite)
+	FName _WeaponID;
+
+protected:
+
+	UFUNCTION()
+	virtual void OnRep_WeaponID();
+
+private:
+	bool LoadWeaponData(FName WeaponID);
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
