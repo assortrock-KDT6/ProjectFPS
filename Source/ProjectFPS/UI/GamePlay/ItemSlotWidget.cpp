@@ -56,6 +56,7 @@ void UItemSlotWidget::NativeOnListItemObjectSet(UObject* ListItemObject)
 
 void UItemSlotWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
 {
+	// 여기서 인식을하고 입젠토리 컴포넌트에서 띄우는게 되어야하는거 같은데
 	Super::NativeOnMouseEnter(InGeometry, InMouseEvent);
 	
 	// 빈 슬롯은 무시
@@ -73,7 +74,7 @@ void UItemSlotWidget::NativeOnMouseEnter(const FGeometry& InGeometry, const FPoi
 
 	// 델리게이트에 연결된 함수를 실행하여 값을 전달하는 함수 ->Broadcast
 	// 마우스가 올라가있는 슬롯을 알려줌.
-	_OnSlotHovered.Broadcast(_TID);
+	//_OnSlotHovered.Broadcast(_TID);
 }
 
 void UItemSlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
@@ -86,7 +87,7 @@ void UItemSlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 	if (nullptr != _InfoPanel)
 		_InfoPanel->HideInfo();
 
-	_OnSlotUnHovered.Broadcast(_TID);
+	//_OnSlotUnHovered.Broadcast(_TID);
 
 }
 

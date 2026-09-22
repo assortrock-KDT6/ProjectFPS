@@ -4,9 +4,9 @@
 #include "Component/Interaction/InteractionComponent.h"
 #include "Interface/Interactable.h"
 #include "Camera/CameraComponent.h"
-#include "Engine/OverlapResult.h"
-#include "Item/ItemPickUp.h" // 이건 옮기기 
-#include "UI/GameHUD.h"
+#include "Engine/OverlapResult.h"	//
+#include "Item/ItemPickUp.h" // 이건 옮기기
+#include "UI/GameHUD.h"		// 
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Actor.h"
@@ -33,6 +33,7 @@ void UInteractionComponent::ServerInteract_Implementation(AActor* Target)
 	
 	if (FVector::Dist(Owner->GetActorLocation(), Target->GetActorLocation()) > _InteractDistance)
 		return;
+
 	// 서버에서 실행
 	IInteractable::Execute_Interact(Target, Owner); 
 }
@@ -117,7 +118,7 @@ AActor* UInteractionComponent::TraceForInteractable() const
 	return Obj;
 }
 
-void UInteractionComponent::UpdateInteractTarget()
+void UInteractionComponent::UpdateToolTipItem()
 {
 	// 조준 대상을 확인. 
 	AActor* NewTarget = TraceForInteractable();
@@ -146,6 +147,41 @@ void UInteractionComponent::UpdateInteractTarget()
 		if (nullptr != HUD)
 			HUD->HideItemInfo();
 
+		return;
+	}
+
+	if (nullptr != HUD)
+		HUD->ShowItemInfo(NewItem->GetTID());
+}
+
+void UInteractionComponent::UpdateInteractTarget()
+{
+	// 조준 대상을 확인
+	AActor* NewTarget = TraceForInteractable();
+	AActor* OldTarget = _CurrentTarget.Get();
+
+	// 가리키던 액터 사라졌는지(습득처리) 
+	const bool bOldDestroyed = _CurrentTarget.IsStale();
+
+	// 대상이 그대로면 아무것도 안함.
+	if (NewTarget == OldTarget && false == bOldDestroyed)
+		return;
+
+	_CurrentTarget = NewTarget;
+
+	APawn* Pawn = Cast<APawn>(GetOwner());
+	APlayerController* Pc = Cast<APlayerController>(Pawn->GetController());
+
+	AGameHUD* HUD = nullptr;
+	if (nullptr != Pc)
+		HUD = Cast<AGameHUD>(Pc->GetHUD());
+
+	// 조준한 대상이 아이템인지 확인용(GetTID()를 받기 위함)
+	AItemPickUp* NewItem = Cast<AItemPickUp>(NewTarget);
+	if (nullptr == NewItem)
+	{
+		if (nullptr == NewItem)
+			HUD->HideItemInfo();
 		return;
 	}
 

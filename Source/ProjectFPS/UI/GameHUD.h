@@ -67,6 +67,10 @@ public:
 public:
 	void ShowItemInfo(FName TID);
 	void HideItemInfo();
+
+	// 인벤/맵 등 오버레이가 열려 있는지 (열려 있을 경우 버리기 x)
+	bool IsAnyOverlayOpen() const { return nullptr != _InventoryWidget || nullptr != _MapWidget; }
+
 private:
 	// 게임중 전용으로 변경.
 	virtual void ApplyInputMode(bool bUIMode) override;

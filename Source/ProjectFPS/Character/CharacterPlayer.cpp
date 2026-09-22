@@ -1,5 +1,6 @@
 #include "Character/CharacterPlayer.h"
 #include "GameMode/FPSGameMode.h"
+#include "GameMode/PlayerStateBase.h"
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -9,7 +10,9 @@
 #include "InputActionValue.h"
 #include "InputAction.h"
 #include "Input/DefaultInput.h"
+#include "Item/ItemPickUp.h"
 #include "Camera/CameraComponent.h"
+#include "Component/Inventory/InventoryComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Component/Parkour/VaultComponent.h"
@@ -24,6 +27,10 @@
 #include "Component/FOV/FPSViewSkeletalMeshComponent.h"
 #include "Component/FOV/ControlShakeComponent.h"
 #include "Animation/AnimInstance.h"
+#include "Table/TableSubsystem.h"
+#include "Table/TableDatas.h"
+
+
 
 ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer.SetDefaultSubobjectClass<UFPSCharacterMovementComponent>(ACharacter::CharacterMovementComponentName))
@@ -192,6 +199,9 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 		return false;
 	}
 
+	
+	
+
 	FActorSpawnParameters SpawnParameters;
 	SpawnParameters.Owner = this;
 	SpawnParameters.Instigator = this;
@@ -199,12 +209,14 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	AWeaponActor* NewWeapon = GetWorld()->SpawnActor<AWeaponActor>(_WeaponActorClass, GetActorTransform(), SpawnParameters);
 
-	if (!IsValid(NewWeapon))
+	
+	if (false == IsValid(NewWeapon))
 	{
 		return false;
 	}
 
-	if (!IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID))
+	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);	
+	if (false == bInitialized)
 	{
 		NewWeapon->Destroy();
 		return false;
@@ -244,6 +256,9 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	ClientSetViewWeapon(WeaponData._ViewMesh, WeaponData._ViewAnimationInstance);
 
+	
+
+	
 	return true;
 }
 
@@ -348,6 +363,7 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
 	InputComp->BindAction(_DefaultInput->_FireToggle, ETriggerEvent::Started,   this, &ACharacterPlayer::FireToggleAction);
+	InputComp->BindAction(_DefaultInput->_DropItem, ETriggerEvent::Started, this, &ACharacterPlayer::DropItemAction);
 	PlayerController->RefreshInputMappingcontext();
 }
 
@@ -363,6 +379,141 @@ void ACharacterPlayer::PossessedBy(AController* Newcontroller)
 		_AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	}
 }
+
+void ACharacterPlayer::ClearEquippedWeapon()
+{
+	// 연사 중이면 끊는다
+	GetWorldTimerManager().ClearTimer(_FireTimerHandle);
+
+	if (IsValid(_CurrentWeapon))
+	{
+		_CurrentWeapon->Destroy();
+	}
+	_CurrentWeapon = nullptr;
+
+	// 1인칭 뷰 메시 비우기
+	ClientSetViewWeapon(nullptr, nullptr);
+
+}
+
+bool ACharacterPlayer::TryEquipSlot(int32 Index)
+{
+	// 서버 확인
+	if (false == HasAuthority())
+	{
+		return false;
+	}
+
+	APlayerStateBase* Ps = GetPlayerState<APlayerStateBase>();
+	if (nullptr == Ps)
+		return false;
+
+	UInventoryComponent* Inv = Ps->GetInventory();
+	if (nullptr == Inv)
+		return false;
+
+	// 지점 슬롯에 들어 있는 아이템 TID 확인.
+	const FName TID = Inv->GetWeaponTID(Index);
+	if (TID.IsNone())
+		return false;
+
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	if (nullptr == Sub)
+		return false;
+
+	// 아이템 정보에서 무기 ID 확인.
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+
+	if (nullptr == Row)
+		return false;
+
+	if (Row->_WeaponId.IsNone())
+		return false;
+
+	// 손에 들 새 무기 액터 준비
+	if (false == EquipWeapon(Row->_WeaponId))
+		return false;
+
+	// 실제 장착에 맞춰 인벤토리의 장착 슬롯 번호 기록.
+	Inv->SetEquippedWEaponIndex(Index);
+
+	return true;
+
+}
+
+bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
+{
+	if (false == HasAuthority())
+	{
+		return false;
+	}
+
+	APlayerStateBase* Ps = GetPlayerState<APlayerStateBase>();
+	if (nullptr == Ps)
+	{
+		return false;
+	}
+
+	UInventoryComponent* Inv = Ps->GetInventory();
+	if (nullptr == Inv)
+	{
+		return false;
+	}
+
+	// 검증
+	const FName TID = Inv->GetWeaponTID(Index);
+	if (TID.IsNone())
+	{
+		return false;
+	}
+
+	UTableSubsystem* Sub = UTableSubsystem::Get(this);
+	if (nullptr == Sub)
+	{
+		return false; 
+	}
+
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+	if (nullptr == Row)
+	{
+		return false;
+	}
+
+	// 픽업 준비 
+	FTransform Transform = GetActorTransform();
+	Transform.SetLocation(GetActorLocation() + GetActorForwardVector() * _DropForwardOffset);
+
+	AItemPickUp* Pickup = AItemPickUp::BeginSpawnFromTID(GetWorld(), TID, 1, Transform);
+	if (nullptr == Pickup)
+	{
+		return false;
+	}
+
+	// 인벤 확정 실패시 준비한 픽업 정리.
+	const bool bWasEquipped = (Index == Inv->GetEquippedWeaponIndex());
+	if (false == Inv->RemoveWeapon(Index))
+	{
+		Pickup->Destroy();
+		return false;
+	}
+	// 손 확정시 
+	if (bWasEquipped)
+	{
+		ClearEquippedWeapon();
+
+		const int32 NextSlot = Inv->FindFirstWeaponSlot();
+		if (NextSlot != INDEX_NONE)
+		{
+			TryEquipSlot(NextSlot);
+		}
+	}
+
+	// 픽업
+	AItemPickUp::FinishSpawnFromTID(Pickup, Transform);
+	return true;
+
+}
+
 
 USkeletalMeshComponent* ACharacterPlayer::Get_FirstPersonMesh() const
 {
@@ -588,6 +739,24 @@ void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
 	{
 		_ControlShakeManager->WeaponFired(WeaponID);
 	}
+	// _CurrentWeapon->Fire(AimPoint);
+
+}
+
+void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
+{
+	// 인벤 / 맵이 열려 있으면 버리기를 막음.
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		if (AGameHUD* HUD = Cast<AGameHUD>(PC->GetHUD()))
+		{
+			if(HUD->IsAnyOverlayOpen())
+			{
+				return;
+			}
+		}
+	}
+	ServerDropEquippedWeapon();
 }
 
 void ACharacterPlayer::HandleOutOfHealth()
@@ -621,6 +790,20 @@ void ACharacterPlayer::HandleOutOfHealth()
 		GameMode->HandlePlayerDeath(this);
 	}
 }
+
+void ACharacterPlayer::ServerDropEquippedWeapon_Implementation()
+{
+	APlayerStateBase* Ps = GetPlayerState<APlayerStateBase>();
+	if (nullptr == Ps)
+		return;
+	
+	UInventoryComponent* Inv = Ps->GetInventory();
+	if (nullptr == Inv)
+		return;
+
+	TryDropWeaponAt(Inv->GetEquippedWeaponIndex());
+}
+
 
 void ACharacterPlayer::SetupPlayerMesh()
 {

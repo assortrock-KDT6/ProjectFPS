@@ -31,7 +31,7 @@ void AGameHUD::SwitchTo(EMatchPhase Phase)
 
 void AGameHUD::ToggleInventory()
 {
-	UE_LOG(LogTemp, Warning, TEXT("ToggleInventory 호출"));
+	
 
 	CloseOverlay(_MapWidget); //맵이 열려있으면 닫기 -> *나중에 묶던가 고민.
 	
@@ -41,20 +41,17 @@ void AGameHUD::ToggleInventory()
 	// 인벤이 열리면 툴팁도 정리
 	if (bOpen)
 		HideItemInfo();
-
-	// 맵이 열리면 툴팁도 정리
-	if (bOpen)
-		HideItemInfo();
-
-	UE_LOG(LogTemp, Warning, TEXT("결과: bOpen=%d, Widget=%s"),
-		bOpen, _InventoryWidget ? TEXT("생성됨") : TEXT("null"));
 }
 
 void AGameHUD::ToggleMap()
 {
 	CloseOverlay(_InventoryWidget); // 인벤토리 열려있으면 닫기 -> "" 동일
+	const bool bOpen = ToggleOverlay(_MapWidgetClass, _MapWidget);
+	ApplyInputMode(bOpen);
 
-	ToggleOverlay(_MapWidgetClass, _MapWidget);
+	// 맵이 열리면 툴팁도 정리
+	if (bOpen)
+		HideItemInfo();
 }
 
 void AGameHUD::ShowItemInfo(FName TID)
