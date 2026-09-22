@@ -41,14 +41,11 @@ class PROJECTFPS_API UItemSlotWidget : public UUserWidget, public IUserObjectLis
 	FName _TID = NAME_None;
 
 public:
-	// 정보 위젯 읽는 용도
-	// 마우스 상호작용 On
-	UPROPERTY(BlueprintAssignable)
+	// 마우스 신호 전달 델리게이트 
+	/*UPROPERTY(BlueprintAssignable)
 	FOnSlotHovered _OnSlotHovered;
-
-	// 마우스 상호작용 Off
 	UPROPERTY(BlueprintAssignable)
-	FOnSlotHovered _OnSlotUnHovered;
+	FOnSlotHovered _OnSlotUnHovered;*/
 
 
 	// 함수 선언

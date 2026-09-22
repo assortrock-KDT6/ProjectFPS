@@ -14,7 +14,7 @@ void UInventoryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	// WBP에 고정 배ㅣ된 슬롯은 지금바로 
+	// WBP에 고정 배치된 슬롯은 지금바로 
 	BindSlot(_MainWeaponSlot);
 	BindSlot(_SubWeaponSlot);
 

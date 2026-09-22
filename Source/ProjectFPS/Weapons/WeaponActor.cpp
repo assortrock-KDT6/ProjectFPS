@@ -15,6 +15,13 @@ AWeaponActor::AWeaponActor()
 	_WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
 	SetRootComponent(_WeaponMesh);
 	
+	// 소유자는 별도의 SkeletalMesh 총기를 본다. 
+	_WeaponMesh->SetOwnerNoSee(true);
+	
+	// 장착된 총기 자체가 캐릭터나 탄환과 충돌하지 않게 하기
+	_WeaponMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_WeaponMesh->SetGenerateOverlapEvents(false);
+	
 	// 멀티플레이 복제
 	bReplicates = true;
 	SetReplicateMovement(true);
@@ -43,6 +50,8 @@ bool AWeaponActor::InitializeWeapon_Implementation(FName _WeaponID)
 	
 	// 테이블 조회가 모두 성공한 뒤 무기 액터 내부에 복사
 	_WeaponData = *WeaponData;
+	// 반동 데이터의 Key 와 실제 조회에 사용한 Row Name을 일치시킨다
+	_WeaponData._WeaponId = _WeaponID;
 	_WeaponAbilityData = *WeaponAbilityData;
 	_WeaponMesh->SetStaticMesh(_WeaponData._StaticMesh);
 	
@@ -57,6 +66,38 @@ FVector AWeaponActor::GetMuzzleLocation() const
 float AWeaponActor::GetWeaponRange() const
 {
 	return _WeaponAbilityData._Range;
+}
+
+const FWeaponData& AWeaponActor::GetWeaponData() const
+{
+	return _WeaponData;
+}
+
+EWeaponFireMode AWeaponActor::GetFireMode() const
+{
+	return _WeaponAbilityData.FireMode;
+}
+
+float AWeaponActor::GetProjectileInterval() const
+{
+	return _WeaponAbilityData._ProjectileInterval;
+}
+
+void AWeaponActor::ToggleFireMode()
+{
+	switch (_WeaponAbilityData.FireMode)
+	{
+	case EWeaponFireMode::SemiAutomatic:
+		_WeaponAbilityData.FireMode = EWeaponFireMode::Automatic;
+		break;
+		
+	case EWeaponFireMode::Automatic:
+		_WeaponAbilityData.FireMode = EWeaponFireMode::SemiAutomatic;
+		break;
+		
+	default:
+		break;
+	}
 }
 
 bool AWeaponActor::Fire(const FVector& AimPoint)

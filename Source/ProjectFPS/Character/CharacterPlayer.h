@@ -3,7 +3,9 @@
 #pragma once
 
 #include "Character/CharacterBase.h"
+#include "TimerManager.h"				// 총알 연사를 구현하기 위해서 넣었습니다. - 건영 
 #include "CharacterPlayer.generated.h"
+
 
 /*
 *	[ 플레이어 준비물 ] 
@@ -19,7 +21,13 @@ class UCameraComponent;
 class USkeletalMeshComponent;
 class AWeaponActor;
 class AWeaponPickUp;
+class UFPSViewSkeletalMeshComponent;
+class UControlShakeComponent;
+class USkeletalMesh;
+class UAnimInstance;
+class AItemPickUp;
 struct FInputActionValue;
+
 
 UCLASS()
 class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
@@ -50,7 +58,7 @@ public:
 	
 	// 무기 장착 성공 후에 Blueprint에 애니메이션 상태 변경을 알리기
 	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon")
-	void OnWeaponEquiped();
+	void OnWeaponEquiped();	// 함수 정의 X!!!
 	
 	// WeaponPickUp의 상호작용 범위에 들어온 무기를 등록한다.
 	void SetNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
@@ -67,9 +75,15 @@ protected:
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UDefaultInput> _DefaultInput;
-
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "First Person")
-	TObjectPtr<USkeletalMeshComponent> _FirstPersonMesh;
+	TObjectPtr<UFPSViewSkeletalMeshComponent> _FirstPersonMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "First Person")
+	TObjectPtr<UFPSViewSkeletalMeshComponent> _ViewWeaponMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Recoil")
+	TObjectPtr<UControlShakeComponent> _ControlShakeManager;
 	
 	// 장착되는 모든 총기의 공통 Actor 클래스다. 시작 무기를 의미하지않는다.
 	// 실제 무기 Actor를 생성할 공통 Blueprint 클래스
@@ -98,6 +112,14 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "FPS | AbilitySystem | Attribute")
 	TObjectPtr<class UFPSAttributeSet> _HealthAttribute;
 
+	// 준비만 되고 아직 확정 되지 않은 무기
+	UPROPERTY()
+	TObjectPtr<AWeaponActor> _PendingWeapon;
+
+	// 버릴 때 캐릭터 기준으로 떨어질 범위
+	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
+	float _DropForwardOffset = 100.f;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -116,7 +138,24 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void PossessedBy(AController* Newcontroller) override;
+public:
+	// 대기중인 무기를 손에 확정 : 기존무기 -> Destroy->_CurrentWeapon 교체 ->OnWeaponEquiped
+	bool CommitPendingWeapon();
+	
+	// 대기중인 무기 폐기 
+	void CancelPendingWeapon();
+	bool HasPendingWeapon() const;
 
+	// 손에 든 무기 액터 비우기 
+	void ClearEquippedWeapon();
+
+	// 지정 슬롯의 무기를 손에 든다(서버)
+	bool TryEquipSlot(int32 Index);
+
+	// 지정 슬롯의 무기를 인벤에서 빼고 발미에 놓는다 (서버)
+	bool TryDropWeaponAt(int32 Index);
+
+	
 public:
 	USkeletalMeshComponent* Get_FirstPersonMesh() const;
 	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
@@ -129,7 +168,7 @@ protected:
 	void MoveLookAction(const FInputActionValue& Value);
 
 	UFUNCTION()
-	void CharacterMouseZoomAction(const FInputActionValue& Value);
+	void AimZoomAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	virtual void ParkourAction(const FInputActionValue& Value);
@@ -148,11 +187,51 @@ protected:
 
 	UFUNCTION()
 	void FireAction(const FInputActionValue& value);
-	
+
+	UFUNCTION()
+	void StopFireAction(const FInputActionValue& value);
+
+	UFUNCTION()
+	void FireToggleAction(const FInputActionValue& value);
+
 	UFUNCTION(Server, Reliable)
+	void ServerStartFire();
+	void ServerStartFire_Implementation();
+
+	UFUNCTION(Server, Reliable)
+	void ServerStopFire();
+	void ServerStopFire_Implementation();
+
+	UFUNCTION(Server, Reliable)
+	void ServerToggleFireMode();
+	void ServerToggleFireMode_Implementation();
+	
+	// 서버에서 결정한 1인칭 외형을 소유 플레이어에게 전달하기
+	UFUNCTION(Client, Reliable)
+	void ClientSetViewWeapon(USkeletalMesh* ViewMesh, TSubclassOf<UAnimInstance> ViewAnimationClass);
+	
+	// 서버에서 실제 발사가 성공했을때만 호출
+	UFUNCTION(Client, Reliable)
+	void ClientWeaponFired(FName WeaponID);
 	void ServerFire();
 	void ServerFire_Implementation();
+
+	UFUNCTION()
+	void DropItemAction(const FInputActionValue& value);
+
+	// x키로 장착무기 버리기
+	UFUNCTION(Server, Reliable)
+	void ServerDropEquippedWeapon();
+	void ServerDropEquippedWeapon_Implementation();
+
 	
 private:
+	// 입력함수로 서버에서 시작, 정지만 요청하고 타이머로 발사관리하면서 FireOnce()는 실제로 한발만 발사합니다. 책임을 겹치지 않게 나눈거에요 
+	// 서버에서 연사 간격을 관리하는 타이머
+	FTimerHandle _FireTimerHandle;
+	
+	// 한 발의 조준점 계산과 발사를 실행
+	void FireOnce();
+	
 	void SetupPlayerMesh();
 };

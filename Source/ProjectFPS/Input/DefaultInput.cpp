@@ -31,10 +31,10 @@ UDefaultInput::UDefaultInput()
 		_MouseLook = MouseLookAction.Object;
 	}
 
-	ConstructorHelpers::FObjectFinder<UInputAction> MouseZoomAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Zoom.IA_Zoom'"));
-	if (MouseZoomAction.Succeeded())
+	ConstructorHelpers::FObjectFinder<UInputAction> AimZoomAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Zoom.IA_Zoom'"));
+	if (AimZoomAction.Succeeded())
 	{
-		_MouseZoom = MouseZoomAction.Object;
+		_AimZoom = AimZoomAction.Object;
 	}
 
 	ConstructorHelpers::FObjectFinder<UInputAction> ParkourAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Parkour.IA_Parkour'"));
@@ -72,5 +72,12 @@ UDefaultInput::UDefaultInput()
 	{
 		_FireToggle = FireToggleAction.Object;
 	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> DropItemACtion(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_DropItem.IA_DropItem'"));
+	if(DropItemACtion.Succeeded())
+	{
+		_DropItem = DropItemACtion.Object;
+	}
+
 
 }
