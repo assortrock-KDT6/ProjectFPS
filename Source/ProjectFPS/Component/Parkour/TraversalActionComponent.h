@@ -48,11 +48,35 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Traversal|IK")
 	float _HandInset = 5.f;
+
+	// Wrist-to-palm clearance above the obstacle surface, in centimeters.
+	UPROPERTY(EditDefaultsOnly, Category = "Traversal|IK", meta = (ClampMin = "0.0"))
+	float _HandSurfaceOffset = 4.f;
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UAnimMontage> _ActiveMontage;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimMontage> _ActiveFirstPersonMontage;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Traversal|First Person")
+	TMap<ETraversalVariant, TObjectPtr<UAnimMontage>> _FirstPersonMontages;
+
 private:
+	struct FWeaponAttachment
+	{
+		TWeakObjectPtr<USceneComponent> Component;
+		TWeakObjectPtr<USceneComponent> Parent;
+		TWeakObjectPtr<USceneComponent> TraversalParent;
+		FName Socket;
+		FTransform RelativeTransform;
+	};
+
+	TArray<FWeaponAttachment> _WeaponAttachments;
+	void AttachWeaponsToRightHand();
+	void RestoreWeaponAttachments();
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	TWeakObjectPtr<UPrimitiveComponent> _IgnoredObstacleComponent;
 	TWeakObjectPtr<AController>			_TraversalController;
 	

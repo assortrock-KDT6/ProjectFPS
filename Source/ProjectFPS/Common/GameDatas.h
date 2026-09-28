@@ -239,6 +239,8 @@ struct FTraversalContactTargets
 {
 	FTransform _LeftHand = FTransform::Identity;
 	FTransform _RightHand = FTransform::Identity;
+	FTransform _ObstacleFrame = FTransform::Identity;
+	float _ObstacleDepth = 0.f;
 	//FTransform _LeftFoot = FTransform::Identity;
 	//FTransform _RightFoot = FTransform::Identity;
 	//FTransform _Pelvis = FTransform::Identity;

@@ -26,6 +26,9 @@ private:
 	TObjectPtr<UUserWidget> _MapWidget;
 
 protected:
+	virtual void BeginPlay() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	// 각 위젯별 화면 BP_GameHUD -> 디테일에서 지정.
 	UPROPERTY(EditAnywhere, Category = "HUD|Screens")	
@@ -67,6 +70,10 @@ public:
 public:
 	void ShowItemInfo(FName TID);
 	void HideItemInfo();
+
+	// 인벤/맵 등 오버레이가 열려 있는지 (열려 있을 경우 버리기 x)
+	bool IsAnyOverlayOpen() const { return nullptr != _InventoryWidget || nullptr != _MapWidget; }
+
 private:
 	// 게임중 전용으로 변경.
 	virtual void ApplyInputMode(bool bUIMode) override;

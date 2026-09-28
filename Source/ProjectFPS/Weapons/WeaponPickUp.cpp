@@ -36,6 +36,7 @@ void AWeaponPickUp::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overlap
 	UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	ACharacterPlayer* Character = Cast<ACharacterPlayer>(OtherActor);
+
 	if (false == IsValid(Character))
 	{
 		return;
@@ -82,12 +83,8 @@ void AWeaponPickUp::Interact_Implementation(AActor* Interactor)
 		return;
 	}
 	
-	// 장착에 실패하면 인벤토리 획득과 바닥 무기 제거도 진행하지 않게 하기
-	if (!Character->EquipWeapon(ItemData->_WeaponId))
-	{
-		return;
-	}
-	
+	Character->EquipWeapon(ItemData->_WeaponId);
+
 	Super::Interact_Implementation(Interactor);
 }
 

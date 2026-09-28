@@ -207,14 +207,14 @@ void UFPSCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 {
 	Super::UpdateFromCompressedFlags(Flags);
 
-	// |AND 연산						|
+	// |AND 연산					|
 	// |----------------------------|
 	// |경우 1	|경우 2				|
 	// |0 1 0 0 | 0 0 0 1 			|
 	// |1 0 0 0 | 0 0 0 1			|
 	// |0 0 0 0 | 0 0 0 1			|
 	// |----------------------------|
-	// |값 0	    | 값 1				|
+	// |값 0	    | 값 1			|
 	// |----------------------------|
 	// |!= 0 연산 (0과 같지 않다.)	|
 	// |----------------------------|
@@ -380,6 +380,10 @@ bool UFPSCharacterMovementComponent::StartTraversalAuthority(const FTraversalCan
 	_TraversalState._TargetRotation = Candidate._TargetRotation;
 	_TraversalState._ObstaclePoint = Candidate._ObstaclePoint;
 	_TraversalState._ObstacleNormal = Candidate._ObstacleNormal;
+	_TraversalState._TopPoint = Candidate._TopPoint;
+	_TraversalState._TopNormal = Candidate._TopNormal;
+	_TraversalState._ObstacleHeight = Candidate._ObstacleHeight;
+	_TraversalState._ObstacleDepth = Candidate._ObstacleDepth;
 	/**
 	 * 즉시 시작하지 않고 시작 시각을 약간 미래로 예약한다.
 	 * 상태를 먼저 복제해 두면 서버와 소유 클라이언트가 같은 서버 시각에 동시에 시작할 수 있고,

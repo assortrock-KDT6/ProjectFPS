@@ -6,6 +6,7 @@
 #include "InputMappingContext.h"
 #include "UObject/ConstructorHelpers.h"
 #include "EnhancedInputSubsystems.h"
+#include "GameFramework/PlayerState.h"
 
 APlayerControllerBase::APlayerControllerBase()
 {
@@ -17,38 +18,48 @@ void APlayerControllerBase::ChangeState(FName NewState)
 	Super::ChangeState(NewState);
 
 	// 엔진의 Pawn/관전자 전환이 끝난 뒤 입력을 맞춘다.
-	RefreshInputMappingcontext();
+	RefreshInputMappingContext();
 }
 
 void APlayerControllerBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 로비의 UI 입력 모드 잔재 방빚 -> 게임 진입 시 게임 입력 모드로 명시
-	if (IsLocalController())
+	// 로비의 UI 입력 모드 잔재 방비 -> 게임 진입 시 게임 입력 모드로 명시
+	if (true == IsLocalController())
 	{
 		SetInputMode(FInputModeGameOnly());
 		SetShowMouseCursor(false);
 	}
 
-	RefreshInputMappingcontext();
+	RefreshInputMappingContext();
 }
 
 void APlayerControllerBase::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+
+	RefreshInputMappingContext();
 }
 
 void APlayerControllerBase::OnUnPossess()
 {
 	Super::OnUnPossess();
 
-	RefreshInputMappingcontext();
+	RefreshInputMappingContext();
+}
+
+void APlayerControllerBase::OnRep_Pawn()
+{
+	Super::OnRep_Pawn();
+
+	RefreshInputMappingContext();
 }
 
 void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+
 	if (nullptr != LocalPlayer)
 	{
 		UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem< UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
@@ -65,24 +76,43 @@ void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void APlayerControllerBase::EnterDeathSpectating(const FVector& CameraaLocation, const FRotator& CameraRotation)
+void APlayerControllerBase::EnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation)
 {
 	if (false == HasAuthority())
 	{
 		return;
 	}
 
-	SetSpawnLocation(CameraaLocation);
+	SetSpawnLocation(CameraLocation);
+
 	SetControlRotation(CameraRotation);
 
-	// 서버 상태와 PlayerState의 관전자 플래그 설정
-	StartSpectatingOnly();
+	// 참가자 자격은 유지하고 리스폰을 기다리는 동안만 관전한다.
+	if (true == IsValid(PlayerState))
+	{
+		PlayerState->SetIsSpectator(false);
 
-	// 클라이언트의 컨트롤러 상태 변경
-	ClientGotoState(NAME_Spectating);
+		PlayerState->SetIsOnlyASpectator(false);
+	}
+	ChangeState(NAME_Spectating);
+
+	bPlayerIsWaiting = true;
+
+	ClientEnterDeathSpectating(CameraLocation, CameraRotation);
 }
 
-void APlayerControllerBase::RefreshInputMappingcontext()
+void APlayerControllerBase::ClientEnterDeathSpectating_Implementation(const FVector& CameraLocation, const FRotator& CameraRotation)
+{
+	SetSpawnLocation(CameraLocation);
+
+	SetControlRotation(CameraRotation);
+
+	ChangeState(NAME_Spectating);
+
+	bPlayerIsWaiting = true;
+}
+
+void APlayerControllerBase::RefreshInputMappingContext()
 {
 	if (false == IsLocalController())
 	{
@@ -108,24 +138,11 @@ void APlayerControllerBase::RefreshInputMappingcontext()
 	{
 		DesiredContext = _PlayerMappingContext.Get();
 	}
-	//else if (GetStateName() == NAME_Spectating)
-	//{
-	//	//DesiredContext = _SpectatorMappingContext.Get();
-	//}
-
-	// 함수 포인터
-	auto RemoveIfInactive = [&](UInputMappingContext* Context)
-		{
-			if (true == IsValid(Context) &&
-				Context != DesiredContext && 
-				Subsystem->HasMappingContext(Context))
-			{
-				Subsystem->RemoveMappingContext(Context);
-			}
-		};
-
-	RemoveIfInactive(_PlayerMappingContext.Get());
-	//RemoveIfInactive(_SpectatorMappingContext.Get());
+	if (IsValid(_PlayerMappingContext) && _PlayerMappingContext.Get() != DesiredContext
+		&& Subsystem->HasMappingContext(_PlayerMappingContext.Get()))
+	{
+		Subsystem->RemoveMappingContext(_PlayerMappingContext.Get());
+	}
 
 	if (true == IsValid(DesiredContext) && false == Subsystem->HasMappingContext(DesiredContext))
 	{

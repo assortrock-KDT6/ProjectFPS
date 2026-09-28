@@ -73,4 +73,11 @@ UDefaultInput::UDefaultInput()
 		_FireToggle = FireToggleAction.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> DropItemACtion(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_DropItem.IA_DropItem'"));
+	if(DropItemACtion.Succeeded())
+	{
+		_DropItem = DropItemACtion.Object;
+	}
+
+
 }

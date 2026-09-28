@@ -11,6 +11,9 @@
 class USphereComponent;
 class UPrimitiveComponent;
 
+// AItemPickUp을 상속 -> 무기 픽업 시 손에 장착 기능까지.
+
+
 UCLASS()
 class PROJECTFPS_API AWeaponPickUp : public AItemPickUp
 {
@@ -38,20 +41,14 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
 	TObjectPtr<USphereComponent> _InteractionSphere;
 	
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
-	//TObjectPtr<UStaticMeshComponent> _StaticMesh;
-	
-	//// ItemDataTable에서 찾을 무기 아이템의 행 이름
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon PickUp")
-	//FName _ItemId = NAME_None;
-	
-	//// 에디터 미리보기용 -> BP_WeaponPickUp 기본값에 한번만 지정
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon PickUp")
-	//TObjectPtr<UDataTable> _ItemTable;
-	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
+
+	//// 부모 줍기 순서에 끼어드는 훅.
+	//virtual bool PrepareAcquire(ACharacterPlayer* Character, const FItemData& Row) override;
+	//virtual bool CommitAcquire(ACharacterPlayer* Character) override;
+	//virtual void CancelAcquire(ACharacterPlayer* Character) override;
 
 public:	
 	// Called every frame

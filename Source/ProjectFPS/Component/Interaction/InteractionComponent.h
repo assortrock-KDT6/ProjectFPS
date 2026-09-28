@@ -7,6 +7,9 @@
 #include "InteractionComponent.generated.h"
 
 
+// 플레이어에 붙어서 조준 대상 찾기 상호작용 요청. -> 명칭을 정확하게 바꾸자 
+
+
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 
 class PROJECTFPS_API UInteractionComponent : public UActorComponent
@@ -30,8 +33,8 @@ public:
 	// 디버그 선 유지 시간.
 	UPROPERTY(EditAnywhere, Category = "Interact", meta = (EditCondition = "_bDrawDebug"))
 	float _DebugDrawTime = 0.f;
+
 private:
-	// 
 	TWeakObjectPtr<AActor> _CurrentTarget;
 
 public:
@@ -49,6 +52,7 @@ private:
 	AActor* TraceForInteractable() const;
 	
 	//조준 대상이 변경될 때 정보 패널 갱신
+	void UpdateToolTipItem();
 	void UpdateInteractTarget();
 
 

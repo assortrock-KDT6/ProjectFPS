@@ -59,7 +59,8 @@ void UFPSViewSkeletalMeshComponent::SetSkeletalMesh(USkeletalMesh* NewMesh, bool
 
 void UFPSViewSkeletalMeshComponent::SetTargetHFOV(float InTargetHFOV, float TransientInterpSpeed)
 {
-	TargetHFOV = FMath::Clamp(InTargetHFOV, 1.f, 179.f);
+	//TargetHFOV = FMath::Clamp(InTargetHFOV, 1.f, 179.f);
+	TargetHFOV = FMath::Clamp(InTargetHFOV < 0.f ? DefaultHFOV : InTargetHFOV, 1.f, 179.f);
 
 	CurrentInterpSpeed = TransientInterpSpeed > 0.f ? TransientInterpSpeed : InterpSpeed;
 }

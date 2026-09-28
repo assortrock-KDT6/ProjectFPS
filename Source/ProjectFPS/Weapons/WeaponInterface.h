@@ -26,5 +26,5 @@ public:
 	// initialize 는 언리얼이 호출 경로를 관리하는 함수에요
 	// WeaponActor에서 _Implementation은 C++에서 실제 동작을 작성하는 함수입니다.
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Weapon")
-	bool InitializeWeapon(FName _WeaponID);
+	bool InitializeWeapon(FName WeaponID);
 };
