@@ -25,6 +25,7 @@ public:
 	
 	void Initialize();
 	
+	// InTargetHFOV 가 음수이면 이 컴포넌트의 DefaultHFOV 값으로 복귀
 	UFUNCTION(BlueprintCallable, Category = "View Mesh")
 	void SetTargetHFOV(float InTargetHFOV, float TransientInterSpeed = -1.f);
 	

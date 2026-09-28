@@ -13,7 +13,9 @@
 	GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName)	\
 	GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOutOfHealthDelegate);
+class APlayerStateBase;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOutOfHealthDelegate, APlayerStateBase*, KillerPlayerState);
 
 /**
  * 
@@ -89,4 +91,8 @@ protected:
 
 	UFUNCTION()
 	virtual void OnRep_MaxShield(const FGameplayAttributeData& OldValue);
+
+private:
+	APlayerStateBase* FindDamagePlayerState(AActor* DamageSource) const;
+	APlayerStateBase* GetDamagePlayerState(const FGameplayEffectModCallbackData& Data) const;
 };

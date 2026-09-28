@@ -275,9 +275,11 @@ void UInventoryComponent::BeginPlay()
 
 void UInventoryComponent::OnRep_Items()
 {
+	_OnInventoryChanged.Broadcast();
 }
 
 void UInventoryComponent::OnRep_Weapons()
 {
+	_OnInventoryChanged.Broadcast();
 }
 

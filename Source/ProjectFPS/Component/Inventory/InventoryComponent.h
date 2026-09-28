@@ -33,6 +33,8 @@ private:
 	UPROPERTY(Replicated)
 	int32 _EquippedWeaponIndex = INDEX_NONE; // 기본 장착무기 없음 -> INEXT_NONE
 
+public:
+ 
 	// 장비교체
 	UPROPERTY(BlueprintAssignable)
 	FOnInventoryChanger _OnInventoryChanged;

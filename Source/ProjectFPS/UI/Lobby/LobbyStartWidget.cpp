@@ -5,8 +5,47 @@
 #include "Components/Button.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Engine/GameViewportClient.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
 #include "GameInstance/FPSOnlineSessionSubsystem.h"
 #include "Common/GameDatas.h"
+
+void ULobbyStartWidget::ClearSessionError()
+{
+	if (SessionErrorOverlay.IsValid() && GetWorld() && GetWorld()->GetGameViewport())
+	{
+		GetWorld()->GetGameViewport()->RemoveViewportWidgetContent(SessionErrorOverlay.ToSharedRef());
+	}
+	SessionErrorOverlay.Reset();
+	LastSessionError.Reset();
+}
+
+void ULobbyStartWidget::ShowSessionError(const FString& ErrorMessage)
+{
+	ClearSessionError();
+	LastSessionError = ErrorMessage;
+	if (UFPSOnlineSessionSubsystem* Subsystem = GetSessionSubsystem())
+	{
+		Subsystem->SetLastSessionError(ErrorMessage);
+	}
+	UE_LOG(LogTemp, Warning, TEXT("Lobby session error: %s"), *ErrorMessage);
+	if (GetWorld() && GetWorld()->GetGameViewport())
+	{
+		SessionErrorOverlay = SNew(SBox)
+			.Visibility(EVisibility::HitTestInvisible)
+			.HAlign(HAlign_Center).VAlign(VAlign_Bottom).Padding(FMargin(24.f, 24.f, 24.f, 80.f))
+			[
+				SNew(SBorder).Padding(16.f)
+				[
+					SNew(STextBlock).Text(FText::FromString(ErrorMessage))
+					.ColorAndOpacity(FLinearColor::White).WrapTextAt(800.f)
+				]
+			];
+		GetWorld()->GetGameViewport()->AddViewportWidgetContent(SessionErrorOverlay.ToSharedRef(), 100);
+	}
+}
 
 UFPSOnlineSessionSubsystem* ULobbyStartWidget::GetSessionSubsystem() const
 {
@@ -46,6 +85,7 @@ void ULobbyStartWidget::NativeOnInitialized()
 
 void ULobbyStartWidget::NativeDestruct()
 {
+	ClearSessionError();
 	UFPSOnlineSessionSubsystem* SessionSubsystem = GetSessionSubsystem();
 	if (nullptr != SessionSubsystem)
 	{
@@ -61,30 +101,45 @@ void ULobbyStartWidget::NativeDestruct()
 	Super::NativeDestruct();
 }
 
+void ULobbyStartWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	if (UFPSOnlineSessionSubsystem* Subsystem = GetSessionSubsystem())
+	{
+		SetStartButtonEnabled(!Subsystem->IsBusy() && !Subsystem->IsAutoMatchInProgress());
+		const FString Error = Subsystem->GetLastSessionError();
+		if (!Error.IsEmpty())
+		{
+			ShowSessionError(Error);
+		}
+	}
+}
+
 void ULobbyStartWidget::OnStartClicked()
 {
 	// 레벨 미지정 방어.
 	if (true == GameLevel.IsNull())
 	{
-		LastSessionError = TEXT("Game level is not configured.");
+		ShowSessionError(TEXT("Game level is not configured."));
 		return;
 	}
 
 	UFPSOnlineSessionSubsystem* SessionSubsystem = GetSessionSubsystem();
 	if (nullptr == SessionSubsystem)
 	{
-		LastSessionError = TEXT("Online Session subsystem is unavailable.");
+		ShowSessionError(TEXT("Online Session subsystem is unavailable."));
 		return;
 	}
 
 	const FString MapPath = GameLevel.ToSoftObjectPath().GetLongPackageName();
 	if (true == MapPath.IsEmpty())
 	{
-		LastSessionError = TEXT("Game Level Package path is invalid.");
+		ShowSessionError(TEXT("Game Level Package path is invalid."));
 		return;
 	}
 
-	LastSessionError.Reset();
+	ClearSessionError();
+	SessionSubsystem->SetLastSessionError(FString());
 	SetStartButtonEnabled(false);
 
 	FFPSSessionCreateOptions Options;
@@ -96,29 +151,42 @@ void ULobbyStartWidget::OnStartClicked()
 	* 후보 참가 실패 같은 중간 과정은 통지되지 않으므로
 	* 결과는 HandleAutoMatchCompleted에서 한 번만 받는다.
 	*/
+	_QuickMatchRequested = true;
 	if (false == SessionSubsystem->AutoJoinOrHost(Options))
 	{
+		_QuickMatchRequested = false;
 		SetStartButtonEnabled(true);
 	}
 }
 
 void ULobbyStartWidget::HandleAutoMatchCompleted(bool WasSuccessful, bool IsHost, const FString& ErrorMessage)
 {
+	if (!_QuickMatchRequested)
+	{
+		return;
+	}
+
+	_QuickMatchRequested = false;
 	LastMatchIsHost = IsHost;
 
 	if (true == WasSuccessful)
 	{
-		LastSessionError.Reset();
+		ClearSessionError();
 		return;
 	}
 
-	LastSessionError = ErrorMessage;
+	ShowSessionError(ErrorMessage);
 	SetStartButtonEnabled(true);
 }
 
 void ULobbyStartWidget::HandleSessionTravelFailed(const FString& ErrorMessage)
 {
-	LastSessionError = ErrorMessage;
+	if (!_QuickMatchRequested)
+	{
+		return;
+	}
+
+	ShowSessionError(ErrorMessage);
 
 	/**
 	* 자동 매치가 아직 다음 후보나 Host 전환을 시도하는 중이면 최종 실패가 아니다.

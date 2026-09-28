@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "AttributeSet.h"
 #include "Blueprint/UserWidget.h"
+#include "UI/GamePlay/VitalSegments.h"
 #include "PlayerStatusWidget.generated.h"
 
 /**
@@ -29,6 +30,9 @@ class PROJECTFPS_API UPlayerStatusWidget : public UUserWidget
 	GENERATED_BODY()
 	
 protected:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Fps|Status|Vital Layout")
+	FVitalSegmentSettings _VitalSettings;
+
 	UPROPERTY(EditDefaultsOnly,meta = (AssetRegistrySearchable = "true", BindWidget), Category = "Fps|Status|Gauge")
 	TObjectPtr<class UProgressBar> _Gauge;
 
@@ -46,6 +50,8 @@ protected:
 
 protected:
 	FDelegateHandle _GaugeChangedHandle;
+	FDelegateHandle _MaxGaugeChangedHandle;
+	TWeakObjectPtr<APlayerController> _BoundPlayerController;
 
 protected:
 	virtual void NativeConstruct() override;
@@ -53,6 +59,12 @@ protected:
 
 protected:
 	void HandleGaugeChanged(const FOnAttributeChangeData& Data);
+
+	UFUNCTION()
+	void HandlePlayerPawnChanged(APawn* OldPawn, APawn* NewPawn);
+
+	void UpdateGaugeFromAttributes();
+	void RefreshVitalSegments(float Current, float Maximum);
 
 	void UpdateGauge(float Percent);
 public:

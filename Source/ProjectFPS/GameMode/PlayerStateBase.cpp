@@ -14,16 +14,71 @@ void APlayerStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(APlayerStateBase, _bIsDead);
+	DOREPLIFETIME(APlayerStateBase, _IsDead);
+	DOREPLIFETIME(APlayerStateBase, _MatchStats);
 }
 
 bool APlayerStateBase::IsDead() const
 {
-	return _bIsDead;
+	return _IsDead;
 }
 
-void APlayerStateBase::SetDead(const bool bIsDead)
+void APlayerStateBase::SetDead(bool IsDead)
 {
-	_bIsDead = bIsDead;
+	if (false == HasAuthority() || _IsDead == IsDead)
+	{
+		return;
+	}
+	_IsDead = IsDead;
+	ForceNetUpdate();
+	OnRep_IsDead();
+}
+
+void APlayerStateBase::AddKillScore()
+{
+	if (false == HasAuthority())
+	{
+		return;
+	}
+	++_MatchStats._KillScore;
+
+	SetScore(static_cast<float>(_MatchStats._KillScore));
+
+	ForceNetUpdate();
+
+	OnRep_MatchStats();
+}
+
+void APlayerStateBase::AddDeathScore()
+{
+	if (false == HasAuthority())
+	{
+		return;
+	}
+	++_MatchStats._DeathScore;
+	ForceNetUpdate();
+	OnRep_MatchStats();
+}
+
+void APlayerStateBase::ResetMatchStats()
+{
+	if (false == HasAuthority())
+	{
+		return;
+	}
+	_MatchStats = FPlayerMatchStats();
+	SetScore(0.f);
+	ForceNetUpdate();
+	OnRep_MatchStats();
+}
+
+void APlayerStateBase::OnRep_IsDead()
+{
+	_OnDeathStateChanged.Broadcast(_IsDead);
+}
+
+void APlayerStateBase::OnRep_MatchStats()
+{
+	_OnMatchStatsChanged.Broadcast();
 }
 	
