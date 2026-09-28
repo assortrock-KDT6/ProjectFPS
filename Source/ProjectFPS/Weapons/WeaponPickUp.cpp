@@ -36,6 +36,7 @@ void AWeaponPickUp::OnInteractionSphereBeginOverlap(UPrimitiveComponent* Overlap
 	UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	ACharacterPlayer* Character = Cast<ACharacterPlayer>(OtherActor);
+
 	if (false == IsValid(Character))
 	{
 		return;

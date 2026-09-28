@@ -4,11 +4,13 @@
 #include "GameInstance/FPSOnlineSessionSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Engine/NetDriver.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "UObject/UObjectGlobals.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
-#include "Common/FPSOnlineSessionKeys.h"
 
 DEFINE_LOG_CATEGORY(LogFPSOnlineSession);
 
@@ -19,6 +21,10 @@ DEFINE_LOG_CATEGORY(LogFPSOnlineSession);
  */
 namespace OnlineSessionSubsystemUtils
 {
+	const FName ProjectDisplayName(TEXT("FPSDISPLAYNAME"));
+	const FName ProjectKey(TEXT("FPSPROJECT"));
+	const FString ProjectId(TEXT("ProjectFPS_SteamSockets_v1"));
+
 	FString JoinResultToError(EOnJoinSessionCompleteResult::Type Result)
 	{
 		switch (Result)
@@ -335,6 +341,8 @@ bool UFPSOnlineSessionSubsystem::StartCreateSession()
 	}
 
 	FOnlineSessionSettings Settings;
+	Settings.Set(OnlineSessionSubsystemUtils::ProjectKey, OnlineSessionSubsystemUtils::ProjectId,
+		EOnlineDataAdvertisementType::ViaOnlineService);
 	Settings.NumPublicConnections = _PendingCreateOptions._MaxPlayers;
 	Settings.bShouldAdvertise = true;
 	Settings.bAllowJoinInProgress = _PendingCreateOptions._AllowJoinProgress;
@@ -343,7 +351,7 @@ bool UFPSOnlineSessionSubsystem::StartCreateSession()
 	Settings.bUseLobbiesIfAvailable = true;
 	Settings.bIsLANMatch = OnlineSessionSubsystemUtils::IsNullSubsystem(GetWorld());
 	Settings.Set(SETTING_MAPNAME, _PendingCreateOptions._MapId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
-	Settings.Set(SETTING_FPS_DISPLAYNAME, _PendingCreateOptions._DisplayName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	Settings.Set(OnlineSessionSubsystemUtils::ProjectDisplayName, _PendingCreateOptions._DisplayName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	Settings.Set(SETTING_GAMEMODE, _PendingCreateOptions._GameModeId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
 
@@ -537,6 +545,22 @@ bool UFPSOnlineSessionSubsystem::TravelHostToGame(const FString& MapPath, EFPSSe
 	{
 		TravelURL += TEXT("?listen");
 	}
+	if (Intent == EFPSSessionTravelIntent::Host)
+	{
+		// 세션 정원이 아니라 이번 맵 이동에 실제로 참가한 인원을 전달한다.
+		int32 ExpectedPlayerCount = 0;
+		for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+		{
+			const APlayerController* PlayerController = Iterator->Get();
+			const APlayerState* PlayerState = IsValid(PlayerController) ? PlayerController->PlayerState.Get() : nullptr;
+			if (IsValid(PlayerState) && !PlayerController->IsPendingKillPending()
+				&& !PlayerState->IsOnlyASpectator() && !PlayerState->IsInactive())
+			{
+				++ExpectedPlayerCount;
+			}
+		}
+		TravelURL += FString::Printf(TEXT("?ExpectedPlayers=%d"), FMath::Max(1, ExpectedPlayerCount));
+	}
 
 #if !UE_BUILD_SHIPPING
 	UE_LOG(LogFPSOnlineSession, Log, TEXT("ServerTravel: %s"), *TravelURL);
@@ -598,6 +622,8 @@ bool UFPSOnlineSessionSubsystem::FindSessions(int32 MaxResults)
 	_SessionSearch->MaxSearchResults = MaxResults;
 	_SessionSearch->bIsLanQuery = OnlineSessionSubsystemUtils::IsNullSubsystem(GetWorld());
 	_SessionSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+	_SessionSearch->QuerySettings.Set(OnlineSessionSubsystemUtils::ProjectKey,
+		OnlineSessionSubsystemUtils::ProjectId, EOnlineComparisonOp::Equals);
 
 	if (_FindSessionCompleteHandle.IsValid())
 	{
@@ -641,6 +667,12 @@ void UFPSOnlineSessionSubsystem::HandleFindSessionComplete(bool WasSuccessful)
 	for (int32 Index = 0; Index < _SessionSearch->SearchResults.Num(); Index++)
 	{
 		const FOnlineSessionSearchResult& Result = _SessionSearch->SearchResults[Index];
+		FString ProjectId;
+		if (!Result.IsValid() || !Result.Session.SessionSettings.Get(OnlineSessionSubsystemUtils::ProjectKey, ProjectId) ||
+			ProjectId != OnlineSessionSubsystemUtils::ProjectId)
+		{
+			continue;
+		}
 
 		FFPSOnlineSessionInfo& Information = Sessions.AddDefaulted_GetRef();
 		Information._ResultIndex = Index;
@@ -651,7 +683,7 @@ void UFPSOnlineSessionSubsystem::HandleFindSessionComplete(bool WasSuccessful)
 		Information._CurrentPlayers = FMath::Clamp(Information._MaxPlayers - Result.Session.NumOpenPublicConnections, 0, Information._MaxPlayers);
 		Information._IsLan = Result.Session.SessionSettings.bIsLANMatch;
 
-		Result.Session.SessionSettings.Get(SETTING_FPS_DISPLAYNAME, Information._DisplayName);
+		Result.Session.SessionSettings.Get(OnlineSessionSubsystemUtils::ProjectDisplayName, Information._DisplayName);
 		Result.Session.SessionSettings.Get(SETTING_GAMEMODE, Information._GameModeId);
 
 		// 표시 이름이 비어 있으면 소유자 이름으로 대체한다.
@@ -1111,6 +1143,20 @@ void UFPSOnlineSessionSubsystem::HandlePostLoadMapWithWorld(UWorld* LoadedWorld)
 
 	const EFPSSessionTravelIntent CompletedIntent = _TravelIntent;
 	const ENetMode LoadedNetMode = LoadedWorld->GetNetMode();
+	const IOnlineSubsystem* Subsystem = Online::GetSubsystem(LoadedWorld);
+	if ((CompletedIntent == EFPSSessionTravelIntent::HostLobby || CompletedIntent == EFPSSessionTravelIntent::Host) &&
+		Subsystem && Subsystem->GetSubsystemName() == STEAM_SUBSYSTEM)
+	{
+		const UNetDriver* Driver = LoadedWorld->GetNetDriver();
+		if (!Driver || Driver->GetClass()->GetPathName() != TEXT("/Script/SteamSockets.SteamSocketsNetDriver"))
+		{
+			const FString Error = FString::Printf(TEXT("Steam host requires SteamSocketsNetDriver; actual driver: %s. Check SteamSockets plugin and NetDriverDefinitions."),
+				Driver ? *Driver->GetClass()->GetPathName() : TEXT("None"));
+			UE_LOG(LogFPSOnlineSession, Error, TEXT("%s"), *Error);
+			HandleHostTravelFailure(CompletedIntent, Error);
+			return;
+		}
+	}
 
 	if (EFPSSessionTravelIntent::Join == CompletedIntent &&
 		NM_Client != LoadedNetMode)
@@ -1198,6 +1244,7 @@ void UFPSOnlineSessionSubsystem::HandleTravelFailure(UWorld* World, ETravelFailu
 
 void UFPSOnlineSessionSubsystem::HandleJoinTravelFailure(const FString& ErrorMessage)
 {
+	_LastSessionError = ErrorMessage;
 	if (EFPSOnlineTravelState::Traveling != _TravelState)
 	{
 		return;
@@ -1213,6 +1260,7 @@ void UFPSOnlineSessionSubsystem::HandleJoinTravelFailure(const FString& ErrorMes
 
 void UFPSOnlineSessionSubsystem::HandleHostTravelFailure(EFPSSessionTravelIntent FailedIntent, const FString& ErrorMessage)
 {
+	_LastSessionError = ErrorMessage;
 	_TravelIntent = EFPSSessionTravelIntent::None;
 	SetTravelState(EFPSOnlineTravelState::None);
 
@@ -1467,7 +1515,8 @@ void UFPSOnlineSessionSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver*
 	/**
 	* Beacon 등 GameNetDriver가 아닌 실패는 Session 상태와 무관하다.
 	*/
-	if (nullptr != NetDriver && NAME_GameNetDriver != NetDriver->NetDriverName)
+	if (nullptr != NetDriver && NAME_GameNetDriver != NetDriver->NetDriverName &&
+		NAME_PendingNetDriver != NetDriver->NetDriverName)
 	{
 		return;
 	}
@@ -1626,6 +1675,30 @@ bool UFPSOnlineSessionSubsystem::IsBusy() const
 {
 	return  EFPSOnlineOperationState::Idle != _OperationState || 
 			EFPSOnlineTravelState::Traveling == _TravelState;
+}
+
+bool UFPSOnlineSessionSubsystem::GetCurrentSessionInfo(FFPSOnlineSessionInfo& Information) const
+{
+	Information = FFPSOnlineSessionInfo();
+	const FNamedOnlineSession* Session = _SessionInterface.IsValid() ? _SessionInterface->GetNamedSession(NAME_GameSession) : nullptr;
+	if (Session == nullptr)
+	{
+		return false;
+	}
+	Information._SessionOwnerName = Session->OwningUserName;
+	Session->SessionSettings.Get(OnlineSessionSubsystemUtils::ProjectDisplayName, Information._DisplayName);
+	Session->SessionSettings.Get(SETTING_MAPNAME, Information._MapName);
+	Session->SessionSettings.Get(SETTING_GAMEMODE, Information._GameModeId);
+	Information._MaxPlayers = Session->SessionSettings.NumPublicConnections;
+	Information._CurrentPlayers = FMath::Clamp(Information._MaxPlayers - Session->NumOpenPublicConnections, 0, Information._MaxPlayers);
+	Information._IsLan = Session->SessionSettings.bIsLANMatch;
+	return true;
+}
+
+FName UFPSOnlineSessionSubsystem::GetOnlineServiceName() const
+{
+	const IOnlineSubsystem* Subsystem = Online::GetSubsystem(GetWorld());
+	return Subsystem != nullptr ? Subsystem->GetSubsystemName() : NAME_None;
 }
 
 bool UFPSOnlineSessionSubsystem::RequireIdle(const TCHAR* Operation, FString& OutErrorMessage) const
@@ -1939,6 +2012,7 @@ bool UFPSOnlineSessionSubsystem::StartAutoMatchHost()
 
 void UFPSOnlineSessionSubsystem::FinishAutoMatch(bool WasSuccessful, bool IsHost, const FString& ErrorMessage)
 {
+	_LastSessionError = WasSuccessful ? FString() : ErrorMessage;
 	if (EFPSSessionAutoMatchStage::None == _AutoMatchStage)
 	{
 		return;

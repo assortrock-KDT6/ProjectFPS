@@ -19,8 +19,10 @@ public:
 
 	// WeaponID 에 해당하는 기본 정보와 능력치를 한번 조회하고 캐싱하기
 	// Implementation 은 IWeaponInterface 구현을 위한 코드 [ WeaponInterface에 Initialize 코드가 있어요 ] 
-	virtual bool InitializeWeapon_Implementation(FName _WeaponID) override;
-	
+	virtual bool InitializeWeapon_Implementation(FName WeaponID) override;
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const;
+
 	// Muzzle Socket의 월드 위치를 반환
 	FVector GetMuzzleLocation() const;
 	
@@ -31,12 +33,15 @@ public:
 	
 	// 현재 무기의 발사 모드를 반환 
 	EWeaponFireMode GetFireMode() const;
+	bool SupportsFireMode(EWeaponFireMode Mode) const;
+	bool CanToggleFireMode() const;
+	double GetRemainingFireInterval() const;
 	
 	// 데이터 테이블에 설정된 발사 간격을 반환 ( = _ProjectileInterval)
 	float GetProjectileInterval() const;
 	
-	// 현재 무기의 발사 모드를 단발, 연발 사이에서 전환 --> Todo : 단발과 연발이 없는 무기를 구분해야함 -> 이건 무기에 FireType 으로 받아와서 잡아주거나 Ability에 넣어서 bool 값으로 리턴하면 될듯합니다.
-	void ToggleFireMode();
+	// Server-only transition between modes supported by this weapon's data.
+	bool ToggleFireMode();
 	
 	// 총구에서 AimPoint 방향으로 Projectile Fire
 	bool Fire(const FVector& AimPoint);
@@ -55,6 +60,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Projectile")
 	TSubclassOf<AActor> _ProjectileClass;
 	
+
+	UPROPERTY(ReplicatedUsing = OnRep_WeaponID, BlueprintReadWrite)
+	FName _WeaponID;
+
+protected:
+
+	UFUNCTION()
+	virtual void OnRep_WeaponID();
+
+private:
+	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
+	EWeaponFireMode _CurrentFireMode = EWeaponFireMode::None;
+
+	double _NextAllowedShotTime = 0.;
+	bool LoadWeaponData(FName WeaponID);
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
