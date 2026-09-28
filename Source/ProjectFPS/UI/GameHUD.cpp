@@ -3,7 +3,15 @@
 #include "UI/GameHUD.h"
 #include "UI/GamePlay/GameMainWidget.h"
 
+void AGameHUD::BeginPlay()
+{
+	Super::BeginPlay();
+}
 
+void AGameHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	Super::EndPlay(EndPlayReason);
+}
 
 void AGameHUD::SwitchTo(EMatchPhase Phase)
 {

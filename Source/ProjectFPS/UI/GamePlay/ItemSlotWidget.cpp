@@ -42,6 +42,12 @@ void UItemSlotWidget::NativeOnListItemObjectSet(UObject* ListItemObject)
 	if (nullptr == Obj)
 		return;
 
+	// TileView 엔트리 = 소모품만 수량을 갖기 때문에.
+	_Type = EItemType::None;
+	_Index = Obj->_Index;
+	_Count = Obj->_Count;
+
+
 	SetSlot(Obj->_TID);
 
 	// 소모품일 경우 수량만 
@@ -91,9 +97,38 @@ void UItemSlotWidget::NativeOnMouseLeave(const FPointerEvent& InMouseEvent)
 
 }
 
+FReply UItemSlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	// 빈 슬롯은 무시.
+	if (_TID.IsNone())
+		return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+
+	// 우클릭 -> 버리기 요청 -> 수량 결정은 인벤토리 위젯에서 처리함.
+	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+	{
+		_OnDropRequested.Broadcast(_Type, _Index, _Count);
+		return FReply::Handled();
+	}
+	return Super::NativeOnMouseButtonDown(InGeometry, InMouseEvent);
+}
+
 void UItemSlotWidget::SetSlot(FName TID)
 {
 	_TID = TID;
+
+	// 무기 슬롯은 수량이 항상 0이거나 1임.
+	if (EItemType::Weapon == _Type)
+	{
+		if (TID.IsNone())
+		{
+			_Count = 0;
+		}
+		else
+		{
+			_Count = 1;
+		}
+		
+	}
 
 	// 아이콘을 숨김		
 	if (_IconImage)

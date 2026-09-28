@@ -6,6 +6,7 @@
 #include "Character/CharacterPlayer.h"
 #include "GameFramework/GameStateBase.h"
 #include "MotionWarpingComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 
 DEFINE_LOG_CATEGORY(LogTraversal);
 
@@ -91,6 +92,8 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 		return;
 	}
 
+	// Capture the grip before either montage changes the hand pose.
+	AttachWeaponsToRightHand();
 	const float Duration = Owner->PlayAnimMontage(Definition->_Montage, Definition->_PlayRate);
 	
 	if (true == Owner->IsLocallyControlled())
@@ -98,9 +101,14 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 		USkeletalMeshComponent* FirstPersonMesh = Owner->Get_FirstPersonMesh();
 
 		UAnimInstance* FirstPersonAnimInstance = IsValid(FirstPersonMesh) ? FirstPersonMesh->GetAnimInstance() : nullptr;
-		if (true == IsValid(FirstPersonAnimInstance))
+		UAnimMontage* ArmsMontage = _FirstPersonMontages.FindRef(State._Variant);
+		if (true == IsValid(FirstPersonAnimInstance) && IsValid(ArmsMontage))
 		{
-			FirstPersonAnimInstance->Montage_Play(Definition->_Montage, Definition->_PlayRate);
+			_ActiveFirstPersonMontage = ArmsMontage;
+			// Match the body timeline even if the retargeted asset has a different RateScale.
+			const float ArmsRate = _ActiveFirstPersonMontage->GetPlayLength()
+				/ FMath::Max(Duration * _ActiveFirstPersonMontage->RateScale, KINDA_SMALL_NUMBER);
+			FirstPersonAnimInstance->Montage_Play(_ActiveFirstPersonMontage, ArmsRate);
 		}
 	}
 
@@ -131,6 +139,7 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 
 void UTraversalActionComponent::ExitPresentation()
 {
+	RestoreWeaponAttachments();
 	ACharacterPlayer* Owner = Cast<ACharacterPlayer>(GetOwner());
 	if (true == IsValid(Owner) && true == IsValid(_ActiveMontage))
 	{
@@ -142,14 +151,15 @@ void UTraversalActionComponent::ExitPresentation()
 		}
 	}
 
-	if (true == Owner->IsLocallyControlled())
+	if (IsValid(Owner) && true == Owner->IsLocallyControlled())
 	{
 		USkeletalMeshComponent* FirstPersonMesh = Owner->Get_FirstPersonMesh();
 
 		UAnimInstance* FirstPersonAnimInstance = IsValid(FirstPersonMesh) ? FirstPersonMesh->GetAnimInstance() : nullptr;
-		if (true == IsValid(FirstPersonAnimInstance) && true == FirstPersonAnimInstance->Montage_IsPlaying(_ActiveMontage))
+		if (IsValid(FirstPersonAnimInstance) && IsValid(_ActiveFirstPersonMontage)
+			&& FirstPersonAnimInstance->Montage_IsPlaying(_ActiveFirstPersonMontage))
 		{
-			FirstPersonAnimInstance->Montage_Stop(_ActiveBlendOutTime, _ActiveMontage);
+			FirstPersonAnimInstance->Montage_Stop(_ActiveBlendOutTime, _ActiveFirstPersonMontage);
 		}
 	}
 
@@ -174,12 +184,82 @@ void UTraversalActionComponent::ExitPresentation()
 	}
 
 	_ActiveMontage				= nullptr;
+	_ActiveFirstPersonMontage	= nullptr;
 
 	_ActiveWarpTargetName		= NAME_None;
 
 	_ActivePresentationActionId = 0;
 
 	_ActiveBlendOutTime			= 0.1f;
+}
+
+void UTraversalActionComponent::AttachWeaponsToRightHand()
+{
+	ACharacterPlayer* Owner = Cast<ACharacterPlayer>(GetOwner());
+	USkeletalMeshComponent* Arms = IsValid(Owner) ? Owner->Get_FirstPersonMesh() : nullptr;
+	static const FName Hand(TEXT("hand_r"));
+	static const FName Weapon(TEXT("weapon"));
+	if (!IsValid(Arms) || Arms->GetBoneIndex(Hand) == INDEX_NONE)
+	{
+		return;
+	}
+
+	// Reparenting changes the child list, so iterate a snapshot.
+	const auto Children = Arms->GetAttachChildren();
+	for (USceneComponent* Child : Children)
+	{
+		if (!IsValid(Child) || Child->GetAttachSocketName() != Weapon)
+		{
+			continue;
+		}
+		// World weapons stay on the third-person hand for their entire equipped lifetime.
+		if (Child->GetOwner() != Owner)
+		{
+			continue;
+		}
+		FWeaponAttachment Saved;
+		Saved.Component = Child;
+		Saved.Parent = Arms;
+		Saved.TraversalParent = Arms;
+		Saved.Socket = Child->GetAttachSocketName();
+		Saved.RelativeTransform = Child->GetRelativeTransform();
+		const FTransform Grip = Child->GetComponentTransform().GetRelativeTransform(Arms->GetSocketTransform(Hand));
+		if (Child->AttachToComponent(Arms, FAttachmentTransformRules::KeepWorldTransform, Hand))
+		{
+			Child->SetRelativeTransform(Grip);
+			_WeaponAttachments.Add(Saved);
+		}
+	}
+}
+
+void UTraversalActionComponent::RestoreWeaponAttachments()
+{
+	for (const FWeaponAttachment& Saved : _WeaponAttachments)
+	{
+		USceneComponent* Child = Saved.Component.Get();
+		USceneComponent* Parent = Saved.Parent.Get();
+		// Do not reclaim a weapon that another system dropped or reattached.
+		if (!IsValid(Child) || !IsValid(Parent) || Child->GetAttachParent() != Saved.TraversalParent.Get()
+			|| Child->GetAttachSocketName() != TEXT("hand_r"))
+		{
+			continue;
+		}
+		if (Child->AttachToComponent(Parent, FAttachmentTransformRules::KeepRelativeTransform, Saved.Socket))
+		{
+			Child->SetRelativeTransform(Saved.RelativeTransform);
+			if (IsValid(Child->GetOwner()) && Child->GetOwner()->HasAuthority())
+			{
+				Child->GetOwner()->ForceNetUpdate();
+			}
+		}
+	}
+	_WeaponAttachments.Reset();
+}
+
+void UTraversalActionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	RestoreWeaponAttachments();
+	Super::EndPlay(EndPlayReason);
 }
 
 
@@ -211,13 +291,25 @@ bool UTraversalActionComponent::BuildContactTargets(const FTraversalRepState& St
 
 	const FVector Right = FVector::CrossProduct(Up, Forward).GetSafeNormal();
 
-	const FVector Center = FVector(State._TopPoint) + Forward * _HandInset;
+	const FVector WallNormal = FVector(State._ObstacleNormal).GetSafeNormal();
+	const float ForwardDotNormal = FVector::DotProduct(Forward, WallNormal);
+	if (FMath::IsNearlyZero(ForwardDotNormal))
+	{
+		return false;
+	}
+
+	// The landing sample can be deep inside a mantle surface. Hands belong at its front edge.
+	const FVector TopPoint = FVector(State._TopPoint);
+	const float DistanceToEdge = FVector::DotProduct(TopPoint - FVector(State._ObstaclePoint), WallNormal) / ForwardDotNormal;
+	const FVector Center = TopPoint - Forward * DistanceToEdge + Forward * _HandInset;
 
 	const FQuat ContactRotation = FRotationMatrix::MakeFromXZ(Forward, Up).ToQuat();
+	OutTargets._ObstacleFrame = FTransform(ContactRotation, TopPoint - Forward * DistanceToEdge);
+	OutTargets._ObstacleDepth = State._Mode == EProjectCustomMovementMode::Vault ? State._ObstacleDepth : 100000.f;
 
-	OutTargets._LeftHand = FTransform(ContactRotation, Center - Right * _HandSpacing);
+	OutTargets._LeftHand = FTransform(ContactRotation, Center - Right * _HandSpacing + Up * _HandSurfaceOffset);
 
-	OutTargets._RightHand = FTransform(ContactRotation, Center + Right * _HandSpacing);
+	OutTargets._RightHand = FTransform(ContactRotation, Center + Right * _HandSpacing + Up * _HandSurfaceOffset);
 
 	return true;
 }

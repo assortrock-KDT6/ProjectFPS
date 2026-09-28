@@ -328,6 +328,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "FPS|Online Session")
 	bool IsBusy() const;
 
+	/* 로비 UI에 표시할 현재 세션 정보. OnlineSubsystem 내부 객체를 UI에 노출하지 않는다. */
+	UFUNCTION(BlueprintPure, Category = "FPS|Online Session")
+	bool GetCurrentSessionInfo(FFPSOnlineSessionInfo& Information) const;
+
+	UFUNCTION(BlueprintPure, Category = "FPS|Online Session")
+	FName GetOnlineServiceName() const;
+
 private:
 
 	/** 

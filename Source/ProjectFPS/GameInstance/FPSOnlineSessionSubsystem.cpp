@@ -5,6 +5,8 @@
 #include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Engine/NetDriver.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerState.h"
 #include "UObject/UObjectGlobals.h"
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystem.h"
@@ -542,6 +544,22 @@ bool UFPSOnlineSessionSubsystem::TravelHostToGame(const FString& MapPath, EFPSSe
 	if (false == TravelURL.Contains(TEXT("?listen"), ESearchCase::IgnoreCase))
 	{
 		TravelURL += TEXT("?listen");
+	}
+	if (Intent == EFPSSessionTravelIntent::Host)
+	{
+		// 세션 정원이 아니라 이번 맵 이동에 실제로 참가한 인원을 전달한다.
+		int32 ExpectedPlayerCount = 0;
+		for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+		{
+			const APlayerController* PlayerController = Iterator->Get();
+			const APlayerState* PlayerState = IsValid(PlayerController) ? PlayerController->PlayerState.Get() : nullptr;
+			if (IsValid(PlayerState) && !PlayerController->IsPendingKillPending()
+				&& !PlayerState->IsOnlyASpectator() && !PlayerState->IsInactive())
+			{
+				++ExpectedPlayerCount;
+			}
+		}
+		TravelURL += FString::Printf(TEXT("?ExpectedPlayers=%d"), FMath::Max(1, ExpectedPlayerCount));
 	}
 
 #if !UE_BUILD_SHIPPING
@@ -1657,6 +1675,30 @@ bool UFPSOnlineSessionSubsystem::IsBusy() const
 {
 	return  EFPSOnlineOperationState::Idle != _OperationState || 
 			EFPSOnlineTravelState::Traveling == _TravelState;
+}
+
+bool UFPSOnlineSessionSubsystem::GetCurrentSessionInfo(FFPSOnlineSessionInfo& Information) const
+{
+	Information = FFPSOnlineSessionInfo();
+	const FNamedOnlineSession* Session = _SessionInterface.IsValid() ? _SessionInterface->GetNamedSession(NAME_GameSession) : nullptr;
+	if (Session == nullptr)
+	{
+		return false;
+	}
+	Information._SessionOwnerName = Session->OwningUserName;
+	Session->SessionSettings.Get(OnlineSessionSubsystemUtils::ProjectDisplayName, Information._DisplayName);
+	Session->SessionSettings.Get(SETTING_MAPNAME, Information._MapName);
+	Session->SessionSettings.Get(SETTING_GAMEMODE, Information._GameModeId);
+	Information._MaxPlayers = Session->SessionSettings.NumPublicConnections;
+	Information._CurrentPlayers = FMath::Clamp(Information._MaxPlayers - Session->NumOpenPublicConnections, 0, Information._MaxPlayers);
+	Information._IsLan = Session->SessionSettings.bIsLANMatch;
+	return true;
+}
+
+FName UFPSOnlineSessionSubsystem::GetOnlineServiceName() const
+{
+	const IOnlineSubsystem* Subsystem = Online::GetSubsystem(GetWorld());
+	return Subsystem != nullptr ? Subsystem->GetSubsystemName() : NAME_None;
 }
 
 bool UFPSOnlineSessionSubsystem::RequireIdle(const TCHAR* Operation, FString& OutErrorMessage) const

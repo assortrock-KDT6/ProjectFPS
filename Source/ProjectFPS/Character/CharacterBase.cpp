@@ -19,13 +19,11 @@ void ACharacterBase::BeginPlay()
 {
 	Super::BeginPlay();
 	RefreshMovementTags();
-	
 }
 
 void ACharacterBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
 }
 
 void ACharacterBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -97,8 +95,7 @@ void ACharacterBase::RefreshMovementTags()
 
 	for (const auto& Pair : FPSGameplayTags::CustomMovementModeTagMap)
 	{
-		_AbilitySystemComponent->SetLooseGameplayTagCount(Pair.Value,
-			Movement->MovementMode == MOVE_Custom && Movement->CustomMovementMode == Pair.Key ? 1 : 0);
+		_AbilitySystemComponent->SetLooseGameplayTagCount(Pair.Value, Movement->MovementMode == MOVE_Custom && Movement->CustomMovementMode == Pair.Key ? 1 : 0);
 	}
 
 	_AbilitySystemComponent->SetLooseGameplayTagCount(FPSGameplayTags::Status_Crouching, bIsCrouched ? 1 : 0);

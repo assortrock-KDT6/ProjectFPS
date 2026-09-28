@@ -11,6 +11,11 @@ namespace FPSGameplayTags
 	extern const TMap<uint8, FGameplayTag> MovementModeTagMap;
 	extern const TMap<uint8, FGameplayTag> CustomMovementModeTagMap;
 
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Combat);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Combat_Fire);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Combat_Blocked);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Damage_Immune);
+
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_ActivateFail_IsDead);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_ActivateFail_Cost);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_ActivateFail_Interval);
@@ -28,6 +33,7 @@ namespace FPSGameplayTags
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Crouching);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_ADS);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Firing);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Sprinting);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Reloading);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Melee);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Dashing);

@@ -11,6 +11,7 @@
  * 
  */
 
+class ACharacterPlayer;
 class FDataValidationContext;
 class UFPSCharacterMovementComponent;
 
@@ -26,6 +27,7 @@ protected:
 	 * 컨트롤 릭 
 	 */
 
+	// World-space contacts; Control Rig converts them using its evaluation-time transform.
 	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
 	FTransform _LeftHandTarget;
 
@@ -44,9 +46,37 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
 	float _TraversalIKAlpha = 0.f;
 
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	FTransform _TraversalObstacleFrame;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Traversal IK")
+	float _TraversalObstacleDepth = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "FPS|Ground IK")
+	bool _GroundIKEnabled = false;
+
+private:
+	FTransform _CachedLeftHandWorld = FTransform::Identity;
+
+	FTransform _CachedRightHandWorld = FTransform::Identity;
+
+	FTransform _CachedObstacleWorld = FTransform::Identity;
+
+	float _TraversalContactAge = 0.f;
+
+	bool _HasTraversalContacts = false;
+
+	FQuat _LeftContactRotation = FQuat::Identity;
+
+	FQuat _RightContactRotation = FQuat::Identity;
+
+	bool _LeftRotationLocked = false;
+
+	bool _RightRotationLocked = false;
+
 protected:
 	UPROPERTY(BlueprintReadOnly, Category = "FPS|Anim")
-	TObjectPtr<ACharacter> _Owner = nullptr;
+	TObjectPtr<ACharacterPlayer> _Owner = nullptr;
 
 	UPROPERTY(BlueprintReadOnly, Category = "FPS|Anim")
 	TObjectPtr<UFPSCharacterMovementComponent> _OwnerMovement = nullptr;
@@ -71,9 +101,10 @@ protected:
 
 	virtual void NativeInitializeAnimation() override;
 	virtual void NativeUninitializeAnimation() override;
-
-	virtual void NativeThreadSafeUpdateAnimation(float DeltaSeconds) override;
+	virtual void NativeUpdateAnimation(float DeltaSeconds) override;
 
 private:
-	void UpdateTraversalIK();
+	void UpdateTraversalIK(float DeltaSeconds);
+	void UpdateContactRotation(const FName& Curve, const FName& Bone, bool& Locked, FQuat& Rotation, FTransform& Target);
+	void ResetTraversalIK();
 };

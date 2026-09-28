@@ -55,6 +55,8 @@ protected:
 	void HandleSessionTravelFailed(const FString& ErrorMessage);
 
 private:
+	bool _QuickMatchRequested = false;
+
 	void ShowSessionError(const FString& ErrorMessage);
 	void ClearSessionError();
 	TSharedPtr<class SWidget> SessionErrorOverlay;

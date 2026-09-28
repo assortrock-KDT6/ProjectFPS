@@ -52,9 +52,16 @@ public:
 
 	virtual void OnUnPossess() override;
 
+	virtual void OnRep_Pawn() override;
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
-	void EnterDeathSpectating(const FVector& CameraaLocation, const FRotator& CameraRotation);
-	void RefreshInputMappingcontext();
+	void EnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation);
+
+	void RefreshInputMappingContext();
+
+protected:
+	UFUNCTION(Client, Reliable)
+	void ClientEnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation);
 };

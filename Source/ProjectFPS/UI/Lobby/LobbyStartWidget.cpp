@@ -151,14 +151,22 @@ void ULobbyStartWidget::OnStartClicked()
 	* 후보 참가 실패 같은 중간 과정은 통지되지 않으므로
 	* 결과는 HandleAutoMatchCompleted에서 한 번만 받는다.
 	*/
+	_QuickMatchRequested = true;
 	if (false == SessionSubsystem->AutoJoinOrHost(Options))
 	{
+		_QuickMatchRequested = false;
 		SetStartButtonEnabled(true);
 	}
 }
 
 void ULobbyStartWidget::HandleAutoMatchCompleted(bool WasSuccessful, bool IsHost, const FString& ErrorMessage)
 {
+	if (!_QuickMatchRequested)
+	{
+		return;
+	}
+
+	_QuickMatchRequested = false;
 	LastMatchIsHost = IsHost;
 
 	if (true == WasSuccessful)
@@ -173,6 +181,11 @@ void ULobbyStartWidget::HandleAutoMatchCompleted(bool WasSuccessful, bool IsHost
 
 void ULobbyStartWidget::HandleSessionTravelFailed(const FString& ErrorMessage)
 {
+	if (!_QuickMatchRequested)
+	{
+		return;
+	}
+
 	ShowSessionError(ErrorMessage);
 
 	/**
