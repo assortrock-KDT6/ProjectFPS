@@ -35,7 +35,7 @@ class PROJECTFPS_API UItemInfoWidget : public UUserWidget
 
 	// 커서에서 띄우는 오프셋.
 	UPROPERTY(EditAnywhere, Category = "Info")
-	FVector2D _CursorOffset = FVector2D(16.f, 16.f); 
+	FVector2D _CursorOffset = FVector2D::ZeroVector;
 
 	// 마우스를 따라갈지 (인벤 true / 인게임 false)
 	UPROPERTY(EditAnywhere, Category = "Info")
