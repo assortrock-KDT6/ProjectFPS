@@ -9,7 +9,6 @@
 #include "Component/Ability/DamageSourceComponent.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
 #include "AbilitySystemGlobals.h"
-#include "GameMode/FPSGameMode.h"
 #include "GameMode/PlayerStateBase.h"
 
 // Sets default values
@@ -48,10 +47,11 @@ void AWeaponActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	DOREPLIFETIME(AWeaponActor, _CurrentFireMode);
 }
 
-FVector AWeaponActor::GetMuzzleLocation() const
-{
-	return _WeaponMesh->GetSocketLocation(TEXT("Muzzle"));
-}
+// Commit 건영 : 아래 Line 145에서 이유 서술 ( 필요없는 분할이라서 호출위치 한곳에서 깔끔하게 관리하려고 지워요 ) 
+// FVector AWeaponActor::GetMuzzleLocation() const
+// {
+// 	return _WeaponMesh->GetSocketLocation(TEXT("Muzzle"));
+// }
 
 float AWeaponActor::GetWeaponRange() const
 {
@@ -105,31 +105,47 @@ double AWeaponActor::GetRemainingFireInterval() const
 
 bool AWeaponActor::Fire(const FVector& AimPoint)
 {
-	if (nullptr == GetWorld() || false == HasAuthority() || GetRemainingFireInterval() > 0.
-		|| false == SupportsFireMode(_CurrentFireMode) || GetProjectileInterval() <= 0.f)
+	// Commit 건영 : 중복 검사 통합
+	// HasAuthority 를 두번 검사하고 World도 앞에서 nullptr, 뒤에서 IsValid로 두번 검사해서 수정함
+	if (false == IsValid(GetWorld()) ||
+		false == HasAuthority() || 
+		GetRemainingFireInterval() > 0. || 
+		false == SupportsFireMode(_CurrentFireMode) || 
+		GetProjectileInterval() <= 0.f)
 	{
 		return false;
 	}
 
-	const AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
+	// Commit 건영 : 아래 CanAttack에서 서버의 GameMode 조회와 경기 상태 검사를 수행하고 있어서 같은 검사하려고 GameMode 변수 만드는건 불필요
+	// const AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
 
 	const UFPSAbilitySystemComponent* AbilitySystem = Cast<UFPSAbilitySystemComponent>(UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(GetInstigator()));
 
-	if (false == HasAuthority() || false == IsValid(GameMode) || false == GameMode->IsCombatAllowed()
-		|| false == IsValid(AbilitySystem) || false == AbilitySystem->CanAttack())
+	// Commit 건영 : 중복코드이고 FPSAbilitySystemComponent 랑 CanAttack에서 중복
+	// if (false == HasAuthority() || false == IsValid(GameMode) || false == GameMode->IsCombatAllowed()
+	// 	|| false == IsValid(AbilitySystem) || false == AbilitySystem->CanAttack())
+	// {
+	// 	return false;
+	// }
+	
+	if (false == IsValid(AbilitySystem) || false == AbilitySystem->CanAttack())
 	{
 		return false;
 	}
 	
-	if (false == IsValid(GetWorld()) 
-		|| false == IsValid(_WeaponMesh) 
-		|| nullptr == _ProjectileClass 
-		|| false == _WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
+	// Commit 건영 :  IsValid(GetWorld()) 위로 올림 
+	if (false   == IsValid(_WeaponMesh) || 
+		nullptr == _ProjectileClass        || 
+		false   == _WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
 	{
 		return false;
 	}
 	
-	const FVector MuzzleLocation = GetMuzzleLocation();
+	// Commit 건영 : 불필요 분할 함수
+	// line 51~54 (FVector AWeaponActor::GetMuzzleLocation() const {...}) 에서 소캣 위치 조회 한줄만 실행
+	// 현재 C++ 호출도 여기뿐이고 함수 내부에 별도의 검증이나 변환이 없으니까 조회를 사용하는 위치에 모으고 기존 MuzzleLocation 변수를 그대로 쓰면서 위 함수 정리
+	//const FVector MuzzleLocation = GetMuzzleLocation();
+	const FVector MuzzleLocation = _WeaponMesh->GetSocketLocation(TEXT("Muzzle"));
 	
 	// 카메라 Trace 로 구한 AimPoint를 향하도록 총구 기준 발사 방향을 계산
 	const FVector FireDirection = (AimPoint - MuzzleLocation).GetSafeNormal();

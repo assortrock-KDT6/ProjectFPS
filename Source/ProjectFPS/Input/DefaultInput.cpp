@@ -78,6 +78,18 @@ UDefaultInput::UDefaultInput()
 	{
 		_DropItem = DropItemACtion.Object;
 	}
+	
+	ConstructorHelpers::FObjectFinder<UInputAction> EquipMainWeaponAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_EquipMainWeapon.IA_EquipMainWeapon'"));
+	if (EquipMainWeaponAction.Succeeded())
+	{
+		_EquipMainWeapon = EquipMainWeaponAction.Object;
+	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> EquipSubWeaponAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_EquipSubWeapon.IA_EquipSubWeapon'"));
+	if (EquipSubWeaponAction.Succeeded())
+	{
+		_EquipSubWeapon = EquipSubWeaponAction.Object;
+	}
 
 
 }

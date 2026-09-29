@@ -53,4 +53,12 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _DropItem;
 
+	// 무기 슬롯 교체 (Main, Sub)
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _EquipMainWeapon;
+
+	// 무기 슬롯 교체 (Main, Sub)
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _EquipSubWeapon;
+
 };
