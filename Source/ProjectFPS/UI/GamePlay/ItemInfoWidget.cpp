@@ -10,6 +10,9 @@
 #include "Components/CanvasPanelSlot.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
+#include "Blueprint/SlateBlueprintLibrary.h"
+#include "GameFramework/PlayerController.h"
+#include "Components/PanelWidget.h"
 
 
 
@@ -72,7 +75,6 @@ void UItemInfoWidget::NativeConstruct()
 
 void UItemInfoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
-	// 매 프레임마다 처리 및 갱신. 
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	// 따라가기 꺼진 인스턴스 자리는 고정.
@@ -88,10 +90,35 @@ void UItemInfoWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	if (nullptr == CanvasSlot)
 		return;
 
-	// 뷰포트 기준 마우스 좌표(DPI 스케일 반영됨)
-	const FVector2D MousePos = UWidgetLayoutLibrary::GetMousePositionOnViewport(this);
+	UPanelWidget* ParentPanel = GetParent();
+	if (nullptr == ParentPanel)
+		return;
+
+	APlayerController* Pc = GetOwningPlayer();
+	if (nullptr == Pc)
+		return;
+
+	float MouseX = 0.f;
+	float MouseY = 0.f;
+	if (false == Pc->GetMousePosition(MouseX, MouseY))
+		return;
+
+	// 뷰포트 좌표를 부모 캔버스의 로컬 좌표로 변환한다.
+	// ScaleBox 등으로 배율이 걸려 있으면 두 좌표계가 달라 그냥 넣으면 어긋난다.
+	const FGeometry& ParentGeometry = ParentPanel->GetCachedGeometry();
+	FVector2D LocalPos = FVector2D::ZeroVector;
+	USlateBlueprintLibrary::ScreenToWidgetLocal(this, ParentGeometry, FVector2D(MouseX, MouseY), LocalPos, false);
+
+	LocalPos += _CursorOffset;
+
+	// 창 밖으로 나가지 않게 가둔다.
+	const FVector2D ParentSize = ParentGeometry.GetLocalSize();
+	const FVector2D PanelSize = GetDesiredSize();
+	LocalPos.X = FMath::Clamp(LocalPos.X, 0.f, FMath::Max(0.f, ParentSize.X - PanelSize.X));
+	LocalPos.Y = FMath::Clamp(LocalPos.Y, 0.f, FMath::Max(0.f, ParentSize.Y - PanelSize.Y));
+
 	// 정보창 위치 변경.
-	CanvasSlot->SetPosition(MousePos + _CursorOffset);
+	CanvasSlot->SetPosition(LocalPos);
 
 
 }

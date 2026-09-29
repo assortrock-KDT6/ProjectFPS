@@ -23,8 +23,9 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const;
 
+	// Commit 건영 : Fire() 함수에서 총구 소캣 위치를 직접 조회하도록 변경하면서 중복되는 해당 함수 제거
 	// Muzzle Socket의 월드 위치를 반환
-	FVector GetMuzzleLocation() const;
+	//FVector GetMuzzleLocation() const;
 	
 	// 현재 무기의 데이터 테이블 사거리를 반환
 	float GetWeaponRange() const;

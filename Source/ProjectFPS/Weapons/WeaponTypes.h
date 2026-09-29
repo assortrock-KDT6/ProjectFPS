@@ -156,6 +156,10 @@ struct FWeaponData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Aim", meta = (ClampMin = "0.01", EditCondition = "_CanAim"))
 	float _AimSensitivityMultiplier = 1.f;
 	
+	// NearClip Setting
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Aim", meta = (EditCondition = "_CanAim"))
+	float _AimNearClip = -1.f;
+
 	// 무기의 상태별 탄퍼짐 설정
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Spead")
 	FWeaponSpreadInfo _SpreadInformation;
