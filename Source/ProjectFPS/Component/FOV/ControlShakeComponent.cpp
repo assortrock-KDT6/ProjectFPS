@@ -4,6 +4,8 @@
 #include "GameFramework/Character.h"
 #include "Weapons/WeaponRecoilPattern.h"
 
+// todo : 현재 반동이 너무 이상하다싶을정도로 막무가내라 이거 다시 설계할 필요가 있어요
+
 UControlShakeComponent::UControlShakeComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -92,7 +94,8 @@ void UControlShakeComponent::AddShake(FControlShakeParams Params, bool bInLoop)
 void UControlShakeComponent::WeaponFired(FName WeaponID)
 {
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
-	if (!Character || !Character->IsLocallyControlled() || !RecoilPatternData || !GetWorld())
+	
+	if (!Character || (!Character->HasAuthority() && !Character->IsLocallyControlled()) || !IsValid(RecoilPatternData) || !GetWorld())
 	{
 		return;
 	}
@@ -103,18 +106,23 @@ void UControlShakeComponent::WeaponFired(FName WeaponID)
 	{
 		return;
 	}
-	
+		
 	int32& Offset = RecoilOffsetMap.FindOrAdd(WeaponID);
 	
-	const FVector Pattern = RecoilPatternData->GetRecoilPatternAt(WeaponID, Offset);
+	// Commit 건영 : PatternSequence와 SingleRecoilCurve 유효성 검사는 위에서 진행해서 중복을 제거
+	// 카메라 반동은 이 캐릭터를 직접 조종하는 플레이어에게만 적용하기
+	if (Character->IsLocallyControlled() && Information->SingleRecoilDuration > 0.f)
+	{
+		const FVector Pattern = RecoilPatternData->GetRecoilPatternAt(WeaponID, Offset);
+		FControlShakeParams Params;
+        Params.Duration = Information->SingleRecoilDuration;
+        Params.Curve    = Information->SingleRecoilCurve;
+        Params.ShakeMagnitude = FRotator(Pattern.X, Pattern.Y, Pattern.Z);
+        
+        AddShake(Params);
+	}
 	
-	FControlShakeParams Params;
-	Params.Duration = Information->SingleRecoilDuration;
-	Params.Curve    = Information->SingleRecoilCurve;
-	Params.ShakeMagnitude = FRotator(Pattern.X, Pattern.Y, Pattern.Z);
-	
-	AddShake(Params);
-	
+	// 서버는 실제 탄퍼짐, 소유 클라이언트는 화면 표시에 사용
 	++Offset;
 	
 	FTimerHandle& Timer = RecoilOffsetResetTimerMap.FindOrAdd(WeaponID);

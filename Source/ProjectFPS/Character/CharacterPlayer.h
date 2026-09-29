@@ -66,7 +66,7 @@ protected:
 	
 	// 실제 사격과 크로스헤어가 함게 사용할 현재 탄퍼짐의 정도
 	UFUNCTION(BlueprintPure, Category = "Weapon | Spread")
-	float GetWeaponSpreadValud() const;
+	float GetWeaponSpreadValue() const;
 	
 	// 무기를 생성하고 초기화한 뒤, FirstPersonMesh에 장착
 	//UFUNCTION(BlueprintCallable, Category = "Weapon")
@@ -155,8 +155,9 @@ private:
 
 	// 입력함수로 서버에서 시작, 정지만 요청하고 타이머로 발사관리하면서 FireOnce()는 실제로 한발만 발사합니다. 책임을 겹치지 않게 나눈거에요 
 	// 서버에서 연사 간격을 관리하는 타이머
-	FTimerHandle _FireTimerHandle;
-	FTimerHandle _FiringTagTimerHandle;
+	// Commit 건영 : 기존 FireOnce()를 반복 호출하여 연사했지만 FPSFireAbility가 담당으로 바뀜
+	// FTimerHandle _FireTimerHandle;
+	FTimerHandle _FiringTagTimerHandle; // 마지막 발사 이후 발사 표시를 종료하는 타이머
 
 public:
 	// 줌 견착
@@ -198,7 +199,7 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	
-	virtual void OnRep_PlayerState() override;
+	// virtual void OnRep_PlayerState() override;
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -209,6 +210,9 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	// Commit 건영 : AActor에 있는 함수인데 NearClip을 적용하기위해서 재정의해서 사용합니다.
+	virtual void CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult) override;
+	
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
@@ -275,6 +279,19 @@ protected:
 	UFUNCTION()
 	void FireToggleAction(const FInputActionValue& value);
 
+	// Commit 건영 : 현재 발사 시작과 종료요청은 ASC의 SetFireInput() 경로가 담당한다.
+	// UFUNCTION(Server, Reliable)
+	// void ServerStartFire();
+	// void ServerStartFire_Implementation();
+	//
+	// UFUNCTION(Server, Reliable)
+	// void ServerStopFire();
+	// void ServerStopFire_Implementation();
+
+	// 소유 플레이어의 조준 상태를 서버 발사 계산에도 반영
+	// UFUNCTION(Server, Reliable)
+	// void ServerSetAiming(bool bAiming);
+
 	
 	// 서버에서 결정한 1인칭 외형을 소유 플레이어에게 전달하기 + 기존에는 무기 외형뿐이였는데 조준설정도 같이 받기
 	UFUNCTION(Client, Reliable)
@@ -311,9 +328,10 @@ public:
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
 	
-private:
-	void ClearFiringTag();
-	
-	// 한 발의 조준점 계산과 발사를 실행
-	void FireOnce();
+// Commit 건영
+// private:
+// 	void ClearFiringTag(); -> 기존 StopFiringPresentation()에 태그 해제 처리까지 통합
+// 	
+// 	// 한 발의 조준점 계산과 발사를 실행
+// 	void FireOnce();       -> FPSFireAbility::FireNextShot()에서 조준점을 구하고 무기 발사 호출 
 };
