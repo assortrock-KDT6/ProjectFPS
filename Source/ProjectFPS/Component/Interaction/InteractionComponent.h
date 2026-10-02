@@ -28,7 +28,7 @@ public:
 	// 검사하는 선과 구체를 화면에 보여줄지 정하는거 
 	// 지역으로선언 못함-> 에디터에서 정보를 알 수 가 없다네.
 	UPROPERTY(EditAnywhere, Category = "Interact", meta = (DisplayName = "Draw Debug Interation"))
-	bool _bDrawDebug = true;
+	bool _bDrawDebug = false;
 
 	// 디버그 선 유지 시간.
 	UPROPERTY(EditAnywhere, Category = "Interact", meta = (EditCondition = "_bDrawDebug"))

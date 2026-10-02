@@ -29,6 +29,7 @@ void UMinimapWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	{
 		if (nullptr != _MapImage->GetBrush().GetResourceObject())
 			SetupFromPawn(nullptr);
+		
 
 		return;
 	}

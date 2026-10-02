@@ -24,12 +24,15 @@ class UDefaultInput;
 class USpringArmComponent;
 class UCameraComponent;
 class USkeletalMeshComponent;
+class UStaticMeshComponent;
 class AWeaponActor;
+class AGrenadeActor;
 class AWeaponPickUp;
 class UFPSViewSkeletalMeshComponent;
 class UControlShakeComponent;
 class USkeletalMesh;
 class UAnimInstance;
+class UAnimMontage;
 class AItemPickUp;
 class APlayerStateBase;
 struct FInputActionValue;
@@ -85,6 +88,9 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "First Person")
 	TObjectPtr<UFPSViewSkeletalMeshComponent> _ViewWeaponMesh;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "First Person")
+	TObjectPtr<UStaticMeshComponent> _ViewItemMesh;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Recoil")
 	TObjectPtr<UControlShakeComponent> _ControlShakeManager;
 
@@ -97,6 +103,14 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	TObjectPtr<AWeaponActor> _CurrentWeapon;
 
+	// 서버가 생성할 실제 수류탄의 Blueprint 클래스
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Grenade")
+	TSubclassOf<AGrenadeActor> _GrenadeActorClass;
+	
+	// 유효하면 현재 수류탄을 장착한 상태
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentGrenade, VisibleAnywhere, BlueprintReadOnly, Category = "Grenade")
+	TObjectPtr<AGrenadeActor> _CurrentGrenade;
+	
 	// 현재 상호작용 범위 안에 있는 월드 무기
 	UPROPERTY()
 	TObjectPtr<AWeaponPickUp> _NearbyWeaponPickUp;
@@ -162,10 +176,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool EquipWeapon(FName WeaponID);
 
-	AWeaponActor* GetEquippedWeapon() const 
-	{ 
-		return _CurrentWeapon;
-	}
+	AWeaponActor* GetEquippedWeapon() const;
+	
+	AGrenadeActor* GetEquippedGrenade() const;
+	
+	// 투척할 액터는 보존하고 장착 참조와 표시만 정리
+	void ClearGrenadeReference(AGrenadeActor* Grenade);
+	
 	bool CanFireFromAbility() const;
 
 	void NotifyAbilityWeaponFired(AWeaponActor* Weapon);
@@ -232,6 +249,12 @@ public:
 	USkeletalMeshComponent* Get_FirstPersonMesh() const;
 	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
 
+	// 소유 플레이어의 1인칭 팔에서 재생하거나 지정 섹션으로 전환한다
+	UFUNCTION(Client, Reliable)
+	void ClientPlayGrenadeMontage(UAnimMontage* Montage, FName Section);
+	UFUNCTION(Client, Reliable)
+	void ClientStopGrenadeMontage(UAnimMontage* Montage);
+	
 protected:
 	UFUNCTION()
 	void MoveAction(const FInputActionValue& Value);
@@ -266,6 +289,21 @@ protected:
 	UFUNCTION()
 	void FireToggleAction(const FInputActionValue& value);
 
+	UFUNCTION()
+	void CookAction(const FInputActionValue& value);
+	
+	UFUNCTION()
+	void EquipGrenadeAction(const FInputActionValue& value);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerEquipGrenade();
+	
+	UFUNCTION()
+	void OnRep_CurrentGrenade();
+	
+	// 서버에서 장착을 해제하고 표시를 갱신
+	void ClearEquippedGrenade();
+	
 	// Commit 건영 : 현재 발사 시작과 종료요청은 ASC의 SetFireInput() 경로가 담당한다.
 	// UFUNCTION(Server, Reliable)
 	// void ServerStartFire();
@@ -327,10 +365,18 @@ public:
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
 	
+	// 두 입력이 공유하는 사전 검사 통과하면 서버에 요청함.
+	void RequestEquipSlot(int32 Index);
+
+
+
+
 // Commit 건영
 // private:
 // 	void ClearFiringTag(); -> 기존 StopFiringPresentation()에 태그 해제 처리까지 통합
 // 	
 // 	// 한 발의 조준점 계산과 발사를 실행
 // 	void FireOnce();       -> FPSFireAbility::FireNextShot()에서 조준점을 구하고 무기 발사 호출 
+
+
 };
