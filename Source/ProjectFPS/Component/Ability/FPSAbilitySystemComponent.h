@@ -10,7 +10,7 @@ struct FGameplayTag;
 struct FGameplayTagContainer;
 class UFPSFireAbility;
 class UFPSChangeFireModeAbility;
-
+class UFPSGrenadeAbility;
 /**
  * 모든 전투 기능을 처리하는 거대한 컴포넌트를 만들면 안된다.
  * 
@@ -41,11 +41,17 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|Abilities")
 	TSubclassOf<UFPSChangeFireModeAbility> ChangeFireModeAbilityClass;
+	
+	// 블루프린트에서 실제 사용할 수류탄 능력을 지정한다.
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Abilities")
+	TSubclassOf<UFPSGrenadeAbility> GrenadeAbilityClass;
 
 private:
 	FGameplayAbilitySpecHandle _FireAbilityHandle;
 	
 	FGameplayAbilitySpecHandle _ChangeFireModeAbilityHandle;
+	
+	FGameplayAbilitySpecHandle _GrenadeAbilityHandle;
 	
 	FActiveGameplayEffectHandle _MatchCombatBlockEffectHandle;
 	
@@ -64,6 +70,9 @@ public:
 	void SetFireInput(bool Pressed);
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
+	void CookGrenade();
+	
+	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
 	void ChangeFireMode();
 
 	UFUNCTION(BlueprintPure, Category = "Combat")
@@ -74,7 +83,9 @@ private:
 	void ServerSetFireInput(bool Pressed);
 	UFUNCTION(Server, Reliable)
 	void ServerChangeFireMode();
-
+	UFUNCTION(Server, Reliable)
+	void ServerCookGrenade();
+	
 public:
 	void CancelWeaponFire();
 

@@ -73,11 +73,34 @@ UDefaultInput::UDefaultInput()
 		_FireToggle = FireToggleAction.Object;
 	}
 
-	ConstructorHelpers::FObjectFinder<UInputAction> DropItemACtion(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_DropItem.IA_DropItem'"));
-	if(DropItemACtion.Succeeded())
+	ConstructorHelpers::FObjectFinder<UInputAction> CookAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Cook.IA_Cook'"));
+	if (CookAction.Succeeded())
 	{
-		_DropItem = DropItemACtion.Object;
+		_Cook = CookAction.Object;
+	}
+	
+	ConstructorHelpers::FObjectFinder<UInputAction> DropItemAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_DropItem.IA_DropItem'"));
+	if(DropItemAction.Succeeded())
+	{
+		_DropItem = DropItemAction.Object;
+	}
+	
+	ConstructorHelpers::FObjectFinder<UInputAction> EquipMainWeaponAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_EquipMainWeapon.IA_EquipMainWeapon'"));
+	if (EquipMainWeaponAction.Succeeded())
+	{
+		_EquipMainWeapon = EquipMainWeaponAction.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> EquipSubWeaponAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_EquipSubWeapon.IA_EquipSubWeapon'"));
+	if (EquipSubWeaponAction.Succeeded())
+	{
+		_EquipSubWeapon = EquipSubWeaponAction.Object;
+	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> WeaponSlot3Action(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_WeaponSlot3.IA_WeaponSlot3'"));
+	if (WeaponSlot3Action.Succeeded())
+	{
+		_WeaponSlot3 = WeaponSlot3Action.Object;
+	}
 
 }
