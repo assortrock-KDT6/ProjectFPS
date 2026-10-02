@@ -6,6 +6,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayTag.h"
 #include "UniversalObjectLocators/AnimInstanceLocatorFragment.h"
 
@@ -28,6 +29,7 @@ void UFPSGrenadeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle
 										 const FGameplayEventData* TriggerEventData)
 {
 	ACharacterPlayer* Character = ActorInfo ? Cast<ACharacterPlayer>(ActorInfo->AvatarActor.Get()) : nullptr;
+	_ThirdPersonMontageStarted = false;
 	
 	if (false == IsValid(Character) ||
 		false == Character->HasAuthority() ||
@@ -79,6 +81,7 @@ void UFPSGrenadeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle
 	EndDelegate.BindUObject(this, &UFPSGrenadeAbility::OnMontageEnded);
 	
 	AnimInstance->Montage_SetEndDelegate(EndDelegate, _GrenadeMontageFP);
+	PlayThirdPersonMontage(TEXT("Ready"));
 	
 	// 준비 중에도 사망, 전투 금지, 파쿠르등의 차단 상태를 감시
 	for (const FGameplayTag& Tag : ActivationBlockedTags)
@@ -146,6 +149,7 @@ void UFPSGrenadeAbility::InputReleased(const FGameplayAbilitySpecHandle Handle,
 	}
 	
 	AnimInstance->Montage_JumpToSection(TEXT("Throw"), _GrenadeMontageFP);
+	PlayThirdPersonMontage(TEXT("Throw"));
 
 	if (false == Character->IsLocallyControlled())
 	{
@@ -197,12 +201,73 @@ void UFPSGrenadeAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 		Character->ClientStopGrenadeMontage(_GrenadeMontageFP);
 	}
 
+	if (_ThirdPersonMontageStarted)
+	{
+		UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
+		if (IsValid(ASC))
+		{
+			if (bWasCancelled && ASC->GetAnimatingAbility() == this && ASC->GetCurrentMontage() == _GrenadeMontageTP)
+			{
+				ASC->CurrentMontageStop(_GrenadeMontageTP->GetDefaultBlendOutTime());
+			}
+			// 정상 종료는 TP의 남은 블렌드 아웃을 그대로 두고 소유 관계만 해제한다.
+			ASC->ClearAnimatingAbility(this);
+		}
+		if (bWasCancelled && IsValid(Character) && !Character->IsLocallyControlled())
+		{
+			Character->ClientStopGrenadeMontageTP(_GrenadeMontageTP);
+		}
+		_ThirdPersonMontageStarted = false;
+	}
+
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+void UFPSGrenadeAbility::PlayThirdPersonMontage(FName Section)
+{
+	ACharacterPlayer* Character = Cast<ACharacterPlayer>(GetAvatarActorFromActorInfo());
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	if (!IsValid(Character) || !Character->HasAuthority() || !IsValid(ASC) || !IsValid(_GrenadeMontageTP))
+	{
+		return;
+	}
+
+	if (Section == TEXT("Ready"))
+	{
+		if (!IsValid(Character->GetMesh()) || !IsValid(Character->GetMesh()->GetAnimInstance())
+			|| _GrenadeMontageTP->GetSectionIndex(TEXT("Ready")) == INDEX_NONE
+			|| _GrenadeMontageTP->GetSectionIndex(TEXT("ReadyHold")) == INDEX_NONE
+			|| _GrenadeMontageTP->GetSectionIndex(TEXT("Throw")) == INDEX_NONE)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Grenade TP montage requires a body AnimInstance and Ready/ReadyHold/Throw sections."));
+			return;
+		}
+		_ThirdPersonMontageStarted = ASC->PlayMontage(this, CurrentActivationInfo, _GrenadeMontageTP, 1.f, Section) > 0.f;
+	}
+	else if (_ThirdPersonMontageStarted && ASC->GetAnimatingAbility() == this && ASC->GetCurrentMontage() == _GrenadeMontageTP)
+	{
+		ASC->CurrentMontageJumpToSection(Section);
+	}
+	else
+	{
+		return;
+	}
+
+	// GAS 몽타주 복제는 simulated proxy에 적용된다. 소유 클라이언트는 따로 표시한다.
+	if (_ThirdPersonMontageStarted && !Character->IsLocallyControlled())
+	{
+		Character->ClientPlayGrenadeMontageTP(_GrenadeMontageTP, Section);
+	}
 }
 
 UAnimMontage* UFPSGrenadeAbility::GetGrenadeMontageFP() const
 {
 	return _GrenadeMontageFP.Get();
+}
+
+UAnimMontage* UFPSGrenadeAbility::GetGrenadeMontageTP() const
+{
+	return _GrenadeMontageTP.Get();
 }
 
 void UFPSGrenadeAbility::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted)

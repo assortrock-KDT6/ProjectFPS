@@ -6,6 +6,8 @@
 #include "GameFramework/HUD.h"
 #include "MainHUD.generated.h"
 
+class UExitMenuWidget;
+
 /**
  * 모든 HUD의 공통베이스 (직접 사용x, 상속 전용)
  * 위젯 생성/제거, 오버레이 토글, CurrentScreen 관리, 입력 모드 전환 담당.
@@ -15,6 +17,10 @@ UCLASS()
 class PROJECTFPS_API AMainHUD : public AHUD
 {
 	GENERATED_BODY()
+protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	
+	virtual void RestoreInputAfterExitMenu();
 
 protected:
 
@@ -28,6 +34,23 @@ protected:
 	UPROPERTY()
 	TObjectPtr<UUserWidget> SettingWidget;
 
+	UPROPERTY(Transient)
+	TObjectPtr<UExitMenuWidget> ExitMenuWidget;
+
+public:
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void ToggleExitMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void CloseExitMenu();
+
+	UFUNCTION(BlueprintPure, Category = "HUD")
+	bool IsExitMenuOpen() const;
+
+protected:
+	// 각 HUD 블루프린트에서 자체적으로 메뉴를 생성하며, C++ 클래스 지정이나 버튼 바인딩은 사용하지 않는다.
+	UFUNCTION(BlueprintImplementableEvent, Category = "HUD")
+	UExitMenuWidget* CreateExitMenu();
 
 protected:
 	// 선택된 위젯 제거 후 새 화면에 위젯 생성 및 표시
@@ -50,9 +73,5 @@ protected:
 
 protected:
 	void CloseOverlay(TObjectPtr<UUserWidget>& OverlayPtr);
-	
 
-
-	
-	
 };

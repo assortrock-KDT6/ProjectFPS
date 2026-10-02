@@ -4,6 +4,8 @@
 #include "GameMode/PlayerStateBase.h"
 #include "Component/Inventory/InventoryComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "GameMode/FPSLobbyGameState.h"
+#include "Engine/World.h"
 
 APlayerStateBase::APlayerStateBase()
 {
@@ -82,3 +84,19 @@ void APlayerStateBase::OnRep_MatchStats()
 	_OnMatchStatsChanged.Broadcast();
 }
 	
+
+void APlayerStateBase::SetPlayerName(const FString& Name)
+{
+    Super::SetPlayerName(Name);
+    if (auto* Lobby = GetWorld() ? GetWorld()->GetGameState<AFPSLobbyGameState>() : nullptr) { Lobby->NotifyRosterChanged(); }
+}
+void APlayerStateBase::OnRep_PlayerName()
+{
+    Super::OnRep_PlayerName();
+    if (auto* Lobby = GetWorld() ? GetWorld()->GetGameState<AFPSLobbyGameState>() : nullptr) { Lobby->NotifyRosterChanged(); }
+}
+void APlayerStateBase::OnRep_bIsInactive()
+{
+    Super::OnRep_bIsInactive();
+    if (auto* Lobby = GetWorld() ? GetWorld()->GetGameState<AFPSLobbyGameState>() : nullptr) { Lobby->NotifyRosterChanged(); }
+}

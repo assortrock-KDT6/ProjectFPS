@@ -394,6 +394,32 @@ void AFPSGameMode::HandleMatchHasEnded()
 		}
 	}
 	Super::HandleMatchHasEnded();
+
+	const float ResultDuration = FMath::IsFinite(_ResultDisplayDurationSeconds)
+		? FMath::Max(0.1f, _ResultDisplayDurationSeconds) : 10.f;
+	const double ReturnServerTime = (IsValid(FPSGameState)
+		? FPSGameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ResultDuration;
+	const TArray<FPlayerMatchResult> Results = IsValid(FPSGameState)
+		? FPSGameState->GetMatchResults() : TArray<FPlayerMatchResult>();
+	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+	{
+		if (APlayerControllerBase* Controller = Cast<APlayerControllerBase>(Iterator->Get()))
+		{
+			// 결과 복제 순서와 관계없이 각 소유 클라이언트에 확정된 복사본을 전달한다.
+			Controller->ClientShowMatchResults(Results, ReturnServerTime);
+		}
+	}
+	GetWorldTimerManager().SetTimer(_ReturnToLobbyTimer, this,
+		&AFPSGameMode::ReturnToLobbyAfterResults, ResultDuration, false);
+}
+
+void AFPSGameMode::ReturnToLobbyAfterResults()
+{
+	if (HasAuthority() && HasMatchEnded())
+	{
+		// 기존 세션 정리 및 로컬 로비 복귀 흐름을 사용한다.
+		ReturnToMainMenuHost();
+	}
 }
 
 void AFPSGameMode::SetPlayersMatchCombatBlocked(bool Blocked)
@@ -417,6 +443,7 @@ void AFPSGameMode::ClearMatchTimers()
 {
 	GetWorldTimerManager().ClearTimer(_MatchStartCheckTimer);
 	GetWorldTimerManager().ClearTimer(_MatchEndTimer);
+	GetWorldTimerManager().ClearTimer(_ReturnToLobbyTimer);
 	for (TPair<TWeakObjectPtr<APlayerController>, FTimerHandle>& Entry : _RespawnTimers)
 	{
 		GetWorldTimerManager().ClearTimer(Entry.Value);

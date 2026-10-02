@@ -3,6 +3,7 @@
 
 #include "Component/Ability/FPSAbilitySystemComponent.h"
 #include "Character/CharacterPlayer.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Component/Ability/GameEffect/FPSMatchCombatBlockEffect.h"
 #include "GameMode/FPSGameMode.h"
 #include "GameMode/FPSGameState.h"
@@ -181,6 +182,11 @@ void UFPSAbilitySystemComponent::CancelWeaponFire()
 void UFPSAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor)
 {
 	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
+	// GAS 몽타주는 몸에서 재생한다. 1인칭 팔은 별도 표시/투척 판정 경로를 사용한다.
+	if (const ACharacterPlayer* Character = Cast<ACharacterPlayer>(InAvatarActor))
+	{
+		AbilityActorInfo->SkeletalMeshComponent = Character->GetMesh();
+	}
 	GrantWeaponAbilities();
 	
 	if (false ==_CombatBlockedTagDelegate.IsValid())

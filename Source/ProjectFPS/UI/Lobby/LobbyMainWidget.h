@@ -31,6 +31,7 @@ protected:
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 
 	// 메뉴의 OnTabSelected 에 바인딩 될 핸들러.
 	UFUNCTION() 

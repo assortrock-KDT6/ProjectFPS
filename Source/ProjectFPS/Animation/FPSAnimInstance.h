@@ -88,6 +88,7 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Character State Data")
 	float _GroundDistance = -1.f;
 
+
 protected:
 
 	virtual void InitializeWithAbilitySystem(UAbilitySystemComponent* AbilitySystemComponent);

@@ -1,57 +1,27 @@
 #pragma once
-
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Common/GameDatas.h"
 #include "SessionEntryWidget.generated.h"
 
-class UButton;
-class UTextBlock;
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSessionJoinRequested, int32, ResultIndex);
 
-/** 검색 결과의 원본 인덱스를 보관하는 참가 행. 화면상의 행 번호로 참가하지 않는다. */
+/** Keeps the original result identity and validates join requests; presentation is Blueprint-owned. */
 UCLASS(Abstract)
 class PROJECTFPS_API USessionEntryWidget : public UUserWidget
 {
-	GENERATED_BODY()
-
+    GENERATED_BODY()
 public:
-	UPROPERTY(BlueprintAssignable, Category = "Session")
-	FSessionJoinRequested _OnJoinRequested;
-
-	UFUNCTION(BlueprintCallable, Category = "Session")
-	void DisplaySession(const FFPSOnlineSessionInfo& Session);
-
-	void SetJoinAllowed(bool Allowed);
-
+    UPROPERTY(BlueprintAssignable, Category="Session") FSessionJoinRequested _OnJoinRequested;
+    UPROPERTY(BlueprintReadOnly, Transient, Category="Session") FFPSOnlineSessionInfo SessionInfo;
+    UPROPERTY(BlueprintReadOnly, Transient, Category="Session") bool HasSpace = false;
+    UPROPERTY(BlueprintReadOnly, Transient, Category="Session") bool CanJoin = false;
+    UFUNCTION(BlueprintCallable, Category="Session") void DisplaySession(const FFPSOnlineSessionInfo& Session);
+    UFUNCTION(BlueprintCallable, Category="Session") void SetJoinAllowed(bool Allowed);
+    UFUNCTION(BlueprintCallable, Category="Session") void RequestJoin();
 protected:
-	virtual void NativeConstruct() override;
-	virtual void NativeDestruct() override;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> _RoomNameText;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> _DetailsText;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> _PlayersText;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> _PingText;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UButton> _JoinButton;
-
-	UPROPERTY(meta = (BindWidget))
-	TObjectPtr<UTextBlock> _JoinButtonText;
-
+    UFUNCTION(BlueprintImplementableEvent, Category="Session|View") void RefreshEntry();
+    virtual void NativeConstruct() override;
 private:
-	int32 _ResultIndex = INDEX_NONE;
-	bool _HasSpace = false;
-	bool _JoinAllowed = false;
-
-	UFUNCTION()
-	void HandleJoinClicked();
+    bool _JoinAllowed = false;
 };

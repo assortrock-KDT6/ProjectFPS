@@ -26,6 +26,40 @@ enum class EMatchPhase : uint8
 
 };
 
+// 세션에서 선택하는 플레이 모드. 각 레벨의 게임 규칙과 별도로 관리한다.
+UENUM(BlueprintType)
+enum class EFPSMatchMode : uint8
+{
+	PVP = 0 UMETA(DisplayName = "PVP"),
+	PVE UMETA(DisplayName = "PVE")
+};
+
+namespace FPSMatchModeUtils
+{
+	inline FString ToId(EFPSMatchMode Mode) 
+	{ 
+		return Mode == EFPSMatchMode::PVE ? TEXT("PVE") : TEXT("PVP"); 
+	}
+
+	inline bool TryParse(const FString& Id, EFPSMatchMode& Mode)
+	{
+		if (Id.Equals(TEXT("PVE"), ESearchCase::IgnoreCase))
+		{
+			Mode = EFPSMatchMode::PVE;
+			return true;
+		}
+
+		// 기존 빠른 매칭 블루프린트와의 호환을 위해 Deathmatch 또는 빈 ID도 PVP로 처리한다.		
+		if (Id.IsEmpty() || Id.Equals(TEXT("PVP"), ESearchCase::IgnoreCase)
+			|| Id.Equals(TEXT("Deathmatch"), ESearchCase::IgnoreCase))
+		{
+			Mode = EFPSMatchMode::PVP;
+			return true;
+		}
+		return false;
+	}
+}
+
 // 현재 실행 중인 비동기 작업 상태.
 UENUM(BlueprintType)
 enum class EFPSOnlineOperationState : uint8
@@ -105,5 +139,3 @@ namespace FCharacterStateUtils
 	const TCHAR* ToString(EFPSOnlineTravelState Type);
 }
 // Fill out your copyright notice in the Description page of Project Settings.
-
-

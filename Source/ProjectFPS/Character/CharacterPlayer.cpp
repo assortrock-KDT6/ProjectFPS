@@ -980,6 +980,30 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 
 	OnWeaponEquiped(WeaponType);
 
+	// 복제된 장착 상태로 모든 TP 메시가 같은 첫 프레임을 유지한다.
+	// 준비/투척 중인 GAS 몽타주는 장착 갱신으로 되돌리거나 중단하지 않는다.
+	if (IsValid(_AbilitySystemComponent) && IsValid(GetMesh()))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject();
+		UAnimMontage* MontageTP = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageTP() : nullptr;
+		UAnimInstance* AnimInstanceTP = GetMesh()->GetAnimInstance();
+		if (IsValid(MontageTP) && IsValid(AnimInstanceTP))
+		{
+			if (HasGrenade)
+			{
+				if (!AnimInstanceTP->Montage_IsActive(MontageTP)
+					&& AnimInstanceTP->Montage_Play(MontageTP, 1.f, EMontagePlayReturnType::MontageLength, 0.f, false) > 0.f)
+				{
+					AnimInstanceTP->Montage_Pause(MontageTP);
+				}
+			}
+			else if (AnimInstanceTP->Montage_IsActive(MontageTP) && !AnimInstanceTP->Montage_IsPlaying(MontageTP))
+			{
+				AnimInstanceTP->Montage_Stop(MontageTP->GetDefaultBlendOutTime(), MontageTP);
+			}
+		}
+	}
+
 	if (IsLocallyControlled())
 	{
 		SetAiming(false);
@@ -994,7 +1018,7 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 		const UFPSGrenadeAbility* GrenadeAbility = _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject();
 		
 		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
-		
+
 		UAnimInstance* AnimInstance = _FirstPersonMesh->GetAnimInstance();
 		
 		if (IsValid(Montage) && IsValid(AnimInstance))
@@ -1254,6 +1278,34 @@ void ACharacterPlayer::ClientStopGrenadeMontage_Implementation(UAnimMontage* Mon
 	}
 	
 	AnimInstance->Montage_Stop(Montage->GetDefaultBlendOutTime(), Montage);
+}
+
+void ACharacterPlayer::ClientPlayGrenadeMontageTP_Implementation(UAnimMontage* Montage, FName Section)
+{
+	USkeletalMeshComponent* Body = GetMesh();
+	UAnimInstance* AnimInstance = IsValid(Body) ? Body->GetAnimInstance() : nullptr;
+	if (!IsLocallyControlled() || HasAuthority() || !IsValid(AnimInstance) || !IsValid(Montage)
+		|| Montage->GetSectionIndex(Section) == INDEX_NONE)
+	{
+		return;
+	}
+	if (!AnimInstance->Montage_IsActive(Montage)
+		&& AnimInstance->Montage_Play(Montage, 1.f, EMontagePlayReturnType::MontageLength, 0.f, false) <= 0.f)
+	{
+		return;
+	}
+	AnimInstance->Montage_JumpToSection(Section, Montage);
+	AnimInstance->Montage_Resume(Montage);
+}
+
+void ACharacterPlayer::ClientStopGrenadeMontageTP_Implementation(UAnimMontage* Montage)
+{
+	USkeletalMeshComponent* Body = GetMesh();
+	UAnimInstance* AnimInstance = IsValid(Body) ? Body->GetAnimInstance() : nullptr;
+	if (IsLocallyControlled() && !HasAuthority() && IsValid(AnimInstance) && IsValid(Montage))
+	{
+		AnimInstance->Montage_Stop(Montage->GetDefaultBlendOutTime(), Montage);
+	}
 }
 
 void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
