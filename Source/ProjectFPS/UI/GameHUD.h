@@ -29,6 +29,7 @@ protected:
 	virtual void BeginPlay() override;
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void RestoreInputAfterExitMenu() override;
 
 	// 각 위젯별 화면 BP_GameHUD -> 디테일에서 지정.
 	UPROPERTY(EditAnywhere, Category = "HUD|Screens")	

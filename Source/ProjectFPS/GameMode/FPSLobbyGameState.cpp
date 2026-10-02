@@ -9,6 +9,16 @@ void AFPSLobbyGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	DOREPLIFETIME(AFPSLobbyGameState, _SelectedMap);
 }
 
+void AFPSLobbyGameState::NotifyRosterChanged()
+{
+	_OnLobbyChanged.Broadcast();
+}
+
+const FFPSPlayableMap& AFPSLobbyGameState::GetSelectedMap() const
+{
+	return _SelectedMap;
+}
+
 void AFPSLobbyGameState::BeginPlay()
 {
 	Super::BeginPlay();
@@ -26,17 +36,24 @@ void AFPSLobbyGameState::SetSelectedMap(const FFPSPlayableMap& Map)
 	if (HasAuthority())
 	{
 		_SelectedMap = Map;
+
 		ForceNetUpdate();
+
         OnRep_SelectedMap();
 	}
 }
 
-void AFPSLobbyGameState::OnRep_SelectedMap() { OnLobbyChanged.Broadcast(); }
+void AFPSLobbyGameState::OnRep_SelectedMap() 
+{ 
+	_OnLobbyChanged.Broadcast(); 
+}
+
 void AFPSLobbyGameState::AddPlayerState(APlayerState* PlayerState)
 {
     Super::AddPlayerState(PlayerState);
     NotifyRosterChanged();
 }
+
 void AFPSLobbyGameState::RemovePlayerState(APlayerState* PlayerState)
 {
     Super::RemovePlayerState(PlayerState);

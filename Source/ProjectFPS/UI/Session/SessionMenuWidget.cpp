@@ -5,7 +5,6 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
-#include "Kismet/GameplayStatics.h"
 #include "InputCoreTypes.h"
 
 void USessionMenuWidget::NativeConstruct()
@@ -60,14 +59,14 @@ void USessionMenuWidget::ObserveGameState(AGameStateBase* GameState)
 {
     if (true == IsValid(_ObservedLobby)) 
     { 
-        _ObservedLobby->OnLobbyChanged.RemoveDynamic(this, &ThisClass::UpdateDisplay); 
+        _ObservedLobby->_OnLobbyChanged.RemoveDynamic(this, &ThisClass::UpdateDisplay); 
     }
 
     _ObservedLobby = Cast<AFPSLobbyGameState>(GameState);
 
     if (IsValid(_ObservedLobby)) 
     { 
-        _ObservedLobby->OnLobbyChanged.AddUniqueDynamic(this, &ThisClass::UpdateDisplay);
+        _ObservedLobby->_OnLobbyChanged.AddUniqueDynamic(this, &ThisClass::UpdateDisplay);
     }
 
     UpdateDisplay();
@@ -85,7 +84,7 @@ FReply USessionMenuWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, con
 
 bool USessionMenuWidget::IsBusy() const
 {
-    return !IsValid(_SessionSubsystem) || _ReturningToMenu || _ExitRequested
+    return !IsValid(_SessionSubsystem) || _SessionSubsystem->IsExitInProgress()
         || _SessionSubsystem->IsBusy() || _SessionSubsystem->IsAutoMatchInProgress();
 }
 
@@ -207,37 +206,12 @@ void USessionMenuWidget::ConfirmLeave()
         return; 
     }
 
-    const auto* Catalog = _SessionSubsystem->GetMapCatalog();
-
-    if (!Catalog || Catalog->LobbyLevel.IsNull())
+    ClearNotice();
+    if (!_SessionSubsystem->RequestExit(false))
     {
-        SetNotice(TEXT("돌아갈 로비 레벨이 지정되지 않았습니다."), true);
-        return;
+        SetNotice(_SessionSubsystem->GetLastSessionError(), true);
     }
-
-    ClearNotice();
-
-    _ExitRequested = true;
-
-    if (EFPSOnlineConnectionState::Hosting == _SessionSubsystem->GetConnectionState())
-    { 
-        _SessionSubsystem->DestroySession(); 
-    }
-    else 
-    { 
-        _SessionSubsystem->LeaveSession(); 
-    }
-
     UpdateDisplay();
-}
-
-void USessionMenuWidget::ReturnToMenu()
-{
-    _ReturningToMenu = true;
-    ClearNotice();
-    UpdateDisplay();
-    const auto* Catalog = _SessionSubsystem->GetMapCatalog();
-    UGameplayStatics::OpenLevel(this, FName(*Catalog->LobbyLevel.ToSoftObjectPath().GetLongPackageName()), true);
 }
 
 void USessionMenuWidget::SelectMode(EFPSMatchMode Mode)
@@ -344,7 +318,7 @@ void USessionMenuWidget::UpdateDisplay()
     State.Available = IsValid(_SessionSubsystem);
     State.Ready = !IsBusy();
     State.CanBrowse = CanBrowse();
-    State.ReturningToMenu = _ReturningToMenu;
+    State.ReturningToMenu = State.Available && _SessionSubsystem->IsExitInProgress();
     if (State.Available)
     {
         State.Connection = _SessionSubsystem->GetConnectionState();
@@ -393,8 +367,7 @@ void USessionMenuWidget::BindSessionEvents()
 	_SessionSubsystem->_OnJoinSessionCompleted.AddUniqueDynamic(this, &ThisClass::HandleRequestCompleted);
 	_SessionSubsystem->_OnLobbyReady.AddUniqueDynamic(this, &ThisClass::HandleRequestCompleted);
 	_SessionSubsystem->_OnMatchStarted.AddUniqueDynamic(this, &ThisClass::HandleRequestCompleted);
-	_SessionSubsystem->_OnLeaveSessionCompleted.AddUniqueDynamic(this, &ThisClass::HandleExitCompleted);
-	_SessionSubsystem->_OnDestroySessionCompleted.AddUniqueDynamic(this, &ThisClass::HandleExitCompleted);
+	_SessionSubsystem->_OnExitCleanupCompleted.AddUniqueDynamic(this, &ThisClass::HandleExitCompleted);
 	_SessionSubsystem->_OnAutoMatchCompleted.AddUniqueDynamic(this, &ThisClass::HandleAutoMatchCompleted);
 	_SessionSubsystem->_OnTravelFailed.AddUniqueDynamic(this, &ThisClass::HandleSessionError);
 	_SessionSubsystem->_OnConnectionLost.AddUniqueDynamic(this, &ThisClass::HandleSessionError);
@@ -414,8 +387,7 @@ void USessionMenuWidget::UnbindSessionEvents()
 	_SessionSubsystem->_OnJoinSessionCompleted.RemoveDynamic(this, &ThisClass::HandleRequestCompleted);
 	_SessionSubsystem->_OnLobbyReady.RemoveDynamic(this, &ThisClass::HandleRequestCompleted);
 	_SessionSubsystem->_OnMatchStarted.RemoveDynamic(this, &ThisClass::HandleRequestCompleted);
-	_SessionSubsystem->_OnLeaveSessionCompleted.RemoveDynamic(this, &ThisClass::HandleExitCompleted);
-	_SessionSubsystem->_OnDestroySessionCompleted.RemoveDynamic(this, &ThisClass::HandleExitCompleted);
+	_SessionSubsystem->_OnExitCleanupCompleted.RemoveDynamic(this, &ThisClass::HandleExitCompleted);
 	_SessionSubsystem->_OnAutoMatchCompleted.RemoveDynamic(this, &ThisClass::HandleAutoMatchCompleted);
 	_SessionSubsystem->_OnTravelFailed.RemoveDynamic(this, &ThisClass::HandleSessionError);
 	_SessionSubsystem->_OnConnectionLost.RemoveDynamic(this, &ThisClass::HandleSessionError);
@@ -454,18 +426,11 @@ void USessionMenuWidget::JoinSession(int32 ResultIndex)
 
 void USessionMenuWidget::HandleExitCompleted(bool WasSuccessful, const FString& ErrorMessage)
 {
-	if (!_ExitRequested)
-	{
-		return;
-	}
-	_ExitRequested = false;
 	if (!WasSuccessful)
 	{
 		SetNotice(ErrorMessage, true);
-		UpdateDisplay();
-		return;
 	}
-	ReturnToMenu();
+	UpdateDisplay();
 }
 
 void USessionMenuWidget::HandleRequestCompleted(bool WasSuccessful, const FString& ErrorMessage)

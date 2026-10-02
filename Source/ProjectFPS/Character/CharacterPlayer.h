@@ -231,6 +231,7 @@ public:
 public:
 	USkeletalMeshComponent* Get_FirstPersonMesh() const;
 	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
+	USkeletalMeshComponent* Get_ViewWeaponMesh() const;
 
 protected:
 	UFUNCTION()

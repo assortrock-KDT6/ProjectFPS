@@ -40,6 +40,12 @@ private:
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual double GetServerWorldTimeSeconds() const override;
+
+	UFUNCTION(BlueprintPure, Category = "Match|Time")
+	bool HasSynchronizedServerTime() const { return HasAuthority() || _HasServerTimeSync; }
+
+	void ApplyServerTimeSample(double EstimatedServerTime, double RoundTripSeconds);
 
 protected:
 	virtual void OnRep_MatchState() override;
@@ -89,6 +95,19 @@ public:
 	void RecordMatchResults();
 
 private:
+	struct FServerTimeSample
+	{
+		double Offset = 0.0;
+		double RoundTripSeconds = 0.0;
+		double ReceivedAt = 0.0;
+	};
+
+	TArray<FServerTimeSample> _ServerTimeSamples;
+	bool _HasServerTimeSync = false;
+	double _ServerTimeSyncStartedAt = 0.0;
+	double _SynchronizedServerTimeOffset = 0.0;
+	mutable double _LastSynchronizedServerTime = 0.0;
+
 	UFUNCTION()
 	void OnRep_MatchInformation();
 };

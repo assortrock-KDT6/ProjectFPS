@@ -8,9 +8,10 @@
 
 class UTextBlock;
 class UVerticalBox;
+class UMatchResultRowWidget;
 
-/** 확정된 경기 결과와 서버 기준 로비 복귀 카운트다운. 기본 레이아웃은 C++에서 제공한다. */
-UCLASS()
+/** 확정된 경기 결과와 서버 기준 로비 복귀 카운트다운. 레이아웃은 Widget Blueprint에서 정의한다. */
+UCLASS(Abstract)
 class PROJECTFPS_API UMatchResultWidget : public UUserWidget
 {
 	GENERATED_BODY()
@@ -19,18 +20,20 @@ public:
 	void SetResults(const TArray<FPlayerMatchResult>& Results, double ReturnServerTime, int32 LocalPlayerId);
 
 protected:
-	virtual TSharedRef<SWidget> RebuildWidget() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 
-	// 같은 이름의 위젯을 배치한 WBP로 레이아웃을 교체할 수 있다.
-	UPROPERTY(meta = (BindWidgetOptional))
+	UPROPERTY(EditDefaultsOnly, Category = "Match|Results")
+	TSubclassOf<UMatchResultRowWidget> ResultRowWidgetClass;
+
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UVerticalBox> ResultRowsBox;
 
-	UPROPERTY(meta = (BindWidgetOptional))
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> CountdownText;
 
-	UPROPERTY(meta = (BindWidgetOptional))
+	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock> SummaryText;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Match|Results")

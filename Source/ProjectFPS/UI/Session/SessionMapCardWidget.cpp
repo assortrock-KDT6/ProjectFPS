@@ -18,5 +18,8 @@ void USessionMapCardWidget::SetSelected(bool InSelected)
 
 void USessionMapCardWidget::RequestSelect()
 {
-    if (MapIndex != INDEX_NONE && !Map.Level.IsNull()) { OnMapSelected.Broadcast(MapIndex); }
+    if (MapIndex != INDEX_NONE && !Map.Level.IsNull())
+    { 
+        OnMapSelected.Broadcast(MapIndex); 
+    }
 }

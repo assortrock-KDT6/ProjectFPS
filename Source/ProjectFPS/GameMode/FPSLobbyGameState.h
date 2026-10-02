@@ -7,26 +7,40 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FLobbyChanged);
 
-/** Lobby selection belongs to the server; late joiners receive the current value. */
+/** 
+ * 로비 선택값은 서버 권한으로 관리되며, 늦게 참가한 클라이언트에도 현재 값이 복제된다. 
+ */
+
 UCLASS()
 class PROJECTFPS_API AFPSLobbyGameState : public AGameStateBase
 {
 	GENERATED_BODY()
 
 public:
-    UPROPERTY(BlueprintAssignable, Category="Lobby") FLobbyChanged OnLobbyChanged;
+    UPROPERTY(BlueprintAssignable, Category="Lobby") 
+	FLobbyChanged _OnLobbyChanged;
+
+private:
+	UPROPERTY(ReplicatedUsing = OnRep_SelectedMap)
+	FFPSPlayableMap _SelectedMap;
+public:
     virtual void AddPlayerState(APlayerState* PlayerState) override;
+
     virtual void RemovePlayerState(APlayerState* PlayerState) override;
-    void NotifyRosterChanged() { OnLobbyChanged.Broadcast(); }
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	const FFPSPlayableMap& GetSelectedMap() const { return _SelectedMap; }
-	void SetSelectedMap(const FFPSPlayableMap& Map);
 
 protected:
 	virtual void BeginPlay() override;
 
+public:
+	void NotifyRosterChanged();
+	
+	const FFPSPlayableMap& GetSelectedMap() const;
+	
+	void SetSelectedMap(const FFPSPlayableMap& Map);
+
 private:
-	UPROPERTY(ReplicatedUsing=OnRep_SelectedMap)
-	FFPSPlayableMap _SelectedMap;
-    UFUNCTION() void OnRep_SelectedMap();
+    UFUNCTION() 
+	void OnRep_SelectedMap();
 };

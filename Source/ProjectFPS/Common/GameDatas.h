@@ -249,7 +249,7 @@ struct FCharacterGroundInfo
 	GENERATED_BODY()
 
 	UPROPERTY(BlueprintReadOnly)
-	float _GroundDistance;
+	float _GroundDistance = -1.f;
 
 	uint64 _LastUpdateFrame = 0;
 

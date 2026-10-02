@@ -79,10 +79,6 @@ private:
     
     FDelegateHandle _GameStateSetHandle;
 
-    bool _ExitRequested = false;
-
-    bool _ReturningToMenu = false;
-
     bool _ViewReady = false;
 
     EFPSMatchMode _RequestedMode = EFPSMatchMode::PVP;
@@ -97,7 +93,6 @@ private:
     void ClearSearchResults();
     void SetNotice(const FString& Message, bool IsError = false);
     void ClearNotice();
-    void ReturnToMenu();
 	UFUNCTION()
 	void HandleFindCompleted(bool WasSuccessful, const TArray<FFPSOnlineSessionInfo>& Sessions, const FString& ErrorMessage);
 

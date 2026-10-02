@@ -10,6 +10,8 @@ class PROJECTFPS_API USessionMapCatalog : public UDataAsset
 {
     GENERATED_BODY()
 public:
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Session") TSoftObjectPtr<UWorld> LobbyLevel;
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Session", meta=(TitleProperty="DisplayName")) TArray<FFPSPlayableMap> Maps;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Session") 
+    TSoftObjectPtr<UWorld> LobbyLevel;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Session", meta=(TitleProperty="DisplayName")) 
+    TArray<FFPSPlayableMap> Maps;
 };

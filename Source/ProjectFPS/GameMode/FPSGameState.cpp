@@ -1,6 +1,46 @@
 #include "GameMode/FPSGameState.h"
 #include "GameMode/PlayerStateBase.h"
+#include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
+
+double AFPSGameState::GetServerWorldTimeSeconds() const
+{
+	if (HasAuthority() || !_HasServerTimeSync || !GetWorld())
+	{
+		return Super::GetServerWorldTimeSeconds();
+	}
+
+	// Smoothing a new estimate must not make an already displayed clock run backwards.
+	_LastSynchronizedServerTime = FMath::Max(_LastSynchronizedServerTime,
+		GetWorld()->GetTimeSeconds() + _SynchronizedServerTimeOffset);
+	return _LastSynchronizedServerTime;
+}
+
+void AFPSGameState::ApplyServerTimeSample(double EstimatedServerTime, double RoundTripSeconds)
+{
+	if (HasAuthority() || !GetWorld() || !FMath::IsFinite(EstimatedServerTime)
+		|| !FMath::IsFinite(RoundTripSeconds) || RoundTripSeconds < 0.0 || RoundTripSeconds > 5.0) return;
+
+	const double Now = FPlatformTime::Seconds();
+	_ServerTimeSamples.RemoveAll([Now](const FServerTimeSample& Sample)
+	{
+		return Now - Sample.ReceivedAt > 10.0;
+	});
+	if (_ServerTimeSamples.Num() >= 8) _ServerTimeSamples.RemoveAt(0);
+	_ServerTimeSamples.Add({EstimatedServerTime - GetWorld()->GetTimeSeconds(), RoundTripSeconds, Now});
+
+	// The shortest recent round trip is least affected by queueing and delayed frames.
+	const FServerTimeSample* Best = &_ServerTimeSamples[0];
+	for (const FServerTimeSample& Sample : _ServerTimeSamples)
+	{
+		if (Sample.RoundTripSeconds < Best->RoundTripSeconds) Best = &Sample;
+	}
+	if (!_HasServerTimeSync) _ServerTimeSyncStartedAt = Now;
+	// Acquire the clock quickly during loading; smooth only subsequent maintenance.
+	_SynchronizedServerTimeOffset = Now - _ServerTimeSyncStartedAt < 3.0
+		? Best->Offset : FMath::Lerp(_SynchronizedServerTimeOffset, Best->Offset, 0.25);
+	_HasServerTimeSync = true;
+}
 
 void AFPSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
