@@ -867,7 +867,7 @@ void ACharacterPlayer::StopFiringPresentation()
 
 void ACharacterPlayer::RequestEquipSlot(int32 Index)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[Equip] 요청 Index=%d"), Index);
+	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 요청 Index=%d"), Index);
 
 	// 인벤, 맵이 열려 있으면 숫자키를 UI가 쓸 수 있으니 막는다.
 	APlayerController* Pc = Cast<APlayerController>(GetController());
@@ -924,13 +924,13 @@ void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
 
 void ACharacterPlayer::EquipMainWeaponAction(const FInputActionValue& value)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Main"));
+	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Main"));
 	RequestEquipSlot(0);
 }
 
 void ACharacterPlayer::EquipSubWeaponAction(const FInputActionValue& value)
 {
-	UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Sub"));
+	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Sub"));
 	RequestEquipSlot(1);
 }
 

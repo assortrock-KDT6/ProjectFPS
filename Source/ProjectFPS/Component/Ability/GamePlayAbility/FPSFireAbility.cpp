@@ -89,6 +89,27 @@ void UFPSFireAbility::FireNextShot()
 	if (true == Fired)
 	{
 		Character->NotifyAbilityWeaponFired(Weapon);
+
+		// 서버에서 연출을 쵸청하고, 네트워크 관련성에 따라
+		// 해당 액터의 연출을 받을 클라이언트에 전당한다.
+
+		// GAS가 제공하는 연출 정보 묶음-> 누가 발생시켰고, 무엇과 관련됐고, 어디서 발생했는지 담습니다.
+		FGameplayCueParameters CueParameters;
+		
+		// 연출을 발생시킨 주제를 지정합니다. 여기서는 총을 쏜 캐릭터 입니다.
+		CueParameters.Instigator = Character;
+
+		// 연출의 출처로 사용할 객체를 지정합니다. 여기서는 발사한 무기입니다.
+		CueParameters.SourceObject = Weapon;
+
+		// 연출이 발생한 위치를 전달합니다.
+		CueParameters.Location = Weapon->GetActorLocation();
+
+		// 어떤 연출을 실행할지 지정하는 태그, 누가 무엇으로 어디서 발생할지에 대한 정보.
+		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_Fire, CueParameters);
+
+
+
 	}
 
 	if (false == IsActive())

@@ -40,6 +40,9 @@ protected:
 	// 플레이어가 무기의 상호작용할 수 있는 범위 콜라이더 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
 	TObjectPtr<USphereComponent> _InteractionSphere;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
+	TObjectPtr<USphereComponent> _PickupSphere;
 	
 protected:
 	// Called when the game starts or when spawned

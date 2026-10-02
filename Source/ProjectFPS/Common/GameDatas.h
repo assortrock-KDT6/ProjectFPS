@@ -3,9 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/HitResult.h"
 #include "GameDefines.h"
 #include "UObject/Object.h"
 #include "GameDatas.generated.h"
+
+class UAnimMontage;
+class UTexture2D;
 
 /**
  * 
@@ -18,6 +22,28 @@ class PROJECTFPS_API UGameDatas : public UObject
 };
 
 #pragma region SessionData
+
+/** Editor-authored playable map entry. The package path is the stable identifier. */
+USTRUCT(BlueprintType)
+struct FFPSPlayableMap
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	EFPSMatchMode Mode = EFPSMatchMode::PVP;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	TSoftObjectPtr<UWorld> Level;
+
+	/** Actual level capture used by the map picker; optional for newly registered maps. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	TSoftObjectPtr<UTexture2D> Thumbnail;
+
+	FString GetMapPath() const { return Level.ToSoftObjectPath().GetLongPackageName(); }
+};
 
 USTRUCT(BlueprintType)
 struct FFPSOnlineSessionInfo

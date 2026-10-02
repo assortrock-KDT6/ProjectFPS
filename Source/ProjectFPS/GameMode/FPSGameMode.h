@@ -22,6 +22,8 @@ private:
 
 	FTimerHandle _MatchEndTimer;
 
+	FTimerHandle _ReturnToLobbyTimer;
+
 	TMap<TWeakObjectPtr<APlayerController>, FTimerHandle> _RespawnTimers;
 
 public:
@@ -57,6 +59,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match", meta = (ClampMin = "1.0", Units = "s"))
 	float _MatchDurationSeconds = 300.f;
 
+	// 서버가 결과창을 보여준 뒤 로비 복귀를 시작하기까지의 시간.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match|Results", meta = (ClampMin = "0.1", UIMin = "0.1", Units = "s", DisplayName = "Result Display Duration Seconds"))
+	float _ResultDisplayDurationSeconds = 10.f;
+
 	// 로비 이동 시 전달한 ExpectedPlayers가 우선한다. 직접 실행/PIE에서는 이 값을 사용한다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match|Start", meta = (ClampMin = "1"))
 	int32 _ExpectedPlayerCount = 1;
@@ -66,6 +72,8 @@ protected:
 
 private:
 	void FinishTimedMatch();
+
+	void ReturnToLobbyAfterResults();
 
 	void UpdateMatchStart();
 

@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "GameMode/PlayerMatchStats.h"
 #include "PlayerControllerBase.generated.h"
 
  /*
@@ -27,6 +28,7 @@
   */
 
 class UInputMappingContext;
+class UMatchResultWidget;
 
 UCLASS()
 class PROJECTFPS_API APlayerControllerBase : public APlayerController
@@ -43,6 +45,12 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputMappingContext> _PlayerMappingContext;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Match|Results")
+	TSubclassOf<UMatchResultWidget> _MatchResultWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMatchResultWidget> _MatchResultWidget;
+
 public:
 	virtual void ChangeState(FName NewState) override;
 
@@ -56,10 +64,15 @@ public:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	virtual void ClientReturnToMainMenuWithTextReason_Implementation(const FText& ReturnReason) override;
+
 public:
 	void EnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation);
 
 	void RefreshInputMappingContext();
+
+	UFUNCTION(Client, Reliable)
+	void ClientShowMatchResults(const TArray<FPlayerMatchResult>& Results, double ReturnServerTime);
 
 protected:
 	UFUNCTION(Client, Reliable)

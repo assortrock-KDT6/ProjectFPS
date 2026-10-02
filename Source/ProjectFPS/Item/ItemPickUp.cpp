@@ -19,6 +19,7 @@ AItemPickUp::AItemPickUp()
 	_Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(_Mesh);
 	bReplicates = true;
+	SetReplicateMovement(true);
 
 }
 
@@ -29,6 +30,16 @@ AItemPickUp::AItemPickUp()
 //	_Mesh->SetRenderCustomDepth(bOn);
 //}
 
+// 블루프린트용 헬퍼 멤버 함수 추가.
+AItemPickUp* AItemPickUp::BP_BeginSpawnFromTID(const UObject* WorldContextObject, FName TID, int32 Count, const FTransform& Transform)
+{
+	UWorld* World = GEngine ? GEngine->GetWorldFromContextObject(WorldContextObject, 
+		EGetWorldErrorMode::ReturnNull) : nullptr;
+
+	return BeginSpawnFromTID(World, TID, Count, Transform);
+}
+
+// Count -> 현재 플레이어가 지정한 개수만큼 떨어트리게 하기 위해서.
 AItemPickUp* AItemPickUp::BeginSpawnFromTID(UWorld* world, FName TID, int32 Count, const FTransform& Transform)
 {
 	// 월드상에 아이템을 생성시킴. -> 버리기 기능을 위함.
@@ -104,12 +115,39 @@ void AItemPickUp::FinishSpawnFromTID(AItemPickUp* Pickup, const FTransform& Tran
 	// 준비 상태 -> 확정 전까지 보이지도 부딪히지도 않게.
 	Pickup->SetActorHiddenInGame(false);
 	Pickup->SetActorEnableCollision(true);
+	Pickup->InitializePickupPhysics();
 }
 
 void AItemPickUp::BeginPlay()
 {
 	Super::BeginPlay();
 	RefreshMeshFromTable();
+	InitializePickupPhysics();
+}
+
+void AItemPickUp::InitializePickupPhysics()
+{
+	// WeaponPickUp은 별도 구체 루트에서 물리를 처리한다. 자식 메시를 분리하지 않는다.
+	if (!_Mesh || GetRootComponent() != _Mesh)
+		return;
+
+	// 기존 Blueprint에 저장된 이동 복제/물리 설정도 런타임에 적용한다.
+	SetReplicateMovement(true);
+	_Mesh->SetMobility(EComponentMobility::Movable);
+	_Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	_Mesh->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	_Mesh->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+	_Mesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	_Mesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	_Mesh->BodyInstance.bLockTranslation = false;
+	_Mesh->BodyInstance.bLockXTranslation = false;
+	_Mesh->BodyInstance.bLockYTranslation = false;
+	_Mesh->BodyInstance.bLockZTranslation = false;
+	_Mesh->SetConstraintMode(EDOFMode::SixDOF);
+	_Mesh->SetEnableGravity(true);
+	_Mesh->SetSimulatePhysics(HasAuthority() && GetActorEnableCollision() && _Mesh->GetStaticMesh());
+	if (_Mesh->IsSimulatingPhysics())
+		_Mesh->WakeAllRigidBodies();
 }
 
 void AItemPickUp::Interact_Implementation(AActor* Interactor)
@@ -227,6 +265,7 @@ void AItemPickUp::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifet
 void AItemPickUp::OnRep_TID()
 {
 	RefreshMeshFromTable();
+	InitializePickupPhysics();
 }
 
 void AItemPickUp::RefreshMeshFromTable()

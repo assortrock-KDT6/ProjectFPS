@@ -74,4 +74,10 @@ struct FItemData  : public  FTableRowBase
 };
 
 
+USTRUCT(BlueprintType)
+struct FMonsterData : public  FTableRowBase
+{
+	GENERATED_BODY()
 
+
+};

@@ -19,7 +19,11 @@ class PROJECTFPS_API APlayerStateBase : public APlayerState
 	GENERATED_BODY()
 
 public:
-	APlayerStateBase();
+    APlayerStateBase();
+    virtual void SetPlayerName(const FString& Name) override;
+    virtual void OnRep_PlayerName() override;
+    virtual void OnRep_bIsInactive() override;
+
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Score")

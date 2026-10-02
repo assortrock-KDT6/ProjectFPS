@@ -14,6 +14,11 @@ public class ProjectFPS : ModuleRules
 
         PrivateIncludePaths.Add(ModuleDirectory);
 
+        if (Target.bBuildEditor)
+        {
+            PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "BlueprintGraph", "KismetCompiler", "UMGEditor", "AssetRegistry" });
+        }
+
         // Uncomment if you are using Slate UI
         PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 

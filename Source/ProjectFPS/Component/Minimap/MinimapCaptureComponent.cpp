@@ -23,7 +23,7 @@ UMinimapCaptureComponent::UMinimapCaptureComponent()
 
 	// 매 프레임 갱신 (여기서 실시간 미니맵의 비용)
 	bCaptureEveryFrame = true;
-	bCaptureOnMovement = false;
+	bCaptureOnMovement = true;
 
 	// 부모가 돌아도 카메라는 우리가 직접 방향으 정함.
 	SetUsingAbsoluteRotation(true);

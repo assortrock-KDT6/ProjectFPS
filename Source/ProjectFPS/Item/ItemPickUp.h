@@ -54,11 +54,17 @@ public:
 	void SetTID(FName TID) { _TID = TID; }
 	void SetCount(int32 Count) { _Count = Count; }
 
+	// 블루프린트용 헬퍼 함수 추가.
+	UFUNCTION(BlueprintCallable, Category = "Item | Spawn", meta = (WorldContext = "WorldContextObject", DisplayName = "Begin Spawn Item From TID"))
+	static AItemPickUp* BP_BeginSpawnFromTID(const UObject* WorldContextObject, FName TID, int32 Count, const FTransform& Transform);
+
 	// TID로 픽ㄱ업을 Deferred 상태로 만든다. 클래스는 ItemTable, _PickUpClass가 정함.
-	// 준비 중엔 숨김,충돌 꺼짐. 성공 유무에 따라 FinishSpawnFromTID,Destroy 구분 (서버)
+// 준비 중엔 숨김,충돌 꺼짐. 성공 유무에 따라 FinishSpawnFromTID,Destroy 구분 (서버)
+	UFUNCTION(BlueprintCallable)
 	static AItemPickUp* BeginSpawnFromTID(UWorld* world, FName TID, int32 Count, const FTransform& Transform);
 
 	// BeginSawpnFromTID로 준비한 픽업을 실제로 등장 시킴(생성완료 -> 숨김 충돌 해제) 실제 구현
+	UFUNCTION(BlueprintCallable)
 	static void FinishSpawnFromTID(AItemPickUp* Pickup, const FTransform& Transform);
 
 
@@ -74,6 +80,9 @@ protected:
 
 	// 테이블에서 _TID 행의 메시를 붙인다. 행/메시가 없으면 비운다.
 	void RefreshMeshFromTable();
+
+	// 메시가 루트인 일반 픽업의 서버 물리를 초기화한다.
+	void InitializePickupPhysics();
 
 //protected:
 //	// 자식 줍기 전 훅

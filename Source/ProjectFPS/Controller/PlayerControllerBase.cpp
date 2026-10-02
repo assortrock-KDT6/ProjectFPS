@@ -7,10 +7,55 @@
 #include "UObject/ConstructorHelpers.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/Pawn.h"
+#include "Engine/GameInstance.h"
+#include "GameInstance/FPSOnlineSessionSubsystem.h"
+#include "UI/GamePlay/MatchResultWidget.h"
 
 APlayerControllerBase::APlayerControllerBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	_MatchResultWidgetClass = UMatchResultWidget::StaticClass();
+}
+
+void APlayerControllerBase::ClientShowMatchResults_Implementation(const TArray<FPlayerMatchResult>& Results, double ReturnServerTime)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	if (IsValid(_MatchResultWidget))
+	{
+		_MatchResultWidget->RemoveFromParent();
+	}
+	const TSubclassOf<UMatchResultWidget> WidgetClass = _MatchResultWidgetClass
+		? _MatchResultWidgetClass : TSubclassOf<UMatchResultWidget>(UMatchResultWidget::StaticClass());
+	_MatchResultWidget = CreateWidget<UMatchResultWidget>(this, WidgetClass);
+	if (IsValid(_MatchResultWidget))
+	{
+		_MatchResultWidget->SetResults(Results, ReturnServerTime,
+			IsValid(PlayerState) ? PlayerState->GetPlayerId() : INDEX_NONE);
+		_MatchResultWidget->AddToViewport(1000);
+		FInputModeUIOnly InputMode;
+		InputMode.SetWidgetToFocus(_MatchResultWidget->TakeWidget());
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
+		SetShowMouseCursor(true);
+	}
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+}
+
+void APlayerControllerBase::ClientReturnToMainMenuWithTextReason_Implementation(const FText& ReturnReason)
+{
+	UGameInstance* Instance = GetGameInstance();
+	UFPSOnlineSessionSubsystem* Sessions = Instance ? Instance->GetSubsystem<UFPSOnlineSessionSubsystem>() : nullptr;
+	if (IsValid(Sessions))
+	{
+		Sessions->ReturnToLobby();
+		return;
+	}
+	Super::ClientReturnToMainMenuWithTextReason_Implementation(ReturnReason);
 }
 
 void APlayerControllerBase::ChangeState(FName NewState)
@@ -58,6 +103,11 @@ void APlayerControllerBase::OnRep_Pawn()
 
 void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (IsValid(_MatchResultWidget))
+	{
+		_MatchResultWidget->RemoveFromParent();
+		_MatchResultWidget = nullptr;
+	}
 	ULocalPlayer* LocalPlayer = GetLocalPlayer();
 
 	if (nullptr != LocalPlayer)

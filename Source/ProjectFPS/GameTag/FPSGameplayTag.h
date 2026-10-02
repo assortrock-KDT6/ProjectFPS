@@ -50,4 +50,9 @@ namespace FPSGameplayTags
 
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Vault);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Mantle);
+
+	// GameplyCue
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Weapon_Fire); // 총 발사음.
+
+
 }

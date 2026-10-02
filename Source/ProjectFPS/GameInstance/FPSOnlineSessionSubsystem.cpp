@@ -11,6 +11,11 @@
 #include "Online/OnlineSessionNames.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemUtils.h"
+#include "Engine/GameInstance.h"
+#include "Kismet/GameplayStatics.h"
+#include "Misc/PackageName.h"
+#include "GameMode/FPSLobbyGameState.h"
+#include "GameInstance/SessionMapCatalog.h"
 
 DEFINE_LOG_CATEGORY(LogFPSOnlineSession);
 
@@ -70,7 +75,25 @@ namespace OnlineSessionSubsystemUtils
 
 void UFPSOnlineSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-	Super::Initialize(Collection);
+    Super::Initialize(Collection);
+    _LoadedMapCatalog = MapCatalog.LoadSynchronous();
+    if (_LoadedMapCatalog)
+    {
+        TSet<FString> Seen;
+        for (FFPSPlayableMap Map : _LoadedMapCatalog->Maps)
+        {
+            const FString Path = Map.GetMapPath();
+            const FString Key = FPSMatchModeUtils::ToId(Map.Mode) + TEXT(":") + Path;
+            if (Map.Level.IsNull() || Path == _LoadedMapCatalog->LobbyLevel.ToSoftObjectPath().GetLongPackageName()
+                || Seen.Contains(Key) || !FPackageName::DoesPackageExist(Path)
+                || (Map.Mode != EFPSMatchMode::PVP && Map.Mode != EFPSMatchMode::PVE)) { continue; }
+            Seen.Add(Key);
+            if (Map.DisplayName.IsEmpty()) { Map.DisplayName = FText::FromString(FPackageName::GetShortName(Path)); }
+            _PlayableMaps.Add(Map);
+        }
+    }
+    else { UE_LOG(LogFPSOnlineSession, Error, TEXT("Session MapCatalog is not configured or could not be loaded.")); }
+
 
 	_OperationState  = EFPSOnlineOperationState::Idle;
 	_ConnectionState = EFPSOnlineConnectionState::None;
@@ -145,6 +168,7 @@ void UFPSOnlineSessionSubsystem::Deinitialize()
 
 		TimerManager.ClearTimer(_TravelWatchdogHandle);
 		TimerManager.ClearTimer(_OperationWatchdogHandle);
+		TimerManager.ClearTimer(_ReturnToLobbyRetryTimer);
 	}
 
 	// 비동기 완료 Callback이 종료 중인 Subsystem으로 돌아오지않게 먼저 해제한다.
@@ -203,6 +227,13 @@ bool UFPSOnlineSessionSubsystem::CreateSession(const FFPSSessionCreateOptions& O
 	ValidatedOptions._MapId.TrimStartAndEndInline();
 	ValidatedOptions._DisplayName.TrimStartAndEndInline();
 	ValidatedOptions._GameModeId.TrimStartAndEndInline();
+	EFPSMatchMode RequestedMode;
+	if (!FPSMatchModeUtils::TryParse(ValidatedOptions._GameModeId, RequestedMode))
+	{
+		BroadcastCreateCompleted(false, TEXT("지원하지 않는 세션 모드입니다."));
+		return false;
+	}
+	ValidatedOptions._GameModeId = FPSMatchModeUtils::ToId(RequestedMode);
 
 	if (false == CanServerTravel(ValidatedOptions._MapId, ErrorMessage))
 	{
@@ -224,6 +255,92 @@ bool UFPSOnlineSessionSubsystem::CreateSession(const FFPSSessionCreateOptions& O
 		return StartDestroySession(EFPSSessionDestroyIntent::Recreate);
 	}
 	return StartCreateSession();
+}
+
+void UFPSOnlineSessionSubsystem::ConfigurePlayableMaps(const TArray<FFPSPlayableMap>& Maps)
+{
+	_PlayableMaps = Maps;
+}
+
+bool UFPSOnlineSessionSubsystem::CanSelectLobbySettings(FString& OutError) const
+{
+	AFPSLobbyGameState* Lobby = GetWorld() ? GetWorld()->GetGameState<AFPSLobbyGameState>() : nullptr;
+	if (_ConnectionState != EFPSOnlineConnectionState::Hosting || IsBusy() || IsAutoMatchInProgress()
+		|| !IsValid(Lobby) || !Lobby->HasAuthority())
+	{
+		OutError = TEXT("대기 중인 로비의 호스트만 모드와 레벨을 선택할 수 있습니다.");
+		return false;
+	}
+	return true;
+}
+
+bool UFPSOnlineSessionSubsystem::SelectGameMode(EFPSMatchMode Mode, FString& OutError)
+{
+	if (!CanSelectLobbySettings(OutError)) { return false; }
+	if (Mode != EFPSMatchMode::PVP && Mode != EFPSMatchMode::PVE)
+	{
+		OutError = TEXT("지원하지 않는 세션 모드입니다.");
+		return false;
+	}
+	// Clear the old map even when the new mode has no configured destination.
+	_SelectedGameMap = FFPSPlayableMap();
+	_SelectedGameMap.Mode = Mode;
+	for (const FFPSPlayableMap& Map : _PlayableMaps)
+	{
+		FString MapError;
+		if (Map.Mode == Mode && CanServerTravel(Map.GetMapPath(), MapError))
+		{
+			_SelectedGameMap = Map;
+			break;
+		}
+	}
+	PublishLobbySelection();
+	return true;
+}
+
+void UFPSOnlineSessionSubsystem::PublishLobbySelection()
+{
+	if (AFPSLobbyGameState* Lobby = GetWorld() ? GetWorld()->GetGameState<AFPSLobbyGameState>() : nullptr)
+	{
+		Lobby->SetSelectedMap(_SelectedGameMap);
+	}
+	FOnlineSessionSettings* Settings = _SessionInterface.IsValid()
+		? _SessionInterface->GetSessionSettings(NAME_GameSession) : nullptr;
+	if (Settings)
+	{
+		FString OldMode;
+		Settings->Get(SETTING_GAMEMODE, OldMode);
+		const FString ModeId = FPSMatchModeUtils::ToId(_SelectedGameMap.Mode);
+		if (OldMode != ModeId)
+		{
+			Settings->Set(SETTING_GAMEMODE, ModeId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+			if (!_SessionInterface->UpdateSession(NAME_GameSession, *Settings, true))
+			{
+				UE_LOG(LogFPSOnlineSession, Warning, TEXT("Failed to advertise session mode: %s"), *ModeId);
+			}
+		}
+	}
+}
+
+bool UFPSOnlineSessionSubsystem::SelectGameMap(const FString& MapPath, FString& OutError)
+{
+	if (!CanSelectLobbySettings(OutError)) { return false; }
+	const FFPSPlayableMap* Map = _PlayableMaps.FindByPredicate([this, &MapPath](const FFPSPlayableMap& Entry)
+	{
+		return Entry.Mode == _SelectedGameMap.Mode && Entry.GetMapPath() == MapPath;
+	});
+	if (!Map)
+	{
+		OutError = TEXT("현재 모드에 등록되지 않은 레벨입니다.");
+		return false;
+	}
+	if (!CanServerTravel(MapPath, OutError))
+	{
+		return false;
+	}
+	_SelectedGameMap = *Map;
+	PublishLobbySelection();
+	return true;
 }
 
 bool UFPSOnlineSessionSubsystem::StartMatch(const FString& MapPath)
@@ -254,6 +371,16 @@ bool UFPSOnlineSessionSubsystem::StartMatch(const FString& MapPath)
 
 	FString PendingMapPath = MapPath;
 	PendingMapPath.TrimStartAndEndInline();
+	if (GetWorld() && GetWorld()->GetGameState<AFPSLobbyGameState>())
+	{
+		if (_SelectedGameMap.Level.IsNull() || PendingMapPath != _SelectedGameMap.GetMapPath()
+			|| !_PlayableMaps.ContainsByPredicate([this, &PendingMapPath](const FFPSPlayableMap& Map)
+			{ return Map.Mode == _SelectedGameMap.Mode && Map.GetMapPath() == PendingMapPath; }))
+		{
+			_OnMatchStarted.Broadcast(false, TEXT("플레이할 레벨을 먼저 선택해 주세요."));
+			return false;
+		}
+	}
 
 	if (false == CanServerTravel(PendingMapPath, ErrorMessage))
 	{
@@ -453,6 +580,9 @@ void UFPSOnlineSessionSubsystem::HandleCreateSessionComplete(FName SessionName, 
 		return;
 	}
 		
+	_SelectedGameMap = FFPSPlayableMap();
+	FPSMatchModeUtils::TryParse(_PendingCreateOptions._GameModeId, _SelectedGameMap.Mode);
+	PublishLobbySelection();
 	SetConnectionState(EFPSOnlineConnectionState::Hosting);
 
 	/**
@@ -547,6 +677,7 @@ bool UFPSOnlineSessionSubsystem::TravelHostToGame(const FString& MapPath, EFPSSe
 	}
 	if (Intent == EFPSSessionTravelIntent::Host)
 	{
+		TravelURL += TEXT("?SessionMode=") + FPSMatchModeUtils::ToId(_SelectedGameMap.Mode);
 		// 세션 정원이 아니라 이번 맵 이동에 실제로 참가한 인원을 전달한다.
 		int32 ExpectedPlayerCount = 0;
 		for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
@@ -989,6 +1120,71 @@ void UFPSOnlineSessionSubsystem::RollbackJoinedSession(const FString& ErrorMessa
 	BroadcastJoinCompleted(false, JoinError);
 }
 
+void UFPSOnlineSessionSubsystem::ReturnToLobby()
+{
+	if (_ReturningToLobby || !IsValid(GetGameInstance()))
+	{
+		return;
+	}
+	_ReturningToLobby = true;
+	_LastSessionError.Reset();
+	_ReturnToLobbyDeadline = FPlatformTime::Seconds() + _OperationTimeoutSeconds + _TravelTimeoutSeconds;
+	// GameInstance 타이머는 연결 해제로 월드가 바뀌어도 살아 있다.
+	GetGameInstance()->GetTimerManager().SetTimer(_ReturnToLobbyRetryTimer, this,
+		&ThisClass::TryReturnToLobby, 0.1f, true);
+	TryReturnToLobby();
+}
+
+void UFPSOnlineSessionSubsystem::TryReturnToLobby()
+{
+	if (!_ReturningToLobby)
+	{
+		return;
+	}
+	if (IsBusy())
+	{
+		if (FPlatformTime::Seconds() >= _ReturnToLobbyDeadline)
+		{
+			FinishReturnToLobby(false, TEXT("Session cleanup timed out while returning to the lobby."));
+		}
+		return;
+	}
+	if (!RefreshSessionInterface())
+	{
+		FinishReturnToLobby(false, TEXT("Session cleanup could not be verified: online interface unavailable."));
+		return;
+	}
+	if (!_SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		FinishReturnToLobby(true, FString());
+		return;
+	}
+	// 호스트의 방과 게스트의 로컬 NamedSession 모두 각자의 OSS에서 정리한다.
+	StartDestroySession(EFPSSessionDestroyIntent::ReturnToLobby);
+}
+
+void UFPSOnlineSessionSubsystem::FinishReturnToLobby(bool CleanupSucceeded, const FString& ErrorMessage)
+{
+	if (!_ReturningToLobby)
+	{
+		return;
+	}
+	_ReturningToLobby = false;
+	GetGameInstance()->GetTimerManager().ClearTimer(_ReturnToLobbyRetryTimer);
+	if (!CleanupSucceeded)
+	{
+		_LastSessionError = ErrorMessage;
+		SetConnectionState(EFPSOnlineConnectionState::CleanupFailed);
+		UE_LOG(LogFPSOnlineSession, Warning, TEXT("Return to lobby: %s"), *ErrorMessage);
+	}
+	else
+	{
+		SetConnectionState(EFPSOnlineConnectionState::None);
+	}
+	UE_LOG(LogFPSOnlineSession, Log, TEXT("Returning local player to /Game/Levels/LobbyLevel"));
+	UGameplayStatics::OpenLevel(GetGameInstance(), FName(TEXT("/Game/Levels/LobbyLevel")), true);
+}
+
 bool UFPSOnlineSessionSubsystem::LeaveSession()
 {
 	FString ErrorMessage;
@@ -1100,6 +1296,11 @@ void UFPSOnlineSessionSubsystem::HandleDestroySessionComplete(FName SessionName,
 		SetOperationState(EFPSOnlineOperationState::Idle);
 		_OnDestroySessionCompleted.Broadcast(true, FString());
 	}
+	else if (EFPSSessionDestroyIntent::ReturnToLobby == CompletedIntent)
+	{
+		SetOperationState(EFPSOnlineOperationState::Idle);
+		FinishReturnToLobby(true, FString());
+	}
 	else if (EFPSSessionDestroyIntent::JoinRollback == CompletedIntent)
 	{
 		SetOperationState(EFPSOnlineOperationState::Idle);
@@ -1200,7 +1401,9 @@ void UFPSOnlineSessionSubsystem::HandlePostLoadMapWithWorld(UWorld* LoadedWorld)
 	}
 	else if (EFPSSessionTravelIntent::HostLobby == CompletedIntent)
 	{
-		_OnLobbyReady.Broadcast(true, FString());
+        FString SelectionError;
+        SelectGameMode(_SelectedGameMap.Mode, SelectionError);
+        _OnLobbyReady.Broadcast(true, FString());
 	}
 	else if (EFPSSessionTravelIntent::Host == CompletedIntent)
 	{
@@ -1602,6 +1805,11 @@ bool UFPSOnlineSessionSubsystem::StartDestroySession(EFPSSessionDestroyIntent In
 
 void UFPSOnlineSessionSubsystem::BroadcastDestroyFailure(EFPSSessionDestroyIntent Intent, const FString& ErrorMessage)
 {
+	if (Intent == EFPSSessionDestroyIntent::ReturnToLobby)
+	{
+		FinishReturnToLobby(false, ErrorMessage);
+		return;
+	}
 	switch (Intent)
 	{
 		case EFPSSessionDestroyIntent::Recreate:
@@ -1750,6 +1958,10 @@ void UFPSOnlineSessionSubsystem::SetConnectionState(EFPSOnlineConnectionState Ne
 	}
 
 	_ConnectionState = NewState;
+	if (NewState == EFPSOnlineConnectionState::None)
+	{
+		_SelectedGameMap = FFPSPlayableMap();
+	}
 	_OnConnectionStateChanged.Broadcast(NewState);
 }
 
@@ -1898,6 +2110,13 @@ bool UFPSOnlineSessionSubsystem::AutoJoinOrHost(const FFPSSessionCreateOptions& 
 	ValidatedOptions._MapId.TrimStartAndEndInline();
 	ValidatedOptions._DisplayName.TrimStartAndEndInline();
 	ValidatedOptions._GameModeId.TrimStartAndEndInline();
+	EFPSMatchMode RequestedMode;
+	if (!FPSMatchModeUtils::TryParse(ValidatedOptions._GameModeId, RequestedMode))
+	{
+		_OnAutoMatchCompleted.Broadcast(false, false, TEXT("지원하지 않는 세션 모드입니다."));
+		return false;
+	}
+	ValidatedOptions._GameModeId = FPSMatchModeUtils::ToId(RequestedMode);
 
 	/**
 	* Host로 전환될 가능성이 있으므로 Map 유효성을 검색 전에 미리 확인한다.
@@ -1938,8 +2157,11 @@ void UFPSOnlineSessionSubsystem::ContinueAutoMatchAfterFind(bool WasSuccessful, 
 		// 자리가 남아 있는 Session만 참가 후보로 사용한다.
 		for (const FFPSOnlineSessionInfo& Information : Sessions)
 		{
+			EFPSMatchMode CandidateMode;
 			if (INDEX_NONE != Information._ResultIndex &&
-				Information._CurrentPlayers < Information._MaxPlayers)
+				Information._CurrentPlayers < Information._MaxPlayers &&
+				FPSMatchModeUtils::TryParse(Information._GameModeId, CandidateMode) &&
+				FPSMatchModeUtils::ToId(CandidateMode) == _AutoMatchHostOptions._GameModeId)
 			{
 				_AutoMatchCandidates.Add(Information._ResultIndex);
 			}
@@ -2019,6 +2241,12 @@ void UFPSOnlineSessionSubsystem::FinishAutoMatch(bool WasSuccessful, bool IsHost
 	}
 
 	ResetAutoMatch();
+
+	if (WasSuccessful && IsHost && GetWorld() && GetWorld()->GetGameState<AFPSLobbyGameState>())
+	{
+		FString SelectionError;
+		SelectGameMode(_SelectedGameMap.Mode, SelectionError);
+	}
 
 	UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch finished. Successful = %d, IsHost = %d, %s"),
 		WasSuccessful ? 1 : 0, IsHost ? 1 : 0, *ErrorMessage);

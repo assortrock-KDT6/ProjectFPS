@@ -12,18 +12,28 @@ AWeaponPickUp::AWeaponPickUp()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+	SetReplicateMovement(true);
 	
 	_InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
 	SetRootComponent(_InteractionSphere);
+	
+	// 기존 루트 컴포넌트를 물리 충돌체로 유지해 배치된 Blueprint의 루트/위치를 보존한다.
+	_InteractionSphere->SetSphereRadius(25.0f);
+	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Block);
+	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	_InteractionSphere->SetGenerateOverlapEvents(false);
 
-	// 플레이어만 상호작용 범위에 들어왔는지 감지한다.
-	_InteractionSphere->SetSphereRadius(70.0f);
-	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
-	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-	_InteractionSphere->SetGenerateOverlapEvents(true);
-	_InteractionSphere->OnComponentBeginOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereBeginOverlap);
-	_InteractionSphere->OnComponentEndOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereEndOverlap);
+	// 플레이어 감지 범위는 물리 루트를 따라 움직이되 물리 충돌에는 참여하지 않는다.
+	_PickupSphere = CreateDefaultSubobject<USphereComponent>(TEXT("PickupSphere"));
+	_PickupSphere->SetupAttachment(_InteractionSphere);
+	_PickupSphere->SetSphereRadius(70.0f);
+	_PickupSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	_PickupSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	_PickupSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	_PickupSphere->SetGenerateOverlapEvents(true);
+	_PickupSphere->OnComponentBeginOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereBeginOverlap);
+	_PickupSphere->OnComponentEndOverlap.AddDynamic(this, &AWeaponPickUp::OnInteractionSphereEndOverlap);
 	
 	_Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	_Mesh->SetupAttachment(_InteractionSphere);
@@ -119,6 +129,17 @@ void AWeaponPickUp::OnConstruction(const FTransform& Transform)
 void AWeaponPickUp::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// 기존 Blueprint의 루트 구체 충돌/축 잠금 오버라이드를 런타임에 바로잡는다.
+	_InteractionSphere->SetSphereRadius(25.0f);
+	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Block);
+	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	_InteractionSphere->SetGenerateOverlapEvents(false);
+	_InteractionSphere->BodyInstance.bLockTranslation = false;
+	_InteractionSphere->BodyInstance.bLockRotation = false;
+	_InteractionSphere->SetEnableGravity(true);
+	_InteractionSphere->SetSimulatePhysics(HasAuthority());
 }
 
 // Called every frame
@@ -127,4 +148,3 @@ void AWeaponPickUp::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 }
-

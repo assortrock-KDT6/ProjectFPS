@@ -327,10 +327,18 @@ public:
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
 	
+	// 두 입력이 공유하는 사전 검사 통과하면 서버에 요청함.
+	void RequestEquipSlot(int32 Index);
+
+
+
+
 // Commit 건영
 // private:
 // 	void ClearFiringTag(); -> 기존 StopFiringPresentation()에 태그 해제 처리까지 통합
 // 	
 // 	// 한 발의 조준점 계산과 발사를 실행
 // 	void FireOnce();       -> FPSFireAbility::FireNextShot()에서 조준점을 구하고 무기 발사 호출 
+
+
 };
