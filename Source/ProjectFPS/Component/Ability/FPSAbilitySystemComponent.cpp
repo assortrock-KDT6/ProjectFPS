@@ -9,6 +9,8 @@
 #include "GameTag/FPSGameplayTag.h"
 #include "Component/Ability/GamePlayAbility/FPSFireAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSChangeFireModeAbility.h"
+#include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"	// 수류탄 행동을 처리하는 능력
+#include "Projectiles/GrenadeActor.h"								// 실제로 손에 들고 있는 수류탄 액터
 
 UFPSAbilitySystemComponent::UFPSAbilitySystemComponent()
 {
@@ -34,6 +36,13 @@ void UFPSAbilitySystemComponent::GrantWeaponAbilities()
 		FGameplayAbilitySpec* Existing = FindAbilitySpecFromClass(ChangeFireModeAbilityClass);
 		_ChangeFireModeAbilityHandle = Existing ? Existing->Handle : GiveAbility(FGameplayAbilitySpec(ChangeFireModeAbilityClass, 1));
 	}
+	
+	// 이미 부여한 수류탄 능력이 있으면 재사용하고, 없으면 부여하기
+	if (nullptr == FindAbilitySpecFromHandle(_GrenadeAbilityHandle) && nullptr != GrenadeAbilityClass)
+	{
+		FGameplayAbilitySpec* Existing = FindAbilitySpecFromClass(GrenadeAbilityClass);
+		_GrenadeAbilityHandle = Existing ? Existing->Handle : GiveAbility(FGameplayAbilitySpec(GrenadeAbilityClass, 1));
+	}
 }
 
 void UFPSAbilitySystemComponent::SetFireInput(bool Pressed)
@@ -55,6 +64,44 @@ void UFPSAbilitySystemComponent::ChangeFireMode()
 	}
 }
 
+void UFPSAbilitySystemComponent::CookGrenade()
+{
+	const APawn* Pawn = Cast<APawn>(GetAvatarActor());
+
+	if (false == IsValid(Pawn))
+	{
+		return;
+	}
+
+	if (true == Pawn->HasAuthority() || true == Pawn->IsLocallyControlled())
+	{
+		ServerCookGrenade();
+	}
+}
+
+void UFPSAbilitySystemComponent::ServerCookGrenade_Implementation()
+{
+	if (false == IsOwnerActorAuthoritative() || false == CanAttack())
+	{
+		return;
+	}
+
+	// 준비 중인 수류탄 능력이 있을 때만 쿠킹 요청을 전달한다.
+	const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(_GrenadeAbilityHandle);
+
+	if (nullptr == Spec || false == Spec->IsActive())
+	{
+		return;
+	}
+
+	FGameplayEventData EventData;
+	EventData.EventTag = FPSGameplayTags::Event_Grenade_Cook;
+	EventData.Instigator = GetAvatarActor();
+	EventData.Target = GetAvatarActor();
+
+	HandleGameplayEvent(EventData.EventTag, &EventData);
+}
+
 void UFPSAbilitySystemComponent::ServerSetFireInput_Implementation(bool Pressed)
 {
 	if (false == IsOwnerActorAuthoritative())
@@ -65,7 +112,15 @@ void UFPSAbilitySystemComponent::ServerSetFireInput_Implementation(bool Pressed)
 	if (false == Pressed)
 	{
 		_FireInputHeld = false;
+		
 		CancelWeaponFire();
+		
+		// 수류탄 능력에도 입력을 놓았다는 사실을 전달하기
+		if (FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(_GrenadeAbilityHandle))
+		{
+			AbilitySpecInputReleased(*Spec);
+		}
+		
 		return;
 	}
 
@@ -76,6 +131,33 @@ void UFPSAbilitySystemComponent::ServerSetFireInput_Implementation(bool Pressed)
 
 	_FireInputHeld = true;
 	
+	const ACharacterPlayer* Character = Cast<ACharacterPlayer>(GetAvatarActor());
+	if (false == IsValid(Character))
+	{
+		return;
+	}
+	
+	if (IsValid(Character->GetEquippedGrenade()))
+	{
+		if (FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(_GrenadeAbilityHandle))
+		{
+			Spec->InputPressed = true;
+			
+			TryActivateAbility(_GrenadeAbilityHandle);
+		}
+		
+		// 수류탄을 들었을 때는 총기 능력을 실행하지 않는다.
+		return;
+	}
+	
+	// 손에서 수류탄이 떠났어도 Throw가 끝날때까지 총기발사를 시작하지 않는다
+	if (const FGameplayAbilitySpec* Spec = FindAbilitySpecFromHandle(_GrenadeAbilityHandle))
+	{
+		if (Spec->IsActive())
+		{
+			return;
+		}
+	}
 	TryActivateAbility(_FireAbilityHandle);
 }
 

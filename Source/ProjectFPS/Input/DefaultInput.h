@@ -51,7 +51,13 @@ protected:
 	TObjectPtr<class UInputAction> _FireToggle;
 
 	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Cook;
+	
+	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _DropItem;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _WeaponSlot3;
 
 	// 무기 슬롯 교체 (Main, Sub)
 	UPROPERTY(EditAnywhere)

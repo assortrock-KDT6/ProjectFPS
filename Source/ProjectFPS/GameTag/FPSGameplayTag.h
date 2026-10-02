@@ -13,6 +13,7 @@ namespace FPSGameplayTags
 
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Combat);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Combat_Fire);
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Event_Grenade_Cook);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Combat_Blocked);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Status_Damage_Immune);
 
@@ -50,4 +51,9 @@ namespace FPSGameplayTags
 
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Vault);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(Movement_Mode_Mantle);
+
+	// GameplyCue
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Weapon_Fire); // 총 발사음.
+
+
 }
