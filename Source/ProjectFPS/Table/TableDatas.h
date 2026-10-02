@@ -38,10 +38,14 @@ USTRUCT(BlueprintType)
 struct FItemData  : public  FTableRowBase
 {
 	GENERATED_BODY()
+	
+	// 아이템의 이름
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	FText _DisplayName;
 
-	// 아이템 식별자
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FName _ItemID;
+	// 아이템 설명
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	FText _Description;
 
 	// 아이템 아이콘
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -53,19 +57,27 @@ struct FItemData  : public  FTableRowBase
 
 	// 아이템 종류
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	EItemType _ItemType = EItemType::Consumable;
+	EItemType _ItemType = EItemType::None;
 
-	//  *나중에 지울예정
+	//  아이템 수량
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	int32 _Count = 1;
+	
+	// 아이템 테이블과 무기를 연결하는 외래키
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FName _WeaponId = NAME_None;
+
+	// 버릴 떄 생성할 픽업 클래스
+	// 지정한 BP의 기본 설정과 기능을 적용하여 월드에 생성함.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<class AItemPickUp> _PickUpClass;	// 부모클래스 일 경우 자식클래스도 포함됨.
 };
 
+
 USTRUCT(BlueprintType)
-struct FStartItemRow : public FTableRowBase
+struct FMonsterData : public  FTableRowBase
 {
 	GENERATED_BODY()
 
-	// *시작 아이템 수량. -> 삭제예정
-	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	int32 _Count = 1;				
+
 };

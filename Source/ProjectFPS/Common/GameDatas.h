@@ -3,9 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/HitResult.h"
 #include "GameDefines.h"
 #include "UObject/Object.h"
 #include "GameDatas.generated.h"
+
+class UAnimMontage;
+class UTexture2D;
 
 /**
  * 
@@ -18,6 +22,28 @@ class PROJECTFPS_API UGameDatas : public UObject
 };
 
 #pragma region SessionData
+
+/** Editor-authored playable map entry. The package path is the stable identifier. */
+USTRUCT(BlueprintType)
+struct FFPSPlayableMap
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	EFPSMatchMode Mode = EFPSMatchMode::PVP;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	FText DisplayName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	TSoftObjectPtr<UWorld> Level;
+
+	/** Actual level capture used by the map picker; optional for newly registered maps. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Session")
+	TSoftObjectPtr<UTexture2D> Thumbnail;
+
+	FString GetMapPath() const { return Level.ToSoftObjectPath().GetLongPackageName(); }
+};
 
 USTRUCT(BlueprintType)
 struct FFPSOnlineSessionInfo
@@ -74,7 +100,7 @@ struct FFPSSessionCreateOptions
 	FString _GameModeId;
 };
 
-// 아이템 슬롯.
+// 인벤토리 슬롯.
 USTRUCT(BlueprintType)
 struct FInventorySlot
 {
@@ -82,11 +108,9 @@ struct FInventorySlot
 	UPROPERTY(BlueprintReadOnly) FName _TID= NAME_None;
 	UPROPERTY(BlueprintReadOnly) int32 _Count = 0;
 
+
+
 };
-
-
-#pragma endregion
-
 
 /**
  * Front / Top처럼 모든 Traversal 액션이 공유하는 서버 로컬 Trace 결과다.
@@ -115,7 +139,23 @@ struct FTraversalCandidate
 {
 	EProjectCustomMovementMode	_Mode = EProjectCustomMovementMode::None;
 
-	uint8						_Variant = 0;
+	ETraversalVariant			_Variant = ETraversalVariant::Default;
+
+	TWeakObjectPtr<UPrimitiveComponent> _ObstacleComponent = nullptr;
+	
+	float	_Duration = 0.f;
+	
+	/**
+	 * 파쿠르 Control Rig을 맞춰주기 위해 빼주는 변수 
+	 */
+
+	float	_ObstacleHeight = 0.f;
+	
+	float	_ObstacleDepth	= 0.f;
+
+	FVector						_TopPoint = FVector::ZeroVector;
+
+	FVector						_TopNormal = FVector::UpVector;
 
 	FVector						_TargetLocation = FVector::ZeroVector;
 
@@ -125,9 +165,7 @@ struct FTraversalCandidate
 
 	FVector						_ObstacleNormal = FVector::ZeroVector;;
 
-	TWeakObjectPtr<UPrimitiveComponent> _ObstacleComponent = nullptr;
 
-	float	_Duration = 0.f;
 
 	bool IsValid() const
 	{
@@ -148,7 +186,7 @@ struct FTraversalActionDefinition
 	EProjectCustomMovementMode _Mode = EProjectCustomMovementMode::None;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	uint8 _Variant = 0;
+	ETraversalVariant			_Variant = ETraversalVariant::Default;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	TObjectPtr<UAnimMontage> _Montage = nullptr;
@@ -157,7 +195,7 @@ struct FTraversalActionDefinition
 	float _PlayRate = 1.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	FName _WarapTargetName = NAME_None;
+	FName _WarpTargetName = NAME_None;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	float _MinHeight = 0.f;
@@ -200,4 +238,36 @@ struct FMantleTraceSettings
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.0"))
 	float _TopFloorTraceHalfDistance = 50.f;
+};
+
+/**
+ * 애니메이션에 Ground 정보를 전달해주기 위한 구조체
+ */
+USTRUCT(BlueprintType)
+struct FCharacterGroundInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly)
+	float _GroundDistance = -1.f;
+
+	uint64 _LastUpdateFrame = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	FHitResult _GroundHitResult;
+
+};
+
+/**
+ * 접촉점 계산을 위한 struct
+ */
+struct FTraversalContactTargets
+{
+	FTransform _LeftHand = FTransform::Identity;
+	FTransform _RightHand = FTransform::Identity;
+	FTransform _ObstacleFrame = FTransform::Identity;
+	float _ObstacleDepth = 0.f;
+	//FTransform _LeftFoot = FTransform::Identity;
+	//FTransform _RightFoot = FTransform::Identity;
+	//FTransform _Pelvis = FTransform::Identity;
 };

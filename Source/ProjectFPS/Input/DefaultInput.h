@@ -30,7 +30,7 @@ protected:
 	TObjectPtr<class UInputAction> _MouseLook;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TObjectPtr<class UInputAction> _MouseZoom;
+	TObjectPtr<class UInputAction> _AimZoom;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TObjectPtr<class UInputAction> _Parkour;
@@ -43,4 +43,28 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _Interact;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Fire;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _FireToggle;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Cook;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _DropItem;
+	
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _WeaponSlot3;
+
+	// 무기 슬롯 교체 (Main, Sub)
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _EquipMainWeapon;
+
+	// 무기 슬롯 교체 (Main, Sub)
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _EquipSubWeapon;
+
 };

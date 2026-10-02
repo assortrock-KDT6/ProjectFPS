@@ -4,10 +4,16 @@
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
+
+#include "Components/CapsuleComponent.h"
+
 #include "GameFramework/Character.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/GameStateBase.h"
+
 #include "Net/UnrealNetwork.h"
+
+#include "Engine/World.h"
 
 UFPSCharacterMovementComponent::UFPSCharacterMovementComponent()
 {
@@ -31,6 +37,7 @@ void UFPSCharacterMovementComponent::RequestTraversal()
 	 * 예약 대기 구간(_TraversalState는 활성이지만 아직 시작 시각 전)에도 재요청을 막는다.
 	 * IsTraversing()만 보면 이 구간에서 두 번째 요청이 서버로 나간다.
 	 */
+
 	if (true == IsTraversing() || true == _TraversalState.IsActive())
 	{
 		return;
@@ -70,6 +77,64 @@ void UFPSCharacterMovementComponent::NotifyTraversalEnded()
 	}
 }
 
+const FCharacterGroundInfo& UFPSCharacterMovementComponent::GetGroundInfomation()
+{
+	if (nullptr == CharacterOwner || (GFrameCounter == _CurrentGroundInformation._LastUpdateFrame))
+	{
+		return _CurrentGroundInformation;
+	}
+
+	if (MOVE_Walking == MovementMode)
+	{
+		_CurrentGroundInformation._GroundHitResult = CurrentFloor.HitResult;
+		_CurrentGroundInformation._GroundDistance = 0.f;
+	}
+	else
+	{
+		const UCapsuleComponent* CapsuleComponent = CharacterOwner->GetCapsuleComponent();
+		if (nullptr == CapsuleComponent)
+		{
+			return _CurrentGroundInformation;
+		}
+
+		const float CapsuleHalfHeight = CapsuleComponent->GetUnscaledCapsuleHalfHeight();
+		const ECollisionChannel CollisionChannel = (UpdatedComponent ? UpdatedComponent->GetCollisionObjectType() : ECC_Pawn);
+		const FVector TraceStart(GetActorLocation());
+		const FVector TraceEnd(TraceStart.X, TraceStart.Y, (TraceStart.Z - 100000.0f - CapsuleHalfHeight));
+		
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(FPSCharacterMovementComponent_GetGroundInfo), false, CharacterOwner);
+		FCollisionResponseParams ResponseParam;
+		InitCollisionParams(QueryParams, ResponseParam);
+
+		FHitResult HitResult;
+		UWorld* World = GetWorld();
+
+		if (nullptr == World)
+		{
+			return _CurrentGroundInformation;
+		}
+
+		World->LineTraceSingleByChannel(HitResult, TraceStart, TraceEnd, CollisionChannel, QueryParams, ResponseParam);
+
+		_CurrentGroundInformation._GroundHitResult = HitResult;
+		_CurrentGroundInformation._GroundDistance = 100000.0f;
+
+		if (MOVE_Walking == MovementMode)
+		{
+			_CurrentGroundInformation._GroundDistance = 0.f;
+		}
+		else if (true == HitResult.bBlockingHit)
+		{
+			_CurrentGroundInformation._GroundDistance = FMath::Max((HitResult.Distance - CapsuleHalfHeight), 0.f);
+		}
+
+	}
+
+	_CurrentGroundInformation._LastUpdateFrame = GFrameCounter;
+
+	return _CurrentGroundInformation;
+}
+
 void UFPSCharacterMovementComponent::OnRep_TraversalState()
 {
 	const bool IsAutonomousProxy = nullptr != CharacterOwner
@@ -95,6 +160,21 @@ void UFPSCharacterMovementComponent::OnRep_TraversalState()
 	}
 
 	RefreshTraversalPresentation();
+}
+
+void UFPSCharacterMovementComponent::UpdateParkourBlockCount(int Count)
+{
+	// FMath::Max() 를 써도 됨.
+	if(0 >= _ParkourBlockCount + Count)
+	{
+		_ParkourBlockCount = 0;
+	}
+	else
+	{
+		_ParkourBlockCount += Count;
+	}
+	
+	return;
 }
 
 void UFPSCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -142,14 +222,14 @@ void UFPSCharacterMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
 {
 	Super::UpdateFromCompressedFlags(Flags);
 
-	// |AND 연산						|
+	// |AND 연산					|
 	// |----------------------------|
 	// |경우 1	|경우 2				|
 	// |0 1 0 0 | 0 0 0 1 			|
 	// |1 0 0 0 | 0 0 0 1			|
 	// |0 0 0 0 | 0 0 0 1			|
 	// |----------------------------|
-	// |값 0	    | 값 1				|
+	// |값 0	    | 값 1			|
 	// |----------------------------|
 	// |!= 0 연산 (0과 같지 않다.)	|
 	// |----------------------------|
@@ -210,6 +290,7 @@ void UFPSCharacterMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(UFPSCharacterMovementComponent, _TraversalState);
+	DOREPLIFETIME(UFPSCharacterMovementComponent, _ParkourBlockCount);
 }
 
 void UFPSCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
@@ -286,6 +367,11 @@ bool UFPSCharacterMovementComponent::TryBuildTraversalCandidate(FTraversalCandid
 
 void UFPSCharacterMovementComponent::TryStartTraversalAuthority()
 {
+	if(0 < _ParkourBlockCount)
+	{
+		return;
+	}
+
 	if (false == IsValid(CharacterOwner))
 	{
 		return;
@@ -315,6 +401,10 @@ bool UFPSCharacterMovementComponent::StartTraversalAuthority(const FTraversalCan
 	_TraversalState._TargetRotation = Candidate._TargetRotation;
 	_TraversalState._ObstaclePoint = Candidate._ObstaclePoint;
 	_TraversalState._ObstacleNormal = Candidate._ObstacleNormal;
+	_TraversalState._TopPoint = Candidate._TopPoint;
+	_TraversalState._TopNormal = Candidate._TopNormal;
+	_TraversalState._ObstacleHeight = Candidate._ObstacleHeight;
+	_TraversalState._ObstacleDepth = Candidate._ObstacleDepth;
 	/**
 	 * 즉시 시작하지 않고 시작 시각을 약간 미래로 예약한다.
 	 * 상태를 먼저 복제해 두면 서버와 소유 클라이언트가 같은 서버 시각에 동시에 시작할 수 있고,
@@ -427,11 +517,8 @@ void UFPSCharacterMovementComponent::RefreshTraversalPresentation()
 	 * MOVE_Custom 보정이 늦게 도착할 수 있다. 이때 MovementMode만 다시 Custom이 되어도
 	 * 끝난 몽타주를 0부터 재생하지 않도록 표현 계층에서도 완료 ActionID를 차단한다.
 	 */
-	const bool IsCompletedAutonomousAction = ROLE_AutonomousProxy == CharacterOwner->GetLocalRole()
-		&& _TraversalState._ActionID == _CompletedAutonomousActionId;
-	const bool HasReachedWatchdogEnd = _TraversalState.IsActive()
-		&& GetServerTimeSeconds() >= _TraversalState._ServerStartTimeSeconds
-			+ _TraversalState._Duration + _TraversalEndWatchdogDelay;
+	const bool IsCompletedAutonomousAction = ROLE_AutonomousProxy == CharacterOwner->GetLocalRole() && _TraversalState._ActionID == _CompletedAutonomousActionId;
+	const bool HasReachedWatchdogEnd = _TraversalState.IsActive() && GetServerTimeSeconds() >= _TraversalState._ServerStartTimeSeconds + _TraversalState._Duration + _TraversalEndWatchdogDelay;
 
 	/* 상태가 끝났거나 Notify 종료가 처리됐거나 watchdog에 도달한 경우에만 표현을 종료한다. */
 	if (false == _TraversalState.IsActive() || true == IsCompletedAutonomousAction || true == HasReachedWatchdogEnd)
@@ -640,6 +727,21 @@ bool UFPSCharacterMovementComponent::IsTraversing(uint8 Mode) const
 			return false;
 		}
 	}
+}
+
+bool UFPSCharacterMovementComponent::GetTraversalContactTargets(FTraversalContactTargets& OutTargets) const
+{
+	if (false == _TraversalState.IsActive())
+	{
+		return false;
+	}
+
+	if (nullptr == _ActivePresentationComponent)
+	{
+		return false;
+	}
+
+	return _ActivePresentationComponent->BuildContactTargets(_TraversalState, OutTargets);
 }
 
 void FSavedMove_FPS::Clear()

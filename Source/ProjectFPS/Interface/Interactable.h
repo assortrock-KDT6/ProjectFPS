@@ -14,8 +14,14 @@ class UInteractable : public UInterface
 };
 
 /**
- *  실제 구현할 함수.
+ * 상호작용 가능한 것 의 약솜 컴포넌트가 대상이 뭔지 몰라도 다룰수 있게하는 중간다리.
  */
+
+
+
+
+
+
 
 class PROJECTFPS_API IInteractable
 {
@@ -24,5 +30,10 @@ class PROJECTFPS_API IInteractable
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Interaction")
-	void Interact(AActor* Interactor);	// 상호작용시 여기서 사용.
+	void Interact(AActor* Interactor);	// 상호작용은 Interact라는 이름으로 요청하고 누가 요청했는지 전달함.
+
+
+
+
+
 };

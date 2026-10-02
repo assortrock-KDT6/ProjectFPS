@@ -26,6 +26,10 @@ private:
 	TObjectPtr<UUserWidget> _MapWidget;
 
 protected:
+	virtual void BeginPlay() override;
+
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void RestoreInputAfterExitMenu() override;
 
 	// 각 위젯별 화면 BP_GameHUD -> 디테일에서 지정.
 	UPROPERTY(EditAnywhere, Category = "HUD|Screens")	
@@ -47,6 +51,7 @@ public:
 	 * 임의로 호출을 넣겠습니다.
 	 * 블루프린트 단계에서 넣었습니다. 2026 09 04
 	 */
+
 	// 매치 단계에 맞는 화면으로 전환 (로비, 게임화면)
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SwitchTo(EMatchPhase Phase);
@@ -63,5 +68,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleMap();
 
+public:
+	void ShowItemInfo(FName TID);
+	void HideItemInfo();
+
+	// 인벤/맵 등 오버레이가 열려 있는지 (열려 있을 경우 버리기 x)
+	bool IsAnyOverlayOpen() const { return nullptr != _InventoryWidget || nullptr != _MapWidget; }
+
+private:
+	// 게임중 전용으로 변경.
+	virtual void ApplyInputMode(bool bUIMode) override;
 	
 };

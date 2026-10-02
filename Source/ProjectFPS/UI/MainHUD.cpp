@@ -4,10 +4,15 @@
 #include "UI/MainHUD.h"
 #include "Blueprint/UserWidget.h"
 #include "GameFramework/PlayerController.h"
+#include "UI/ExitMenuWidget.h"
+#include "Character/CharacterPlayer.h"
+#include "Engine/GameInstance.h"
+#include "GameInstance/FPSOnlineSessionSubsystem.h"
 
 bool AMainHUD::IsLocalHUD() const
 {
     APlayerController* PC = GetOwningPlayerController();
+
     return PC && PC->IsLocalController();
 }
 
@@ -45,6 +50,7 @@ void AMainHUD::RemoveCurrentScreen()
 
 bool AMainHUD::ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<UUserWidget>& OverlayPtr, int32 ZOrder)
 {
+    
     if(OverlayPtr)  //이미 창이 존재함.
     {
         OverlayPtr->RemoveFromParent();
@@ -53,11 +59,12 @@ bool AMainHUD::ToggleOverlay(TSubclassOf<UUserWidget> OverlayClass, TObjectPtr<U
     }
     
     OverlayPtr = CreateWidget<UUserWidget>(GetOwningPlayerController(), OverlayClass);
+
     if (OverlayPtr)
     {
         OverlayPtr->AddToViewport(ZOrder);
     }
-    return OverlayPtr != nullptr;   //열렸다고 알림
+    return OverlayPtr != nullptr;   // 열렸다고 알림
 }
 
 void AMainHUD::ApplyInputMode(bool bUIMode)
@@ -71,9 +78,21 @@ void AMainHUD::ApplyInputMode(bool bUIMode)
         return;
     }
 
-    if (bUIMode)
+    if (bUIMode || IsExitMenuOpen())
     {
-        PC->SetInputMode(FInputModeUIOnly());
+        FInputModeUIOnly Mode;
+
+        UUserWidget* Focus = IsExitMenuOpen() ? static_cast<UUserWidget*>(ExitMenuWidget.Get()) : _CurrentScreen.Get();
+
+        if (Focus)
+        {
+            Mode.SetWidgetToFocus(Focus->TakeWidget());
+        }
+
+        Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+
+        PC->SetInputMode(Mode);
+
         PC->SetShowMouseCursor(true);
     }
     else
@@ -86,6 +105,93 @@ void AMainHUD::ApplyInputMode(bool bUIMode)
 void AMainHUD::ToggleSettings()
 {
     ToggleOverlay(SettingWidgetClass, SettingWidget);
+}
+
+void AMainHUD::ToggleExitMenu()
+{
+    if (!IsLocalHUD())
+    {
+        return;
+    }
+
+    if (IsExitMenuOpen()) 
+    { 
+        CloseExitMenu(); 
+        return; 
+    }
+
+    APlayerController* PC = GetOwningPlayerController();
+
+    ExitMenuWidget = CreateExitMenu();
+
+    if (!ExitMenuWidget)
+    {
+        return;
+    }
+
+    if (auto* Character = Cast<ACharacterPlayer>(PC->GetPawn())) 
+    {
+        Character->StopAttacking();
+    }
+
+    PC->SetIgnoreMoveInput(true);
+
+    PC->SetIgnoreLookInput(true);
+
+    ExitMenuWidget->AddToViewport(2000);
+
+    ApplyInputMode(true);
+
+    ExitMenuWidget->SetUserFocus(PC);
+}
+
+void AMainHUD::CloseExitMenu()
+{
+    if (!ExitMenuWidget)
+    {
+        return;
+    }
+    auto* Sessions = GetGameInstance()->GetSubsystem<UFPSOnlineSessionSubsystem>();
+
+    if (Sessions && Sessions->IsExitInProgress())
+    {
+        return;
+    }
+
+    ExitMenuWidget->RemoveFromParent();
+    ExitMenuWidget = nullptr;
+
+    if (APlayerController* PC = GetOwningPlayerController())
+    {
+        PC->SetIgnoreMoveInput(false);
+        PC->SetIgnoreLookInput(false);
+        RestoreInputAfterExitMenu();
+    }
+}
+
+bool AMainHUD::IsExitMenuOpen() const
+{
+    return ExitMenuWidget != nullptr;
+}
+
+void AMainHUD::RestoreInputAfterExitMenu()
+{
+    ApplyInputMode(true);
+}
+
+void AMainHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (ExitMenuWidget)
+    {
+        ExitMenuWidget->RemoveFromParent();
+        ExitMenuWidget = nullptr;
+        if (APlayerController* PC = GetOwningPlayerController())
+        {
+            PC->SetIgnoreMoveInput(false);
+            PC->SetIgnoreLookInput(false);
+        }
+    }
+    Super::EndPlay(EndPlayReason);
 }
 
 void AMainHUD::CloseOverlay(TObjectPtr<UUserWidget>& OverlayPtr)

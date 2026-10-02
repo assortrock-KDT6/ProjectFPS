@@ -32,7 +32,7 @@ bool UMantleComponent::BuildCandidate(const FTraversalBaseQuery& BaseQuery, FTra
 	OutCandidate = FTraversalCandidate();
 
 	const ETraversalVariant Variant = BaseQuery._ObstacleHeight < _HighMantleThreshold ? ETraversalVariant::MantleLow : ETraversalVariant::MantleHigh;
-	const FTraversalActionDefinition* Definition = FindDefinition(static_cast<uint8>(Variant));
+	const FTraversalActionDefinition* Definition = FindDefinition(Variant);
 
 	if (nullptr == Definition)
 	{
@@ -94,12 +94,16 @@ bool UMantleComponent::BuildCandidate(const FTraversalBaseQuery& BaseQuery, FTra
 		static_cast<int32>(Variant), BaseQuery._ObstacleHeight, Duration);
 
 	OutCandidate._Mode = GetMode();
-	OutCandidate._Variant = static_cast<uint8>(Variant);
+	OutCandidate._Variant = Variant;
 	OutCandidate._TargetLocation = TopFloorHit.ImpactPoint;
 	OutCandidate._TargetRotation = BaseQuery._Direction.Rotation();
 	OutCandidate._ObstaclePoint = BaseQuery._FrontHit.ImpactPoint;
 	OutCandidate._ObstacleNormal = BaseQuery._FrontHit.ImpactNormal;
 	OutCandidate._ObstacleComponent = BaseQuery._FrontHit.GetComponent();
+	OutCandidate._TopPoint = TopFloorHit.ImpactPoint;
+	OutCandidate._TopNormal = TopFloorHit.ImpactNormal;
+	OutCandidate._ObstacleHeight = BaseQuery._ObstacleHeight;
+	OutCandidate._ObstacleDepth = 0.f;
 	OutCandidate._Duration = Duration;
 
 	return OutCandidate.IsValid();

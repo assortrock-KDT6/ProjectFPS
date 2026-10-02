@@ -59,20 +59,27 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Traversal", meta = (ClampMin = "0.0"))
 	float _TraversalEndWatchdogDelay = 0.5f;
 
+	UPROPERTY(Replicated)
+	int _ParkourBlockCount = 0;
+
 private:
 	bool	_WantsTraversal = false;
 	uint16	_NextAuthorityActionId = 1;
 	uint16	_CompletedAutonomousActionId = 0;
+	FCharacterGroundInfo _CurrentGroundInformation;
 
 	/* 트래버설 중 bOrientRotationToMovement를 끄고 되돌리기 위한 캐시. */
 	bool	_CachedOrientRotationToMovement = false;
 	bool	_TraversalRotationOverridden = false;
 
 	TWeakObjectPtr<UTraversalActionComponent> _ActivePresentationComponent;
+
 private:
 	UFUNCTION()
 	void OnRep_TraversalState();
 
+	UFUNCTION(BlueprintCallable)
+	void UpdateParkourBlockCount(int Count);
 protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
@@ -86,7 +93,9 @@ public:
 	void  RequestTraversal();
 	bool  IsTraversing() const;
 	bool  IsTraversing(uint8 Mode) const;
+	bool  GetTraversalContactTargets(FTraversalContactTargets& OutTargets) const;
 	const FTraversalRepState& GetTraversalState() const;
+	const FCharacterGroundInfo& GetGroundInfomation();
 	void  NotifyTraversalEnded();
 
 	/* 트래버설 예약에 쓰는 서버 시각. 소유 클라이언트에서는 예상 편도 지연을 보상한다. */

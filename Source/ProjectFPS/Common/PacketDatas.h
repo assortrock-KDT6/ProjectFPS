@@ -31,11 +31,33 @@ struct FTraversalRepState
 	EProjectCustomMovementMode _Mode = EProjectCustomMovementMode::None;
 
 	UPROPERTY()
-	uint8 _Variant = 0;
+	ETraversalVariant _Variant = ETraversalVariant::Default;
 
 	/* 서버에서만 생성하고 증가시킨다. */
 	UPROPERTY()
 	uint16 _ActionID = 0;
+
+	UPROPERTY()
+	float _ServerStartTimeSeconds = 0.f;
+
+	/* 서버가 시작 예약을 만들 때 사용한 편도 지연 추정값. 액션 도중에는 바뀌지 않는다. */
+	UPROPERTY()
+	float _EstimatedOneWaySeconds = 0.f;
+
+	UPROPERTY()
+	float _Duration = 0.f;
+
+	UPROPERTY()
+	float _ObstacleHeight	= 0.f;
+
+	UPROPERTY()
+	float _ObstacleDepth	= 0.f;
+
+	UPROPERTY()
+	FVector_NetQuantize10 _TopPoint = FVector::ZeroVector;
+
+	UPROPERTY()
+	FVector_NetQuantizeNormal _TopNormal = FVector::UpVector;
 
 	UPROPERTY()
 	FVector_NetQuantize10 _TargetLocation = FVector::ZeroVector;
@@ -51,16 +73,6 @@ struct FTraversalRepState
 
 	UPROPERTY()
 	FVector_NetQuantizeNormal _ObstacleNormal = FVector::ZeroVector;
-
-	UPROPERTY()
-	float _ServerStartTimeSeconds = 0.f;
-
-	/* 서버가 시작 예약을 만들 때 사용한 편도 지연 추정값. 액션 도중에는 바뀌지 않는다. */
-	UPROPERTY()
-	float _EstimatedOneWaySeconds = 0.f;
-
-	UPROPERTY()
-	float _Duration = 0.f;
 
 	bool IsActive() const
 	{
