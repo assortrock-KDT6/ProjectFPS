@@ -63,6 +63,13 @@ const FWeaponData& AWeaponActor::GetWeaponData() const
 	return _WeaponData;
 }
 
+USceneComponent* AWeaponActor::GetWeaponMeshComponent() const
+{
+
+	return _WeaponMesh;
+}
+
+
 EWeaponFireMode AWeaponActor::GetFireMode() const
 {
 	return _CurrentFireMode;

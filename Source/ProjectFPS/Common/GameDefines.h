@@ -36,7 +36,10 @@ enum class EFPSMatchMode : uint8
 
 namespace FPSMatchModeUtils
 {
-	inline FString ToId(EFPSMatchMode Mode) { return Mode == EFPSMatchMode::PVE ? TEXT("PVE") : TEXT("PVP"); }
+	inline FString ToId(EFPSMatchMode Mode) 
+	{ 
+		return Mode == EFPSMatchMode::PVE ? TEXT("PVE") : TEXT("PVP"); 
+	}
 
 	inline bool TryParse(const FString& Id, EFPSMatchMode& Mode)
 	{
@@ -45,7 +48,8 @@ namespace FPSMatchModeUtils
 			Mode = EFPSMatchMode::PVE;
 			return true;
 		}
-		// Existing quick-play Blueprint defaults used Deathmatch or an empty ID.
+
+		// 기존 빠른 매칭 블루프린트와의 호환을 위해 Deathmatch 또는 빈 ID도 PVP로 처리한다.		
 		if (Id.IsEmpty() || Id.Equals(TEXT("PVP"), ESearchCase::IgnoreCase)
 			|| Id.Equals(TEXT("Deathmatch"), ESearchCase::IgnoreCase))
 		{

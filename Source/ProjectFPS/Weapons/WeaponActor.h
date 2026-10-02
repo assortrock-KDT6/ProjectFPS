@@ -31,6 +31,10 @@ public:
 	float GetWeaponRange() const;
 	
 	const FWeaponData& GetWeaponData() const;
+
+	// 연출(GameplayCue)을 총구 소켓에 붙이기 위해서 무기 메시를 반환한다.
+	USceneComponent* GetWeaponMeshComponent() const;
+
 	
 	// 현재 무기의 발사 모드를 반환 
 	EWeaponFireMode GetFireMode() const;

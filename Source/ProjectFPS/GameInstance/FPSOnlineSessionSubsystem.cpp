@@ -261,16 +261,29 @@ bool UFPSOnlineSessionSubsystem::CreateSession(const FFPSSessionCreateOptions& O
 void UFPSOnlineSessionSubsystem::ConfigurePlayableMaps(const TArray<FFPSPlayableMap>& Maps)
 {
 	TArray<FFPSPlayableMap> ValidatedMaps;
+
 	TSet<FString> Seen;
+
 	for (FFPSPlayableMap Map : Maps)
 	{
 		const FString Path = Map.GetMapPath();
+
 		const FString Key = FPSMatchModeUtils::ToId(Map.Mode) + TEXT(":") + Path;
+
 		if (Map.Level.IsNull() || Path == GetLobbyMapPath() || Seen.Contains(Key)
 			|| !FPackageName::DoesPackageExist(Path)
-			|| (Map.Mode != EFPSMatchMode::PVP && Map.Mode != EFPSMatchMode::PVE)) continue;
+			|| (Map.Mode != EFPSMatchMode::PVP && Map.Mode != EFPSMatchMode::PVE))
+		{
+			continue;
+		}
+
 		Seen.Add(Key);
-		if (Map.DisplayName.IsEmpty()) Map.DisplayName = FText::FromString(FPackageName::GetShortName(Path));
+
+		if (Map.DisplayName.IsEmpty())
+		{
+			Map.DisplayName = FText::FromString(FPackageName::GetShortName(Path));
+		}
+
 		ValidatedMaps.Add(MoveTemp(Map));
 	}
 	_PlayableMaps = MoveTemp(ValidatedMaps);
@@ -279,12 +292,24 @@ void UFPSOnlineSessionSubsystem::ConfigurePlayableMaps(const TArray<FFPSPlayable
 const FFPSPlayableMap* UFPSOnlineSessionSubsystem::FindPlayableMap(const FString& MapPath, TOptional<EFPSMatchMode> Mode) const
 {
 	const FString Path = OnlineSessionSubsystemUtils::NormalizeMapPath(MapPath);
+
 	const FFPSPlayableMap* Found = nullptr;
+
 	for (const FFPSPlayableMap& Map : _PlayableMaps)
 	{
-		if (Map.GetMapPath() != Path || (Mode.IsSet() && Map.Mode != Mode.GetValue())) continue;
-		// A shared package can belong to several modes. Never guess without a mode.
-		if (Found) return nullptr;
+		if (Map.GetMapPath() != Path || (Mode.IsSet() && Map.Mode != Mode.GetValue()))
+		{
+			continue;
+		}
+
+		// 동일한 맵 패키지가 여러 모드에 등록될 수 있으므로,
+		// 모드가 지정되지 않은 상태에서는 임의로 하나를 선택하지 않는다.
+
+		if (Found)
+		{
+			return nullptr;
+		}
+
 		Found = &Map;
 	}
 	return Found;
@@ -310,13 +335,17 @@ bool UFPSOnlineSessionSubsystem::CanSelectLobbySettings(FString& OutError) const
 
 bool UFPSOnlineSessionSubsystem::SelectGameMode(EFPSMatchMode Mode, FString& OutError)
 {
-	if (!CanSelectLobbySettings(OutError)) { return false; }
+	if (!CanSelectLobbySettings(OutError)) 
+	{ 
+		return false; 
+	}
+
 	if (Mode != EFPSMatchMode::PVP && Mode != EFPSMatchMode::PVE)
 	{
 		OutError = TEXT("지원하지 않는 세션 모드입니다.");
 		return false;
 	}
-	// Clear the old map even when the new mode has no configured destination.
+	// 모드 변경 시 이전에 선택된 맵이 남지 않도록 먼저 초기화한다.
 	_SelectedGameMap = FFPSPlayableMap();
 	_SelectedGameMap.Mode = Mode;
 	for (const FFPSPlayableMap& Map : _PlayableMaps)
@@ -338,8 +367,10 @@ void UFPSOnlineSessionSubsystem::PublishLobbySelection()
 	{
 		Lobby->SetSelectedMap(_SelectedGameMap);
 	}
+
 	FOnlineSessionSettings* Settings = _SessionInterface.IsValid()
 		? _SessionInterface->GetSessionSettings(NAME_GameSession) : nullptr;
+
 	if (Settings)
 	{
 		FString OldMode;
@@ -358,7 +389,11 @@ void UFPSOnlineSessionSubsystem::PublishLobbySelection()
 
 bool UFPSOnlineSessionSubsystem::SelectGameMap(const FString& MapPath, FString& OutError)
 {
-	if (!CanSelectLobbySettings(OutError)) { return false; }
+	if (!CanSelectLobbySettings(OutError)) 
+	{ 
+		return false; 
+	}
+
 	const FFPSPlayableMap* Map = FindPlayableMap(MapPath, _SelectedGameMap.Mode);
 	if (!Map)
 	{

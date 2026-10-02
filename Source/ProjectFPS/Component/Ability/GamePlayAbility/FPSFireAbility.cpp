@@ -102,8 +102,10 @@ void UFPSFireAbility::FireNextShot()
 		// 연출의 출처로 사용할 객체를 지정합니다. 여기서는 발사한 무기입니다.
 		CueParameters.SourceObject = Weapon;
 
-		// 연출이 발생한 위치를 전달합니다.
-		CueParameters.Location = Weapon->GetActorLocation();
+		// 총구 소켓에 연출을 붙이기 위해 무기 메시를 넘김.
+		// Location은 넘기지 않는다. 비워두면 GC에 지정한 소켓(Muzzle)의 위치를 사용한다.
+		// 넘기면 나이아가라가 그 값을 소켓 기준 상대 오프셋으로 써서 총구에서 멀리 밀려난다.
+		CueParameters.TargetAttachComponent = Weapon->GetWeaponMeshComponent();
 
 		// 어떤 연출을 실행할지 지정하는 태그, 누가 무엇으로 어디서 발생할지에 대한 정보.
 		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_Fire, CueParameters);
@@ -113,7 +115,7 @@ void UFPSFireAbility::FireNextShot()
 	}
 
 	if (false == IsActive())
-	{
+	{ 
 		return;
 	}
 
