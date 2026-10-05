@@ -444,6 +444,33 @@ void ACharacterPlayer::Tick(float DeltaTime)
 	}
 	
 	_CameraComponent->SetFieldOfView(FMath::FInterpTo(_CameraComponent->FieldOfView, _TargetCameraFOV, DeltaTime, 10.f));
+	
+	if (IsValid(_ViewWeaponMesh))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = IsValid(_AbilitySystemComponent) ? _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject() : nullptr;
+		
+		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
+		
+		UAnimInstance* AnimInstance = IsValid(_FirstPersonMesh) ? _FirstPersonMesh->GetAnimInstance() : nullptr;
+		
+		const FAnimMontageInstance* MontageInstance = IsValid(Montage) && IsValid(AnimInstance) ? AnimInstance->GetInstanceForMontage(Montage) : nullptr;
+		
+		// 이전 Throw가 끝나면 다음 무기 장착과 Idle 애니메이션 준비
+		if (IsValid(_CurrentGrenade) && IsValid(Montage) && IsValid(AnimInstance) && (MontageInstance == nullptr || (MontageInstance->GetCurrentSection() != FName(TEXT("Throw")) && IsValid(_ViewItemMesh) && _ViewItemMesh->GetStaticMesh() == nullptr)))
+		{
+			OnRep_CurrentGrenade();
+		}
+		
+		// Blend Out 중에도 수류탄 동작이 남아 있으면 총을 그리지 않기
+		const bool HasGrenadePose = IsValid(Montage) && IsValid(AnimInstance) && AnimInstance->GetInstanceForMontage(Montage) != nullptr;
+		
+		const bool ShowWeapon = IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade) && !HasGrenadePose;
+		
+		if (_ViewWeaponMesh->IsVisible() != ShowWeapon)
+		{
+			_ViewWeaponMesh->SetVisibility(ShowWeapon, true);
+		}
+	}
 }
 
 void ACharacterPlayer::CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult)
@@ -937,11 +964,34 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 		_CurrentWeapon->GetRootComponent()->SetVisibility(!HasGrenade, true);
 	}
 
-	if (IsValid(_ViewWeaponMesh))
-	{
-		_ViewWeaponMesh->SetVisibility(IsLocallyControlled() && HasWeapon && !HasGrenade, true);
-	}
+	// Commit 건영 : 수류탄 무기 전환 버그를 1인칭 총 표시를 Tick()에서 결정으로 해결
+	// if (IsValid(_ViewWeaponMesh))
+	// {
+	// 	_ViewWeaponMesh->SetVisibility(IsLocallyControlled() && HasWeapon && !HasGrenade, true);
+	// }
 
+	if (IsLocallyControlled() && HasGrenade && IsValid(_AbilitySystemComponent) && IsValid(_FirstPersonMesh))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject();
+		
+		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
+		
+		UAnimInstance* AnimInstance = _FirstPersonMesh->GetAnimInstance();
+		
+		const FAnimMontageInstance* MontageInstance = IsValid(Montage) && IsValid(AnimInstance) ? AnimInstance->GetInstanceForMontage(Montage) : nullptr;
+		
+		// 서버의 재장착이 먼저 도착해도 이전 Throw에 새 수류탄을 표시하지 않음
+		if (MontageInstance && MontageInstance->GetCurrentSection() == FName(TEXT("Throw")))
+		{
+			if (IsValid(_ViewItemMesh))
+			{
+				_ViewItemMesh->SetStaticMesh(nullptr);
+			}
+			
+			return;
+		}
+	}
+	
 	if (IsValid(_ViewItemMesh))
 	{
 		_ViewItemMesh->EmptyOverrideMaterials();

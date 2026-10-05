@@ -183,6 +183,9 @@ public:
 	// 투척할 액터는 보존하고 장착 참조와 표시만 정리
 	void ClearGrenadeReference(AGrenadeActor* Grenade);
 	
+	UFUNCTION(Server, Reliable)
+	void ServerEquipGrenade();
+	
 	bool CanFireFromAbility() const;
 
 	void NotifyAbilityWeaponFired(AWeaponActor* Weapon);
@@ -294,9 +297,6 @@ protected:
 	
 	UFUNCTION()
 	void EquipGrenadeAction(const FInputActionValue& value);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerEquipGrenade();
 	
 	UFUNCTION()
 	void OnRep_CurrentGrenade();

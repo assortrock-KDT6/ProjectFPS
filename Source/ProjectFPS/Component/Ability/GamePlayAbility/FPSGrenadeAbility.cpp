@@ -1,5 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"
+#include "GameMode/PlayerStateBase.h"
+#include "Component/Inventory/InventoryComponent.h"
 #include "Character/CharacterPlayer.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Projectiles/GrenadeActor.h"
@@ -225,6 +227,14 @@ void UFPSGrenadeAbility::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	}
 
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, bInterrupted);
+	
+	// 정상 투척이 끝났으면 기존 장착 경로로 다음 수류탄을 장착
+	// 기존 ServerEquipGrenade() 가 서버 인벤토리 수량을 검사하고 남은 수량이 없으면 장착하지 않음
+	// 이미 장착했던 총으로 돌아가고 총도없으면 맨손상태
+	if (!bInterrupted && IsValid(Character) && !IsValid(Character->GetEquippedGrenade()))
+	{
+		Character->ServerEquipGrenade();
+	}
 }
 
 void UFPSGrenadeAbility::OnGrenadeRelease(FName NotifyName, const FBranchingPointNotifyPayload& Payload)
@@ -265,15 +275,59 @@ void UFPSGrenadeAbility::OnGrenadeRelease(FName NotifyName, const FBranchingPoin
 		return;
 	}
 	
+	// const FVector ReleaseLocation = Arms->GetSocketLocation(TEXT("GrenadeGrip"));
+	//
+	// const FVector Direction = Character->GetControlRotation().Vector();
+	//
+	// if (Grenade->Throw(Direction))
+	// {
+	// 	// 1인칭 손의 위치에서 출발 -> 적용된 물리 속도는 유지
+	// 	Grenade->SetActorLocation(ReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
+	// 	
+	// 	Character->ClearGrenadeReference(Grenade);
+	// }
+
+	APlayerStateBase* FPSPlayerState = Character->GetPlayerState<APlayerStateBase>();
+	
+	UInventoryComponent* Inventory = IsValid(FPSPlayerState) ? FPSPlayerState->GetInventory() : nullptr;
+	
+	if (false == IsValid(Inventory) || false == IsValid(Inventory->GetOwner()) || false == Inventory->GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	
+	// 장착한 수류탄과 같은 아이템이 들어 있는 슬롯을 찾기
+	const TArray<FInventorySlot>& Items = Inventory->GetItems();
+	
+	int32 SlotIndex = INDEX_NONE;
+
+	for (int32 Index = 0; Index < Items.Num(); ++Index)
+	{
+		if (Items[Index]._TID == Grenade->GetTID() && Items[Index]._Count > 0)
+		{
+			SlotIndex = Index;
+			
+			break;
+		}
+	}
+	
+	if (SlotIndex == INDEX_NONE)
+	{
+		return;
+	}
+	
 	const FVector ReleaseLocation = Arms->GetSocketLocation(TEXT("GrenadeGrip"));
 	
 	const FVector Direction = Character->GetControlRotation().Vector();
 	
 	if (Grenade->Throw(Direction))
 	{
+		// 실제 투척에 성공했을때 서버 인벤토리에서 한개 소모
+		Inventory->RemoveItem(SlotIndex, 1);
+		
 		// 1인칭 손의 위치에서 출발 -> 적용된 물리 속도는 유지
 		Grenade->SetActorLocation(ReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
-		
+	
 		Character->ClearGrenadeReference(Grenade);
 	}
 }
