@@ -8,6 +8,9 @@
 #include "WeaponTypes.h"
 #include "WeaponActor.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FWeaponAmmoChangedSignature, int32, CurrentAmmo, int32, MaxAmmo);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FWeaponDataChangedSignature);
+
 UCLASS()
 class PROJECTFPS_API AWeaponActor : public AActor, public IWeaponInterface
 {
@@ -16,6 +19,13 @@ class PROJECTFPS_API AWeaponActor : public AActor, public IWeaponInterface
 public:	
 	// Sets default values for this actor's properties
 	AWeaponActor();
+
+	// 탄약 변경과 클라이언트의 무기 데이터 로딩 완료를 UI에 알린다.
+	UPROPERTY(BlueprintAssignable, Category = "Weapon | Data")
+	FWeaponAmmoChangedSignature _OnAmmoChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Weapon | Data")
+	FWeaponDataChangedSignature _OnWeaponDataChanged;
 
 	// WeaponID 에 해당하는 기본 정보와 능력치를 한번 조회하고 캐싱하기
 	// Implementation 은 IWeaponInterface 구현을 위한 코드 [ WeaponInterface에 Initialize 코드가 있어요 ] 
@@ -50,7 +60,16 @@ public:
 	
 	// 총구에서 AimPoint 방향으로 Projectile Fire
 	bool Fire(const FVector& AimPoint);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon | Data")
+	void SubCurrentAmmo(int NewAmmo);
 	
+	UFUNCTION(BlueprintPure, Category = "Weapon | Data")
+	int32 GetCurrentAmmo() const;
+
+	// 무기 능력치 테이블의 탄창 용량을 반환한다.
+	UFUNCTION(BlueprintPure, Category = "Weapon | Data")
+	int32 GetMaxAmmo() const;
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Weapon")
 	TObjectPtr<UStaticMeshComponent> _WeaponMesh;
@@ -69,10 +88,15 @@ protected:
 	UPROPERTY(ReplicatedUsing = OnRep_WeaponID, BlueprintReadWrite)
 	FName _WeaponID;
 
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentAmmo)
+	int32 _CurrentAmmo = 0;
 protected:
 
 	UFUNCTION()
 	virtual void OnRep_WeaponID();
+
+	UFUNCTION()
+	void OnRep_CurrentAmmo();
 
 private:
 	UPROPERTY(Replicated, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))

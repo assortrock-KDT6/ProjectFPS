@@ -47,6 +47,10 @@ class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
 public:
 	ACharacterPlayer(const FObjectInitializer& ObjectInitializer);
 
+	// 무기 장착 상태가 변경되면 로컬 UI에 알리기
+	UPROPERTY(BlueprintAssignable, Category = "Weapon")
+	FWeaponEquippedChangedSignature WeaponEquppedChanged;
+
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
 	float _LookSensitivity = 1.f;
@@ -58,10 +62,6 @@ protected:
 	// 입력은 조준을 시작/해제한다 는 의도만 전달 -> 실제 화면 전환은 Tick에서 부드럽게 처리한다.
 	// UFUNCTION(BlueprintCallable, Category = "Aim")
 	// void SetAiming(bool bAiming);
-	
-	// 무기 장착 상태가 변경되면 로컬 UI에 알리기
-	UPROPERTY(BlueprintAssignable, Category = "Weapon")
-	FWeaponEquippedChangedSignature WeaponEquppedChanged;
 	
 	// UI가 생성될 때 현재 무기 장착 상태를 확인하기
 	UFUNCTION(BlueprintPure, Category = "Weapon")

@@ -2,6 +2,7 @@
 
 
 #include "Weapons/WeaponActor.h"
+#include "Engine/World.h"
 #include "Components/StaticMeshComponent.h"
 #include "Table/TableSubsystem.h"
 #include "GameFramework/Pawn.h"
@@ -44,6 +45,7 @@ void AWeaponActor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(AWeaponActor, _WeaponID);
+	DOREPLIFETIME(AWeaponActor, _CurrentAmmo);
 	DOREPLIFETIME(AWeaponActor, _CurrentFireMode);
 }
 
@@ -183,8 +185,44 @@ bool AWeaponActor::Fire(const FVector& AimPoint)
 	// Reserve before BeginPlay/overlap callbacks can attempt another shot.
 	_NextAllowedShotTime = GetWorld()->GetTimeSeconds() + GetProjectileInterval();
 	Projectile->FinishSpawning(FTransform(FireDirection.Rotation(), MuzzleLocation));
+	SubCurrentAmmo(1);
 	
 	return IsValid(Projectile);
+}
+
+void AWeaponActor::SubCurrentAmmo(int NewAmmo)
+{
+	const int32 PreviousAmmo = _CurrentAmmo;
+
+	if (0 > _CurrentAmmo - NewAmmo)
+	{
+		_CurrentAmmo = 0;
+	}
+	else
+	{
+		_CurrentAmmo -= NewAmmo;
+	}
+
+	// 서버에서 직접 변경한 값도 리슨 서버의 UI에 알린다.
+	if (PreviousAmmo != _CurrentAmmo)
+	{
+		OnRep_CurrentAmmo();
+	}
+}
+
+int32 AWeaponActor::GetCurrentAmmo() const
+{
+	return _CurrentAmmo;
+}
+
+int32 AWeaponActor::GetMaxAmmo() const
+{
+	return _WeaponAbilityData._BulletCount;
+}
+
+void AWeaponActor::OnRep_CurrentAmmo()
+{
+	_OnAmmoChanged.Broadcast(GetCurrentAmmo(), GetMaxAmmo());
 }
 
 void AWeaponActor::OnRep_WeaponID()
@@ -213,16 +251,30 @@ bool AWeaponActor::LoadWeaponData(FName WeaponID)
 		return false;
 	}
 
+	const FItemData* ItemData = TableSubsystem->FindTableRow<FItemData>(TEXT("ItemTable"), WeaponData->_WeaponId);
+	if (nullptr == ItemData)
+	{
+		return false;
+	}
+
 	// 테이블 조회가 모두 성공한 뒤 무기 액터 내부에 복사
 	_WeaponData = *WeaponData;
 	// 반동 데이터의 Key 와 실제 조회에 사용한 Row Name을 일치시킨다
 	_WeaponData._WeaponId = WeaponID;
+	_WeaponData._Icon = ItemData->_Icon;
 	_WeaponAbilityData = *WeaponAbilityData;
+
 	if (HasAuthority())
 	{
 		_CurrentFireMode = _WeaponAbilityData.FireMode;
+		_CurrentAmmo = _WeaponAbilityData._BulletCount;
+		OnRep_CurrentAmmo();
 	}
+
 	_WeaponMesh->SetStaticMesh(_WeaponData._StaticMesh);
+
+	// 무기 참조보다 데이터가 늦게 복제되어도 아이콘과 탄창 용량을 갱신한다.
+	_OnWeaponDataChanged.Broadcast();
 
 	return _WeaponData.IsValid();
 }
