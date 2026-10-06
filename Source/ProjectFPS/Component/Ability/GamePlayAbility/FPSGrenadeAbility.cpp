@@ -1,5 +1,7 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"
+#include "GameMode/PlayerStateBase.h"
+#include "Component/Inventory/InventoryComponent.h"
 #include "Character/CharacterPlayer.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Projectiles/GrenadeActor.h"
@@ -8,6 +10,7 @@
 #include "Animation/AnimMontage.h"
 #include "AbilitySystemComponent.h"
 #include "Abilities/Tasks/AbilityTask_WaitGameplayTag.h"
+#include "Abilities/Tasks/AbilityTask_WaitGameplayEvent.h"
 #include "UniversalObjectLocators/AnimInstanceLocatorFragment.h"
 
 UFPSGrenadeAbility::UFPSGrenadeAbility()
@@ -82,6 +85,13 @@ void UFPSGrenadeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle
 	
 	AnimInstance->Montage_SetEndDelegate(EndDelegate, _GrenadeMontageFP);
 	PlayThirdPersonMontage(TEXT("Ready"));
+	
+	// 기존 ASC가 전달하는 Cook Event를 대기
+	UAbilityTask_WaitGameplayEvent* CookTask = UAbilityTask_WaitGameplayEvent::WaitGameplayEvent(this, FPSGameplayTags::Event_Grenade_Cook, nullptr, false, true);
+	
+	CookTask->EventReceived.AddDynamic(this, &UFPSGrenadeAbility::OnGrenadeCook);
+	
+	CookTask->ReadyForActivation();
 	
 	// 준비 중에도 사망, 전투 금지, 파쿠르등의 차단 상태를 감시
 	for (const FGameplayTag& Tag : ActivationBlockedTags)
@@ -178,7 +188,7 @@ void UFPSGrenadeAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	{
 		AnimInstance->OnPlayMontageNotifyBegin.RemoveDynamic(this, &UFPSGrenadeAbility::OnGrenadeRelease);
 		
-		// 정지하면서 종료 콜백이 다시 실행되지 않도록 먼저 해제한다.
+		// 정지하면서 종료 콜백이 다시 실행되지 않도록 먼저 해제한다
 		if (FOnMontageEnded* EndDelegate = AnimInstance->Montage_GetEndedDelegate(_GrenadeMontageFP))
 		{
 			if (EndDelegate->IsBoundToObject(this))
@@ -186,17 +196,25 @@ void UFPSGrenadeAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 				EndDelegate->Unbind();
 			}
 		}
-
-		if (bWasCancelled)
+	}
+	
+	// 능력이 끝날 때 아직 들고 있는 쿠킹 수류탄을 떨어뜨린다
+	if (IsValid(Character) && Character->HasAuthority())
+	{
+		AGrenadeActor* Grenade = Character->GetEquippedGrenade();
+		
+		if (IsValid(Grenade) && Grenade->GetLifeSpan() > 0.f && Grenade->Drop())
 		{
-			AnimInstance->Montage_Stop(_GrenadeMontageFP->GetDefaultBlendOutTime(), _GrenadeMontageFP);
+			Character->ClearGrenadeReference(Grenade);
 		}
 	}
-
-	if (bWasCancelled && 
-		IsValid(Character) && 
-		false == Character->IsLocallyControlled() && 
-		IsValid(_GrenadeMontageFP))
+	
+	if (bWasCancelled && IsValid(AnimInstance) && IsValid(_GrenadeMontageFP))
+	{
+		AnimInstance->Montage_Stop(_GrenadeMontageFP->GetDefaultBlendOutTime(), _GrenadeMontageFP);
+	}
+	
+	if (bWasCancelled && IsValid(Character) && !Character->IsLocallyControlled() && IsValid(_GrenadeMontageFP))
 	{
 		Character->ClientStopGrenadeMontage(_GrenadeMontageFP);
 	}
@@ -290,6 +308,14 @@ void UFPSGrenadeAbility::OnMontageEnded(UAnimMontage* Montage, bool bInterrupted
 	}
 
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, bInterrupted);
+	
+	// 정상 투척이 끝났으면 기존 장착 경로로 다음 수류탄을 장착
+	// 기존 ServerEquipGrenade() 가 서버 인벤토리 수량을 검사하고 남은 수량이 없으면 장착하지 않음
+	// 이미 장착했던 총으로 돌아가고 총도없으면 맨손상태
+	if (!bInterrupted && IsValid(Character) && !IsValid(Character->GetEquippedGrenade()))
+	{
+		Character->ServerEquipGrenade();
+	}
 }
 
 void UFPSGrenadeAbility::OnGrenadeRelease(FName NotifyName, const FBranchingPointNotifyPayload& Payload)
@@ -330,15 +356,173 @@ void UFPSGrenadeAbility::OnGrenadeRelease(FName NotifyName, const FBranchingPoin
 		return;
 	}
 	
+	// const FVector ReleaseLocation = Arms->GetSocketLocation(TEXT("GrenadeGrip"));
+	//
+	// const FVector Direction = Character->GetControlRotation().Vector();
+	//
+	// if (Grenade->Throw(Direction))
+	// {
+	// 	// 1인칭 손의 위치에서 출발 -> 적용된 물리 속도는 유지
+	// 	Grenade->SetActorLocation(ReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
+	// 	
+	// 	Character->ClearGrenadeReference(Grenade);
+	// }
+
+	// APlayerStateBase* FPSPlayerState = Character->GetPlayerState<APlayerStateBase>();
+	//
+	// UInventoryComponent* Inventory = IsValid(FPSPlayerState) ? FPSPlayerState->GetInventory() : nullptr;
+	//
+	// if (false == IsValid(Inventory) || false == IsValid(Inventory->GetOwner()) || false == Inventory->GetOwner()->HasAuthority())
+	// {
+	// 	return;
+	// }
+	//
+	// // 장착한 수류탄과 같은 아이템이 들어 있는 슬롯을 찾기
+	// const TArray<FInventorySlot>& Items = Inventory->GetItems();
+	//
+	// int32 SlotIndex = INDEX_NONE;
+	//
+	// for (int32 Index = 0; Index < Items.Num(); ++Index)
+	// {
+	// 	if (Items[Index]._TID == Grenade->GetTID() && Items[Index]._Count > 0)
+	// 	{
+	// 		SlotIndex = Index;
+	// 		
+	// 		break;
+	// 	}
+	// }
+	//
+	// if (SlotIndex == INDEX_NONE)
+	// {
+	// 	return;
+	// }
+	//
+	// const FVector ReleaseLocation = Arms->GetSocketLocation(TEXT("GrenadeGrip"));
+	//
+	// const FVector Direction = Character->GetControlRotation().Vector();
+	//
+	// if (Grenade->Throw(Direction))
+	// {
+	// 	// 실제 투척에 성공했을때 서버 인벤토리에서 한개 소모
+	// 	Inventory->RemoveItem(SlotIndex, 1);
+	// 	
+	// 	// 1인칭 손의 위치에서 출발 -> 적용된 물리 속도는 유지
+	// 	Grenade->SetActorLocation(ReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
+	//
+	// 	Character->ClearGrenadeReference(Grenade);
+	// }
+	
+	APlayerStateBase* FPSPlayerState = Character->GetPlayerState<APlayerStateBase>();
+	
+	UInventoryComponent* Inventory = IsValid(FPSPlayerState) ? FPSPlayerState->GetInventory() : nullptr;
+	
+	if (!IsValid(Inventory) || !IsValid(Inventory->GetOwner()) || !Inventory->GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	
+	int32 SlotIndex = INDEX_NONE;
+	
+	// 쿠킹하지 않은 수류탄 투척할 떄, 소비할 슬롯을 갖는다
+	if (Grenade->GetLifeSpan() <= 0.f)
+	{
+		const TArray<FInventorySlot>& Items = Inventory->GetItems();
+		
+		for (int32 Index = 0; Index < Items.Num(); ++Index)
+		{
+			if (Items[Index]._TID == Grenade->GetTID() && Items[Index]._Count > 0)
+			{
+				SlotIndex = Index;
+				
+				break;
+			}
+		}
+		
+		if (SlotIndex == INDEX_NONE)
+		{
+			return;
+		}
+	}
+	
 	const FVector ReleaseLocation = Arms->GetSocketLocation(TEXT("GrenadeGrip"));
 	
 	const FVector Direction = Character->GetControlRotation().Vector();
 	
 	if (Grenade->Throw(Direction))
 	{
-		// 1인칭 손의 위치에서 출발 -> 적용된 물리 속도는 유지
+		// 쿠킹할 것을 이미 소비했으니까 추가로 소비하지않게
+		if (SlotIndex != INDEX_NONE)
+		{
+			Inventory->RemoveItem(SlotIndex, 1);
+		}
+		
 		Grenade->SetActorLocation(ReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
 		
 		Character->ClearGrenadeReference(Grenade);
+	}
+	
+}
+
+void UFPSGrenadeAbility::OnGrenadeCook(FGameplayEventData Payload)
+{
+	if (!IsActive() || Payload.EventTag != FPSGameplayTags::Event_Grenade_Cook)
+	{
+		return;
+	}
+	
+	ACharacterPlayer* Character = Cast<ACharacterPlayer>(GetAvatarActorFromActorInfo());
+	
+	if (!IsValid(Character) || !Character->HasAuthority() || !IsValid(_GrenadeMontageFP))
+	{
+		return;
+	}
+	
+	USkeletalMeshComponent* Arms = Character->Get_FirstPersonMesh();
+	
+	UAnimInstance* AnimInstance = IsValid(Arms) ? Arms->GetAnimInstance() : nullptr;
+	
+	if (!IsValid(AnimInstance) || !AnimInstance->Montage_IsPlaying(_GrenadeMontageFP))
+	{
+		return;
+	}
+	
+	const FName Section = AnimInstance->Montage_GetCurrentSection(_GrenadeMontageFP);
+	
+	if (Section != FName(TEXT("Ready")) && Section != FName(TEXT("ReadyHold")))
+	{
+		return;
+	}
+	
+	AGrenadeActor* Grenade = Character->GetEquippedGrenade();
+	
+	// 이미 쿠킹 중이라면 남은 시간을 다시 5초로 되돌리지 않음
+	if (!IsValid(Grenade) || Grenade->GetLifeSpan() > 0.f)
+	{
+		return;
+	}
+	
+	APlayerStateBase* FPSPlayerState = Character->GetPlayerState<APlayerStateBase>();
+	
+	UInventoryComponent* Inventory = IsValid(FPSPlayerState) ? FPSPlayerState->GetInventory() : nullptr;
+	
+	if (!IsValid(Inventory) || !IsValid(Inventory->GetOwner()) || !Inventory->GetOwner()->HasAuthority())
+	{
+		return;
+	}
+	
+	const TArray<FInventorySlot>& Items = Inventory->GetItems(); // Inventory에서 수류탄 남은거 있는지 TID 찾고 쿠킹하면 -1할 목적을 가짐
+	
+	for (int32 Index = 0; Index < Items.Num(); ++ Index)
+	{
+		if (Items[Index]._TID == Grenade->GetTID() && Items[Index]._Count > 0)
+		{
+			// 쿠킹이 시작된 수류탄은 이때 한번만 소비
+			if (Inventory->RemoveItem(Index, 1))
+			{
+				Grenade->SetLifeSpan(5.f);
+			}
+			
+			return;
+		}
 	}
 }
