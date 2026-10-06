@@ -107,9 +107,16 @@ void UFPSFireAbility::FireNextShot()
 		// 넘기면 나이아가라가 그 값을 소켓 기준 상대 오프셋으로 써서 총구에서 멀리 밀려난다.
 		CueParameters.TargetAttachComponent = Weapon->GetWeaponMeshComponent();
 
+		// 무기 데이터에 지정된 발사 연출 태그. 비어 있으면 공통 연출로 대체한다.
+		FGameplayTag FireCueTag = Weapon->GetWeaponData()._FireCueTag;
+		if (false == FireCueTag.IsValid())
+		{
+			FireCueTag = FPSGameplayTags::GameplayCue_Weapon_Fire;
+		}
+		
 		// 어떤 연출을 실행할지 지정하는 태그, 누가 무엇으로 어디서 발생할지에 대한 정보.
-		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_Fire, CueParameters);
-
+		AbilitySystemComponent->ExecuteGameplayCue(FireCueTag, CueParameters);
+		
 
 
 	}

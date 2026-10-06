@@ -162,6 +162,21 @@ void UFPSCharacterMovementComponent::OnRep_TraversalState()
 	RefreshTraversalPresentation();
 }
 
+void UFPSCharacterMovementComponent::UpdateParkourBlockCount(int Count)
+{
+	// FMath::Max() 를 써도 됨.
+	if(0 >= _ParkourBlockCount + Count)
+	{
+		_ParkourBlockCount = 0;
+	}
+	else
+	{
+		_ParkourBlockCount += Count;
+	}
+	
+	return;
+}
+
 void UFPSCharacterMovementComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	/* Authority/AutonomousProxy만 예약 시각을 감시한다. 역할 검사는 함수 내부에서 한다. */
@@ -275,6 +290,7 @@ void UFPSCharacterMovementComponent::GetLifetimeReplicatedProps(TArray<FLifetime
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(UFPSCharacterMovementComponent, _TraversalState);
+	DOREPLIFETIME(UFPSCharacterMovementComponent, _ParkourBlockCount);
 }
 
 void UFPSCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
@@ -351,6 +367,11 @@ bool UFPSCharacterMovementComponent::TryBuildTraversalCandidate(FTraversalCandid
 
 void UFPSCharacterMovementComponent::TryStartTraversalAuthority()
 {
+	if(0 < _ParkourBlockCount)
+	{
+		return;
+	}
+
 	if (false == IsValid(CharacterOwner))
 	{
 		return;

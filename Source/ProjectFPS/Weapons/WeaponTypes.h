@@ -6,6 +6,7 @@
 #include "UObject/Object.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagContainer.h"
 #include "WeaponTypes.generated.h"
 
 /**
@@ -169,6 +170,10 @@ struct FWeaponData : public FTableRowBase
 		return	_WeaponId != NAME_None && _WeaponAbilId != NAME_None && _WeaponType != EWeaponType::None
 				&& _StaticMesh != nullptr && _ViewMesh != nullptr /*&& _ViewAnimationInstance != nullptr && _Icon != nullptr*/;
 	}
+
+	// 발사 연출 GameplayCue 태그 (무기별 발사음), 비우면 공통 연출 GameplayCue.Weapom.Fire 만 재생한다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Cue", meta = (Categories = "GameplayCue.Weapon.Fire"))
+	FGameplayTag _FireCueTag;
 };
 
 // todo : 나중에 GAS 로 변동값 옮기기

@@ -20,7 +20,7 @@ class PROJECTFPS_API UMinimapWidget : public UUserWidget
 {
 	GENERATED_BODY()
 
-	// 미니맵 화면이 들어갈 이미지
+	// MapTexture 파라미터를 가진 UI 머티리얼을 브러시로 사용하는 이미지.
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> _MapImage;
 
@@ -35,6 +35,6 @@ protected:
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
-	// 폰의 캡쳐 컴포넌트를 찾아 이미지에 연결. Pawn이 null이면 화면을 비움.
+	// 폰의 캡쳐를 머티리얼에 연결. Pawn이 null이면 배경만 숨긴다.
 	bool SetupFromPawn(APawn* Pawn);
 };

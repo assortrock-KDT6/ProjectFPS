@@ -44,6 +44,7 @@ struct FVitalSegmentSettings
         return FMath::IsFinite(Maximum) && Maximum > 0.f && FMath::IsFinite(UnitsPerCell) && UnitsPerCell > 0.f
             ? FMath::CeilToInt(Maximum / UnitsPerCell) : 0;
     }
+
     float Fill(float Current, float Maximum, int32 Index) const
     {
         if (!FMath::IsFinite(Current) || !FMath::IsFinite(Maximum) || Maximum <= 0.f || Index < 0

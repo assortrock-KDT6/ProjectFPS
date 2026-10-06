@@ -30,14 +30,27 @@ public:
 	// GA_Grenade에 지정된 몽타주를 장착 표시에서도 사용
 	UAnimMontage* GetGrenadeMontageFP() const;
 
+	UAnimMontage* GetGrenadeMontageTP() const;
+
 protected:
 	// Blueprint 기본값에서 지정할 1인칭 수류탄 몽타쥬
 	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Animation")
 	TObjectPtr<UAnimMontage> _GrenadeMontageFP = nullptr;
-	
+
+	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Animation")
+	TObjectPtr<UAnimMontage> _GrenadeMontageTP = nullptr;
+
 private:
+	// TP는 표시만 담당한다. 투척 노티파이와 능력 종료는 기존 FP가 결정한다.
+	void PlayThirdPersonMontage(FName Section);
+	bool _ThirdPersonMontageStarted = false;
+
 	void OnMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 	
 	UFUNCTION()
 	void OnGrenadeRelease(FName NotifyName, const FBranchingPointNotifyPayload& Payload);
+	
+	// 서버에서 쿠킹 쵸청을 받아서 폭발하는 타이머 시작
+	UFUNCTION()
+	void OnGrenadeCook(FGameplayEventData Payload);
 };

@@ -49,6 +49,7 @@ namespace FPSGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Mantle,					"Movement.Mode.Mantle", 				" ");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Weapon_Fire, "GameplayCue.Weapon.Fire", "무기 발사음");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Weapon_Impact, "GameplayCue.Weapon.Impact", "총알 탄착 연출");
 
 	const TMap<uint8, FGameplayTag> MovementModeTagMap =
 	{

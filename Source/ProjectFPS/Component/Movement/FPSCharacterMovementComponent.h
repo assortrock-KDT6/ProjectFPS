@@ -59,6 +59,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Traversal", meta = (ClampMin = "0.0"))
 	float _TraversalEndWatchdogDelay = 0.5f;
 
+	UPROPERTY(Replicated)
+	int _ParkourBlockCount = 0;
+
 private:
 	bool	_WantsTraversal = false;
 	uint16	_NextAuthorityActionId = 1;
@@ -75,6 +78,8 @@ private:
 	UFUNCTION()
 	void OnRep_TraversalState();
 
+	UFUNCTION(BlueprintCallable)
+	void UpdateParkourBlockCount(int Count);
 protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;

@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/EngineBaseTypes.h"
+#include "TimerManager.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
 #include "Common/GameDefines.h"
@@ -15,6 +17,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogFPSOnlineSession, Log, All);
 
 // 전방선언
 class		UNetDriver;
+class USessionMapCatalog;
 
 // 델리게이트 선언
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFPSCreateSessionCompleted, bool, WasSuccessful, const FString&, ErrorMessage);
@@ -22,6 +25,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FFPSFindSessionCompleted, bool, W
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFPSJoinSessionCompleted, bool, WasSuccessful, const FString&, ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFPSLeaveSessionCompleted, bool, WasSuccessful, const FString&, ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFPSDestroySessionCompleted, bool, WasSuccessful, const FString&, ErrorMessage);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FFPSExitCleanupCompleted, bool, WasSuccessful, const FString&, ErrorMessage);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFPSOnlineOperationStateChanged, EFPSOnlineOperationState, State);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFPSOnlineConnectionStateChanged, EFPSOnlineConnectionState, State);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FFPSOnlineTravelStateChanged, EFPSOnlineTravelState, State);
@@ -50,6 +54,7 @@ enum class EFPSSessionDestroyIntent : uint8
 	HostLobbyRollback,
 	Leave,
 	Destroy,
+	ReturnToLobby,
 	DisconnectRecovery
 };
 
@@ -98,16 +103,51 @@ enum class EFPSSessionAutoMatchStage : uint8
 * 새로운 Session 작업은 Operation 또는 Travel이 진행 중이지 않을 때만 허용한다.
 */
 
-UCLASS()
+UCLASS(Config=Game)
 class PROJECTFPS_API UFPSOnlineSessionSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
+	friend struct FSessionWorkflowTestAccess;
 public:
+	// 각 로컬 플레이어가 세션을 정리하고 독립된 로비 메뉴로 돌아간다.
+	void ReturnToLobby();
+	// Explicit menu exit. Reject duplicate requests and wait for session cleanup before quitting.
+	UFUNCTION(BlueprintCallable, Category = "FPS|Online Session")
+	bool RequestExit(bool QuitApplication);
+	bool IsExitInProgress() const { return _ReturningToLobby || _ExitRequestCommitted; }
+
+    const USessionMapCatalog* GetMapCatalog() const { return _LoadedMapCatalog; }
+    const TArray<FFPSPlayableMap>& GetPlayableMaps() const { return _PlayableMaps; }
+    void ConfigurePlayableMaps(const TArray<FFPSPlayableMap>& Maps);
+	const FFPSPlayableMap* FindPlayableMap(const FString& MapPath, TOptional<EFPSMatchMode> Mode = {}) const;
+	FString GetLobbyMapPath() const;
+	bool SelectGameMode(EFPSMatchMode Mode, FString& OutError);
+	bool SelectGameMap(const FString& MapPath, FString& OutError);
+	const FFPSPlayableMap& GetSelectedGameMap() const { return _SelectedGameMap; }
+
 	// Preserve the failure reason when a failed connection reloads the lobby.
 	const FString& GetLastSessionError() const { return _LastSessionError; }
 	void SetLastSessionError(const FString& Error) { _LastSessionError = Error; }
 private:
+    UPROPERTY(Config) TSoftObjectPtr<USessionMapCatalog> MapCatalog;
+    UPROPERTY(Transient) TObjectPtr<USessionMapCatalog> _LoadedMapCatalog;
+    UPROPERTY(Transient)
+    TArray<FFPSPlayableMap> _PlayableMaps;
+
+	UPROPERTY(Transient)
+	FFPSPlayableMap _SelectedGameMap;
+	bool CanSelectLobbySettings(FString& OutError) const;
+	void PublishLobbySelection();
+
 	FString _LastSessionError;
+	bool _ReturningToLobby = false;
+	bool _QuitAfterCleanup = false;
+	bool _ExitRequestCommitted = false;
+	FString _ReturnToLobbyDestination;
+	double _ReturnToLobbyDeadline = 0.0;
+	FTimerHandle _ReturnToLobbyRetryTimer;
+	void TryReturnToLobby();
+	void FinishReturnToLobby(bool CleanupSucceeded, const FString& ErrorMessage);
 	/** 
 	* OnlineSubsystem에 등록한 비동기 완료 Delegate Handle.
 	* 각 요청이 완료되거나 Subsystem이 종료될 때 반드시 해제하여 동일 Callback이 중복 등록되는 것을 방지한다.
@@ -145,6 +185,10 @@ public:
 		
 	UPROPERTY(BlueprintAssignable, Category = "FPS|Online Session")
 	FFPSDestroySessionCompleted			_OnDestroySessionCompleted;
+
+	// Cleanup result; success is delivered before the deferred level transition.
+	UPROPERTY(BlueprintAssignable, Category = "FPS|Online Session")
+	FFPSExitCleanupCompleted _OnExitCleanupCompleted;
 
 	UPROPERTY(BlueprintAssignable, Category = "FPS|Online Session")
 	FFPSOnlineOperationStateChanged		_OnOperationStateChanged;

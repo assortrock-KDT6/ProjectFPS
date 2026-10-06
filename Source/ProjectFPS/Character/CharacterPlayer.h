@@ -183,6 +183,9 @@ public:
 	// 투척할 액터는 보존하고 장착 참조와 표시만 정리
 	void ClearGrenadeReference(AGrenadeActor* Grenade);
 	
+	UFUNCTION(Server, Reliable)
+	void ServerEquipGrenade();
+	
 	bool CanFireFromAbility() const;
 
 	void NotifyAbilityWeaponFired(AWeaponActor* Weapon);
@@ -248,12 +251,19 @@ public:
 public:
 	USkeletalMeshComponent* Get_FirstPersonMesh() const;
 	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
+	USkeletalMeshComponent* Get_ViewWeaponMesh() const;
 
 	// 소유 플레이어의 1인칭 팔에서 재생하거나 지정 섹션으로 전환한다
 	UFUNCTION(Client, Reliable)
 	void ClientPlayGrenadeMontage(UAnimMontage* Montage, FName Section);
 	UFUNCTION(Client, Reliable)
 	void ClientStopGrenadeMontage(UAnimMontage* Montage);
+
+	// ServerOnly 능력의 소유 클라이언트 TP 표시. 다른 클라이언트는 GAS 복제를 사용한다.
+	UFUNCTION(Client, Reliable)
+	void ClientPlayGrenadeMontageTP(UAnimMontage* Montage, FName Section);
+	UFUNCTION(Client, Reliable)
+	void ClientStopGrenadeMontageTP(UAnimMontage* Montage);
 	
 protected:
 	UFUNCTION()
@@ -294,9 +304,6 @@ protected:
 	
 	UFUNCTION()
 	void EquipGrenadeAction(const FInputActionValue& value);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerEquipGrenade();
 	
 	UFUNCTION()
 	void OnRep_CurrentGrenade();
