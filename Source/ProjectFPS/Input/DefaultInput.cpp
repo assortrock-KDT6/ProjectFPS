@@ -103,4 +103,9 @@ UDefaultInput::UDefaultInput()
 		_WeaponSlot3 = WeaponSlot3Action.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> ReloadAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Reload.IA_Reload'"));
+	if (ReloadAction.Succeeded())
+	{
+		_Reload = ReloadAction.Object;
+	}
 }

@@ -9,6 +9,7 @@
 #include "GameMode/FPSGameState.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Component/Ability/GamePlayAbility/FPSFireAbility.h"
+#include "Component/Ability/GamePlayAbility/FPSReloadAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSChangeFireModeAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"	// 수류탄 행동을 처리하는 능력
 #include "Projectiles/GrenadeActor.h"								// 실제로 손에 들고 있는 수류탄 액터
@@ -17,6 +18,7 @@ UFPSAbilitySystemComponent::UFPSAbilitySystemComponent()
 {
 	FireAbilityClass = UFPSFireAbility::StaticClass();
 	ChangeFireModeAbilityClass = UFPSChangeFireModeAbility::StaticClass();
+	ReloadAbilityClass = UFPSReloadAbility::StaticClass();
 }
 
 void UFPSAbilitySystemComponent::GrantWeaponAbilities()
@@ -43,6 +45,12 @@ void UFPSAbilitySystemComponent::GrantWeaponAbilities()
 	{
 		FGameplayAbilitySpec* Existing = FindAbilitySpecFromClass(GrenadeAbilityClass);
 		_GrenadeAbilityHandle = Existing ? Existing->Handle : GiveAbility(FGameplayAbilitySpec(GrenadeAbilityClass, 1));
+	}
+
+	if (nullptr == FindAbilitySpecFromHandle(_ReloadAbilityHandle) && ReloadAbilityClass)
+	{
+		FGameplayAbilitySpec* Existing = FindAbilitySpecFromClass(ReloadAbilityClass);
+		_ReloadAbilityHandle = Existing ? Existing->Handle : GiveAbility(FGameplayAbilitySpec(ReloadAbilityClass, 1));
 	}
 }
 
@@ -172,11 +180,37 @@ void UFPSAbilitySystemComponent::ServerChangeFireMode_Implementation()
 	TryActivateAbility(_ChangeFireModeAbilityHandle);
 }
 
+void UFPSAbilitySystemComponent::Reload()
+{
+	const APawn* Pawn = Cast<APawn>(GetAvatarActor());
+	if (IsValid(Pawn) && (Pawn->HasAuthority() || Pawn->IsLocallyControlled()))
+	{
+		ServerReload();
+	}
+}
+
+void UFPSAbilitySystemComponent::ServerReload_Implementation()
+{
+	if (false == IsOwnerActorAuthoritative())
+	{
+		return;
+	}
+	TryActivateAbility(_ReloadAbilityHandle);
+}
+
 void UFPSAbilitySystemComponent::CancelWeaponFire()
 {
 	const FGameplayTagContainer FireTags(FPSGameplayTags::Ability_Combat_Fire);
 
 	CancelAbilities(&FireTags);
+}
+
+void UFPSAbilitySystemComponent::CancelWeaponReload()
+{
+	if (IsOwnerActorAuthoritative())
+	{
+		CancelAbilityHandle(_ReloadAbilityHandle);
+	}
 }
 
 void UFPSAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor)

@@ -210,6 +210,19 @@ void AWeaponActor::SubCurrentAmmo(int NewAmmo)
 	}
 }
 
+void AWeaponActor::SetCurrentAmmo(int NewAmmo)
+{
+	const int32 PreviousAmmo = _CurrentAmmo;
+
+	_CurrentAmmo = FMath::Clamp(NewAmmo, 0, GetMaxAmmo());
+
+	// 서버에서 직접 변경한 값도 리슨 서버의 UI에 알린다.
+	if (PreviousAmmo != _CurrentAmmo)
+	{
+		OnRep_CurrentAmmo();
+	}
+}
+
 int32 AWeaponActor::GetCurrentAmmo() const
 {
 	return _CurrentAmmo;
@@ -218,6 +231,31 @@ int32 AWeaponActor::GetCurrentAmmo() const
 int32 AWeaponActor::GetMaxAmmo() const
 {
 	return _WeaponAbilityData._BulletCount;
+}
+
+bool AWeaponActor::ReloadAmmo(int32 AmmoToReload)
+{
+	if (false == HasAuthority() || false == CanReload() || AmmoToReload <= 0)
+	{
+		return false;
+	}
+
+	const int32 AddedAmmo = FMath::Min(AmmoToReload, GetMaxAmmo() - GetCurrentAmmo());
+	SetCurrentAmmo(GetCurrentAmmo() + AddedAmmo);
+	ForceNetUpdate();
+
+	return true;
+}
+
+float AWeaponActor::GetReloadTime() const
+{
+	return _WeaponAbilityData._ReloadTime;
+}
+
+bool AWeaponActor::CanReload() const
+{
+	return GetMaxAmmo() > 0 && GetCurrentAmmo() < GetMaxAmmo()
+		&& FMath::IsFinite(GetReloadTime()) && GetReloadTime() > 0.f;
 }
 
 void AWeaponActor::OnRep_CurrentAmmo()

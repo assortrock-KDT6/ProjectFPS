@@ -63,6 +63,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon | Data")
 	void SubCurrentAmmo(int NewAmmo);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon | Data")
+	void SetCurrentAmmo(int NewAmmo);
 	
 	UFUNCTION(BlueprintPure, Category = "Weapon | Data")
 	int32 GetCurrentAmmo() const;
@@ -70,6 +73,16 @@ public:
 	// 무기 능력치 테이블의 탄창 용량을 반환한다.
 	UFUNCTION(BlueprintPure, Category = "Weapon | Data")
 	int32 GetMaxAmmo() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon | Data")
+	bool ReloadAmmo(int32 AmmoToReload);
+
+	UFUNCTION(BlueprintPure, Category = "Weapon | Data")
+	float GetReloadTime() const;
+
+	UFUNCTION(BlueprintPure, Category = "Weapon | Data")
+	bool CanReload() const;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Weapon")
 	TObjectPtr<UStaticMeshComponent> _WeaponMesh;

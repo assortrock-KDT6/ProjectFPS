@@ -32,7 +32,7 @@ bool UInventoryComponent::EquipItem(FName TID)
 		if (_Weapons[i].IsNone())
 		{
 			// 비어있는 슬롯을 찾아서 TID(무가) 넣어줌.
-			_Weapons[i] = TID;
+			_Weapons[i]._WeaponId = TID;
 			_EquippedWeaponIndex = i;
 			OnRep_Weapons();	// 서버에 전달.
 			return true;		
@@ -135,7 +135,7 @@ bool UInventoryComponent::FindEquipSlot(FName TID, int32& OutSlotIndex, FName& O
 		OutSlotIndex = 0;
 	}
 	// 선택한 슬롯에서 밀려날 아이템TID를 가져옴.
-	OutReplacedITD = _Weapons[OutSlotIndex];
+	OutReplacedITD = _Weapons[OutSlotIndex]._WeaponId;
 	return true;
 }
 
@@ -150,7 +150,7 @@ bool UInventoryComponent::RemoveWeapon(int32 Index)
 	if (false == _Weapons.IsValidIndex(Index) || _Weapons[Index].IsNone())
 		return false;
 
-	_Weapons[Index] = NAME_None;
+	_Weapons[Index]._WeaponId = NAME_None;
 
 	//손에 들고 있던 걸 빼면 장착 슬롯 해제
 	if (Index == _EquippedWeaponIndex)
@@ -158,8 +158,6 @@ bool UInventoryComponent::RemoveWeapon(int32 Index)
 
 	OnRep_Weapons();
 	return true;
-
-
 }
 
 // 서버전용 슬롯을 비운다 소모품
@@ -197,8 +195,34 @@ bool UInventoryComponent::CommitEquip(FName TID, int32 SlotIndex, bool bNotify)
 	if (TID.IsNone() || false == _Weapons.IsValidIndex(SlotIndex))
 		return false;
 
-	_Weapons[SlotIndex] = TID;
+	UTableSubsystem* TableLoader = UTableSubsystem::Get(this);
+
+	if (nullptr == TableLoader)
+	{
+		return false;
+	}
+
+	const FWeaponData* WeaponDataRow = TableLoader->FindTableRow<FWeaponData>(TEXT("WeaponDataTable"), TID);
+
+	if (nullptr == WeaponDataRow)
+	{
+		return false;
+	}
+
+	const FWeaponAbilityDataTable* WeaponAbilRow = TableLoader->FindTableRow<FWeaponAbilityDataTable>(TEXT("WeaponAbilityDataTable"), 
+		WeaponDataRow->_WeaponAbilId);
+
+	if (nullptr == WeaponAbilRow)
+	{
+		return false;
+	}
+
+	_Weapons[SlotIndex]._WeaponId = TID;
+	_Weapons[SlotIndex]._MaxAmmo = WeaponAbilRow->_BulletCount;
+	_Weapons[SlotIndex]._CurrentAmmo = _Weapons[SlotIndex]._MaxAmmo;
+
 	_EquippedWeaponIndex = SlotIndex;
+
 	if (bNotify)
 	{
 		OnRep_Weapons();
@@ -208,11 +232,14 @@ bool UInventoryComponent::CommitEquip(FName TID, int32 SlotIndex, bool bNotify)
 
 bool UInventoryComponent::IsWeaponSlotFull() const
 {
-	for(const FName& Slot : _Weapons)
+	for(const FWeaponSlotData& Slot : _Weapons)
 	{
 		if (Slot.IsNone())
+		{
 			return false;
+		}
 	}
+
 	return _Weapons.Num() > 0;
 }
 
@@ -237,10 +264,24 @@ void UInventoryComponent::SetEquippedWEaponIndex(int32 Index)
 	OnRep_Weapons();
 }
 
+void UInventoryComponent::SetWeaponSlotData(int32 Index, const FWeaponSlotData& Data)
+{
+	const AActor* Owner = GetOwner();
+
+	if (nullptr == Owner || false == Owner->HasAuthority())
+	{
+		return;
+	}
+
+	if (_Weapons.IsValidIndex(Index))
+	{
+		_Weapons[Index] = Data;
+	}
+}
+
 int32 UInventoryComponent::FindFirstWeaponSlot() const
 {
 	// 무기가 있는 첫 슬롯 찾기
-
 	for (int32 i = 0; i < _Weapons.Num(); ++i)
 	{
 		if (false == _Weapons[i].IsNone())
@@ -257,7 +298,6 @@ void UInventoryComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(UInventoryComponent, _Items);
 	DOREPLIFETIME(UInventoryComponent, _Weapons);
 	DOREPLIFETIME(UInventoryComponent, _EquippedWeaponIndex);
-
 }
 
 

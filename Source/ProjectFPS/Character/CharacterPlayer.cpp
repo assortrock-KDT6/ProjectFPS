@@ -305,6 +305,10 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	// 무기를 바꾸면서 이전 무기의 연사가 이어지지 않게 한다.
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	_bAiming = false;
 
@@ -398,6 +402,10 @@ void ACharacterPlayer::BeginPlay()
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	if (true == HasAuthority())
 	{
@@ -444,6 +452,33 @@ void ACharacterPlayer::Tick(float DeltaTime)
 	}
 	
 	_CameraComponent->SetFieldOfView(FMath::FInterpTo(_CameraComponent->FieldOfView, _TargetCameraFOV, DeltaTime, 10.f));
+	
+	if (IsValid(_ViewWeaponMesh))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = IsValid(_AbilitySystemComponent) ? _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject() : nullptr;
+		
+		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
+		
+		UAnimInstance* AnimInstance = IsValid(_FirstPersonMesh) ? _FirstPersonMesh->GetAnimInstance() : nullptr;
+		
+		const FAnimMontageInstance* MontageInstance = IsValid(Montage) && IsValid(AnimInstance) ? AnimInstance->GetInstanceForMontage(Montage) : nullptr;
+		
+		// 이전 Throw가 끝나면 다음 무기 장착과 Idle 애니메이션 준비
+		if (IsValid(_CurrentGrenade) && IsValid(Montage) && IsValid(AnimInstance) && (MontageInstance == nullptr || (MontageInstance->GetCurrentSection() != FName(TEXT("Throw")) && IsValid(_ViewItemMesh) && _ViewItemMesh->GetStaticMesh() == nullptr)))
+		{
+			OnRep_CurrentGrenade();
+		}
+		
+		// Blend Out 중에도 수류탄 동작이 남아 있으면 총을 그리지 않기
+		const bool HasGrenadePose = IsValid(Montage) && IsValid(AnimInstance) && AnimInstance->GetInstanceForMontage(Montage) != nullptr;
+		
+		const bool ShowWeapon = IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade) && !HasGrenadePose;
+		
+		if (_ViewWeaponMesh->IsVisible() != ShowWeapon)
+		{
+			_ViewWeaponMesh->SetVisibility(ShowWeapon, true);
+		}
+	}
 }
 
 void ACharacterPlayer::CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult)
@@ -495,6 +530,11 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Cook,        ETriggerEvent::Started,   this, &ACharacterPlayer::CookAction);
 	InputComp->BindAction(_DefaultInput->_WeaponSlot3, ETriggerEvent::Started,   this, &ACharacterPlayer::EquipGrenadeAction);
 	
+	if (IsValid(_AbilitySystemComponent))
+	{
+		InputComp->BindAction(_DefaultInput->_Reload, ETriggerEvent::Started, _AbilitySystemComponent.Get(), &UFPSAbilitySystemComponent::Reload);
+	}
+
 	PlayerController->RefreshInputMappingContext();
 }
 
@@ -524,6 +564,10 @@ void ACharacterPlayer::ClearEquippedWeapon()
 {
 	// 연사 중이면 끊는다
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	_bAiming = false;
 
@@ -551,6 +595,10 @@ void ACharacterPlayer::ClearEquippedWeapon()
 	OnRep_CurrentGrenade();
 }
 
+/**
+ * 이렇게 했을 때 탄환이 보존 안됨. 수정하겠습니다. 
+ */
+
 bool ACharacterPlayer::TryEquipSlot(int32 Index)
 {
 	// 서버 확인
@@ -568,16 +616,26 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 		return false;
 
 	// 지점 슬롯에 들어 있는 아이템 TID 확인.
-	const FName TID = Inv->GetWeaponTID(Index);
-	if (TID.IsNone())
+	const FWeaponSlotData* WeaponSlotData = Inv->GetWeaponData(Index);
+
+	if (nullptr == WeaponSlotData)
+	{
 		return false;
+	}
+
+	FName WeaponID = WeaponSlotData->_WeaponId;
+
+	if (WeaponID.IsNone())
+	{
+		return false;
+	}
 
 	UTableSubsystem* Sub = UTableSubsystem::Get(this);
 	if (nullptr == Sub)
 		return false;
 
 	// 아이템 정보에서 무기 ID 확인.
-	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), WeaponID);
 
 	if (nullptr == Row)
 		return false;
@@ -585,9 +643,32 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 	if (Row->_WeaponId.IsNone())
 		return false;
 
+	if (nullptr != _CurrentWeapon)
+	{
+		int32 PrevWeaponIndex		= Inv->GetEquippedWeaponIndex();
+
+		FName PrevWeaponTID			= Inv->GetWeaponTID(PrevWeaponIndex);
+
+		int32 PrevWeaponCurrentAmmo = _CurrentWeapon->GetCurrentAmmo();
+
+		int32 PrevWeaponMaxAmmo		= _CurrentWeapon->GetMaxAmmo();
+
+		FWeaponSlotData PrevWeaponSlotData;
+
+		PrevWeaponSlotData._WeaponId	= PrevWeaponTID;
+
+		PrevWeaponSlotData._CurrentAmmo = PrevWeaponCurrentAmmo;
+
+		PrevWeaponSlotData._MaxAmmo		= PrevWeaponMaxAmmo;
+
+		Inv->SetWeaponSlotData(PrevWeaponIndex, PrevWeaponSlotData);
+	}
+
 	// 손에 들 새 무기 액터 준비
 	if (false == EquipWeapon(Row->_WeaponId))
 		return false;
+
+	_CurrentWeapon->SetCurrentAmmo(WeaponSlotData->_CurrentAmmo);
 
 	// 실제 장착에 맞춰 인벤토리의 장착 슬롯 번호 기록.
 	Inv->SetEquippedWEaponIndex(Index);
@@ -912,6 +993,7 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 
 	// 새 수류탄 준비가 성공한 뒤 기존 총의 공격을 중단
 	StopAttacking();
+	_AbilitySystemComponent->CancelWeaponReload();
 	
 	_bAiming = false;
 	
@@ -937,11 +1019,34 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 		_CurrentWeapon->GetRootComponent()->SetVisibility(!HasGrenade, true);
 	}
 
-	if (IsValid(_ViewWeaponMesh))
-	{
-		_ViewWeaponMesh->SetVisibility(IsLocallyControlled() && HasWeapon && !HasGrenade, true);
-	}
+	// Commit 건영 : 수류탄 무기 전환 버그를 1인칭 총 표시를 Tick()에서 결정으로 해결
+	// if (IsValid(_ViewWeaponMesh))
+	// {
+	// 	_ViewWeaponMesh->SetVisibility(IsLocallyControlled() && HasWeapon && !HasGrenade, true);
+	// }
 
+	if (IsLocallyControlled() && HasGrenade && IsValid(_AbilitySystemComponent) && IsValid(_FirstPersonMesh))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject();
+		
+		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
+		
+		UAnimInstance* AnimInstance = _FirstPersonMesh->GetAnimInstance();
+		
+		const FAnimMontageInstance* MontageInstance = IsValid(Montage) && IsValid(AnimInstance) ? AnimInstance->GetInstanceForMontage(Montage) : nullptr;
+		
+		// 서버의 재장착이 먼저 도착해도 이전 Throw에 새 수류탄을 표시하지 않음
+		if (MontageInstance && MontageInstance->GetCurrentSection() == FName(TEXT("Throw")))
+		{
+			if (IsValid(_ViewItemMesh))
+			{
+				_ViewItemMesh->SetStaticMesh(nullptr);
+			}
+			
+			return;
+		}
+	}
+	
 	if (IsValid(_ViewItemMesh))
 	{
 		_ViewItemMesh->EmptyOverrideMaterials();
@@ -1146,15 +1251,43 @@ AGrenadeActor* ACharacterPlayer::GetEquippedGrenade() const
 // 	}
 // }
 
+// 일부는 태그 막는 걸로 처리할 수 있을 것 같음. 
+// Movement 상태때문에 따로 함수로 빼놓음.
 bool ACharacterPlayer::CanFireFromAbility() const
 {
 	const UFPSCharacterMovementComponent* Movement = Cast<UFPSCharacterMovementComponent>(GetCharacterMovement());
-	return !IsValid(_CurrentGrenade) 
-		 && IsValid(_CurrentWeapon) 
-		 && IsValid(GetWorld())
-		 && IsValid(Movement) 
-		 && !Movement->GetTraversalState().IsActive() 
-		 && !Movement->IsTraversing();
+
+	if (false == IsValid(GetWorld()))
+	{
+		return false;
+	}
+
+	if (true == IsValid(_CurrentGrenade))
+	{
+		return false;
+	}
+
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return false;
+	}
+
+	if (false == IsValid(Movement))
+	{
+		return false;
+	}
+
+	if (true == Movement->GetTraversalState().IsActive())
+	{
+		return false;
+	}
+
+	if (true == Movement->IsTraversing())
+	{
+		return false;
+	}
+
+	return true;
 }
 
 void ACharacterPlayer::NotifyAbilityWeaponFired(AWeaponActor* Weapon)
@@ -1324,6 +1457,10 @@ void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
 	ServerDropEquippedWeapon();
 }
 
+/**
+ * 이렇게 했을 때 매번 새로운 WeaponActor 가 생성되는 문제가 있음. => 탄환수 보존이 안됨.
+ * Slot 에 현재 탄환수 저장하고 불러오게 해야할 듯.
+ */
 void ACharacterPlayer::EquipMainWeaponAction(const FInputActionValue& value)
 {
 	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Main"));

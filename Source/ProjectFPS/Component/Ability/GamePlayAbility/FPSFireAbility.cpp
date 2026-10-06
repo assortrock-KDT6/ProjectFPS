@@ -24,10 +24,37 @@ bool UFPSFireAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle
 
 	const AWeaponActor* Weapon = IsValid(Character) ? Character->GetEquippedWeapon() : nullptr;
 
-	return true == IsValid(Weapon) && true == Character->CanFireFromAbility()
-		&& Weapon->SupportsFireMode(Weapon->GetFireMode()) && Weapon->GetProjectileInterval() > 0.f
-		&& Weapon->GetRemainingFireInterval() <= 0.
-		&& Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	if (false == IsValid(Weapon))
+	{
+		return false;
+	}
+
+	if (false == Character->CanFireFromAbility())
+	{
+		return false;
+	}
+
+	if (false == Weapon->SupportsFireMode(Weapon->GetFireMode()))
+	{
+		return false;
+	}
+
+	if (Weapon->GetProjectileInterval() <= 0.f)
+	{
+		return false;
+	}
+
+	if (Weapon->GetRemainingFireInterval() > 0.f)
+	{
+		return false;
+	}
+
+	if (Weapon->GetCurrentAmmo() <= 0)
+	{
+		return false;
+	}
+
+	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
 void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -51,6 +78,7 @@ void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	{
 		_BlockedTagDelegates.Add(Tag, AbilitySystemComponent->RegisterGameplayTagEvent(Tag).AddUObject(this, &UFPSFireAbility::OnBlockedTagChanged));
 	}
+
 	FireNextShot();
 }
 
@@ -69,7 +97,7 @@ void UFPSFireAbility::FireNextShot()
 
 	if (false == IsValid(Character) || false == IsValid(Weapon) || false == IsValid(AbilitySystemComponent) || false == AbilitySystemComponent->CanAttack()
 		|| true == AbilitySystemComponent->HasAnyMatchingGameplayTags(ActivationBlockedTags) || false == Character->CanFireFromAbility()
-		|| Character->GetEquippedWeapon() != Weapon || Weapon->GetOwner() != Character)
+		|| Character->GetEquippedWeapon() != Weapon || Weapon->GetOwner() != Character || Weapon->GetCurrentAmmo() <= 0)
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
@@ -78,7 +106,7 @@ void UFPSFireAbility::FireNextShot()
 	// Timers may wake slightly early; retain the weapon's interval across activations.
 	const double Remaining = Weapon->GetRemainingFireInterval();
 
-	if (Remaining > 0.)
+	if (Remaining > 0.0)
 	{
 		GetWorld()->GetTimerManager().SetTimer(_ShotTimer, this, &UFPSFireAbility::FireNextShot, FMath::Max(static_cast<float>(Remaining), 0.001f), false);
 		return;
@@ -109,8 +137,6 @@ void UFPSFireAbility::FireNextShot()
 
 		// 어떤 연출을 실행할지 지정하는 태그, 누가 무엇으로 어디서 발생할지에 대한 정보.
 		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_Fire, CueParameters);
-
-
 
 	}
 

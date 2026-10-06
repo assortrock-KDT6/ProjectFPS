@@ -207,3 +207,20 @@ struct FWeaponAbilityDataTable : public FTableRowBase
 																			 UIMin       = "0" , UIMax    = "30"))
 	uint8 _BulletCount = 30;
 };
+
+USTRUCT(BlueprintType)
+struct FWeaponSlotData  
+{
+	GENERATED_BODY()
+
+	FName _WeaponId = NAME_None;
+
+	int _CurrentAmmo = 0;
+
+	int _MaxAmmo	 = 0;
+
+	bool IsNone() const
+	{
+		return _WeaponId == NAME_None;
+	}
+};

@@ -49,4 +49,8 @@ private:
 	
 	UFUNCTION()
 	void OnGrenadeRelease(FName NotifyName, const FBranchingPointNotifyPayload& Payload);
+	
+	// 서버에서 쿠킹 쵸청을 받아서 폭발하는 타이머 시작
+	UFUNCTION()
+	void OnGrenadeCook(FGameplayEventData Payload);
 };
