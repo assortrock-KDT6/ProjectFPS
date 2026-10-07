@@ -25,6 +25,10 @@ struct FControlShakeParams
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	FRotator ShakeMagnitude = FRotator(1.f ,1.f, 1.f);
+	
+	// 참이면 카메라 반동, 거짓이면 총과 손의 시각적 반동으로 계산
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bAffectCamera = true;
 };
 
 UCLASS()
@@ -33,7 +37,7 @@ class PROJECTFPS_API UControlShake : public UObject
 	GENERATED_BODY()
 	
 public:
-	void Activate(float InDuration, UCurveVector* InCurve, FRotator InShakeMagnitude);
+	void Activate(const FControlShakeParams& InParams);
 	
 	bool UpdateShake(float DeltaTime, FRotator& OutShake);
 	

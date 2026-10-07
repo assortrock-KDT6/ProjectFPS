@@ -4,15 +4,14 @@
 #include "Component/FOV/ControlShake.h"
 #include "Curves/CurveVector.h"
 
-void UControlShake::Activate(float InDuration, UCurveVector* InCurve, FRotator InShakeMagnitude)
+void UControlShake::Activate(const FControlShakeParams& InParams)
 {
-	ControlShakeParams.Duration       = InDuration;
-	ControlShakeParams.Curve          = InCurve;
-	ControlShakeParams.ShakeMagnitude = InShakeMagnitude;
+	// 커브, 시간, 크기와 카메라 적용 여부를 함께 보관
+	ControlShakeParams = InParams;
 	
 	TimeElapsed = 0.f;
 	
-	bIsActive = IsValid(InCurve);
+	bIsActive = IsValid(ControlShakeParams.Curve);
 }
 
 bool UControlShake::UpdateShake(float DeltaTime, FRotator& OutShake)

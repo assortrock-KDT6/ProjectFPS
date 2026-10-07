@@ -4,8 +4,10 @@
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/InputSettings.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedPlayerInput.h"
 #include "InputMappingContext.h"
 #include "InputActionValue.h"
 #include "InputAction.h"
@@ -1622,4 +1624,58 @@ void ACharacterPlayer::OnRep_CurrentWeapon()
 	//
 	// OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
 	OnRep_CurrentGrenade();
+}
+
+FVector2D ACharacterPlayer::GetLookInput() const
+{
+	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	
+	// 로컬 플레이어의 이 허용된 경우에만 조회
+	if (!IsValid(PlayerController) || !PlayerController->IsLocalController() || PlayerController->IsLookInputIgnored() || !IsValid(_DefaultInput) || !IsValid(_DefaultInput->_MouseLook))
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	const UEnhancedPlayerInput* PlayerInput = Cast<UEnhancedPlayerInput>(PlayerController->PlayerInput);
+	
+	if (!IsValid(PlayerInput))
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	const FInputActionInstance* Action = PlayerInput->FindActionInstanceData(_DefaultInput->_MouseLook);
+	
+	// 기존 MoveLookAction과 동일한 발등 상태의 입력을 사용
+	if (Action == nullptr || Action->GetTriggerEvent() != ETriggerEvent::Triggered)
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	FVector2D Aim = Action->GetValue().Get<FVector2D>();
+	
+	const float Sensitivity = _LookSensitivity * (_bAiming ? _ViewWeaponData._AimSensitivityMultiplier : 1.0f);
+	
+	// 실제 시선 조작과 같은 부호화 감도를 적용
+	Aim.X *= -Sensitivity;
+	Aim.Y *= Sensitivity;
+	
+	// 컨트롤러의 추가 입력 배율을 반영
+	if (GetDefault<UInputSettings>()->bEnableLegacyInputScales)
+	{
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
+		Aim.X *= PlayerController->GetDeprecatedInputYawScale();
+		Aim.Y *= PlayerController->GetDeprecatedInputPitchScale();
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	}
+	// 위에서 사용한 DEPRECATED API 는 현재 프로젝트가 활성화한 Legacy배율을 읽기 위해서 사용
+	// 경고 억제 범위도 이 두 호출로 제한함
+	
+	// 반등과 카메라 각도 제한이 적용되기 전의 사용자 회전 입력
+	return Aim;
+	
+	/* Commit 건영
+	 * 목적	    : 발사 반동이 섞이지 않은 시선 입력을 제공
+	 * 사용 위치 : AnimBP의 게임 스레드 입력 수집 단계
+	 * 실행 흐름 : 입력 허용 확인 -> 액션 조회 -> 감도 와 컨트롤러 배율 적용 -> 반환
+	 */
 }

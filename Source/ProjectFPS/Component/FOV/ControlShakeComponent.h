@@ -54,8 +54,13 @@ private:
 	TMap<FName, int32> RecoilOffsetMap;
 	TMap<FName, FTimerHandle> RecoilOffsetResetTimerMap;
 	
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "Recoil", meta = (AllowPrivateAccess = "true"))
 	FRotator ShakeSumPreview = FRotator::ZeroRotator;
+	
 	FRotator DeltaShake		 = FRotator::ZeroRotator;
+	
+	// 카메라에 전달할 변화량을 계산하기 위해 직전 프레임의 카메라 반동 합을 보관한다
+	FRotator CameraShakeSum = FRotator::ZeroRotator;
 	
 	void ResetRecoilOffset(FName WeaponID);
 };

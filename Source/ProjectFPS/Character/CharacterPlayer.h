@@ -71,6 +71,10 @@ protected:
 	UFUNCTION(BlueprintPure, Category = "Weapon | Spread")
 	float GetWeaponSpreadValue() const;
 	
+	// AnimBP 에서 사용할 순수 시선 입력을 조회하는 조회용 함수
+	UFUNCTION(BlueprintPure, Category = "Input")
+	FVector2D GetLookInput() const;
+	// AnimBP 용 시선 입력 조회 인터페이스를 선언 -> 실제 입력은 EnhancedInput 에서 읽으며 캐릭터에 따로 저장하지 않음
 	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
