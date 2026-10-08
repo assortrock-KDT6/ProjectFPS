@@ -23,21 +23,29 @@ bool UControlShake::UpdateShake(float DeltaTime, FRotator& OutShake)
 		return false;
 	}
 	
+	const float PreviousTime = TimeElapsed;
 	TimeElapsed += DeltaTime;
 	
 	float CurveTime = 0.f;
 	
 	if (ControlShakeParams.Duration > 0.f)
 	{
-		if (TimeElapsed >= ControlShakeParams.Duration)
-		{
-			Clear();
-			
-			return false;
-		}
+		// if (TimeElapsed >= ControlShakeParams.Duration)
+		// {
+		// 	Clear();
+		// 	
+		// 	return false;
+		// }
+		//
+		// // 단발의 반동 커브는 시간축 0~1을 사용한다.
+		// CurveTime = TimeElapsed / ControlShakeParams.Duration;
 		
-		// 단발의 반동 커브는 시간축 0~1을 사용한다.
-		CurveTime = TimeElapsed / ControlShakeParams.Duration;
+		// 종료 시간을 넘어도 커브의 마지막 지점은 반드시 계산
+		TimeElapsed = FMath::Min(TimeElapsed, ControlShakeParams.Duration);
+		CurveTime   = TimeElapsed / ControlShakeParams.Duration;
+		
+		// 마지막 값을 이번 호출에서 전달한 뒤, 다음 호출부터 종료를 알리기
+		bIsActive   = TimeElapsed < ControlShakeParams.Duration;
 	}
 	else
 	{
@@ -58,7 +66,13 @@ bool UControlShake::UpdateShake(float DeltaTime, FRotator& OutShake)
 		CurveTime   = StartTime + TimeElapsed;
 	}
 	
-	const FVector Value = ControlShakeParams.Curve->GetVectorValue(CurveTime);
+	FVector Value = ControlShakeParams.Curve->GetVectorValue(CurveTime);
+	
+	if (ControlShakeParams.Duration > 0.f && ControlShakeParams.bAffectCamera)
+	{
+		// 유한 카메라 반동은 이번 프레임에 추가하거나 되돌릴 양만 전달
+		Value -= ControlShakeParams.Curve->GetVectorValue(FMath::Clamp(PreviousTime / ControlShakeParams.Duration, 0.f, 1.f));
+	}
 	
 	OutShake = FRotator(Value.X * ControlShakeParams.ShakeMagnitude.Pitch,
 	                      Value.Y * ControlShakeParams.ShakeMagnitude.Yaw,

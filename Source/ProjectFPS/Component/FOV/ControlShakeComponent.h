@@ -31,6 +31,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Recoil")
 	void ClearLoopingShake();
 	
+/* 
+* ClearWeaponRecoil() 
+* 무기전환시 총과 손에 남은 시각적 반동을 제거
+* 이 함수는 총기 반동만 제거하고 ShakeSumPreview를 0으로 만듦
+* 두 곳에서 호출 : ClientSetViewWeapon_Implementation() 에서 새 무기 데이터를 적용하기 직전에 / OnRep_CurrentGrenade() 에서 로컬 플레이어의 수류탄 장착이 확인된 직후
+* ClearLoopingShake() 는 반복 반동만, ResetRecoilOffset() 은 탄 번호만 처리해서 이 역할을 할 수 없음 
+*/
+	void ClearWeaponRecoil();
+	
 	UFUNCTION(BlueprintPure, Category = "Recoil")
 	int32 GetRecoilOffset(FName WeaponID) const;
 	
@@ -60,6 +69,7 @@ private:
 	FRotator DeltaShake		 = FRotator::ZeroRotator;
 	
 	// 카메라에 전달할 변화량을 계산하기 위해 직전 프레임의 카메라 반동 합을 보관한다
+	// 변경 : 반복 카메라 반동의 변화량과 종류 시 복귀량을 계산할 직전 한계를 보관한다
 	FRotator CameraShakeSum = FRotator::ZeroRotator;
 	
 	void ResetRecoilOffset(FName WeaponID);

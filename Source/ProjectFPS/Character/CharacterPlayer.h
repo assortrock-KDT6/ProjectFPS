@@ -119,6 +119,7 @@ protected:
 	UPROPERTY()
 	TObjectPtr<AWeaponPickUp> _NearbyWeaponPickUp;
 
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
 
@@ -183,6 +184,10 @@ public:
 	AWeaponActor* GetEquippedWeapon() const;
 	
 	AGrenadeActor* GetEquippedGrenade() const;
+
+	// 1인칭 GameplayCue를 뷰 무기 총구에 붙이기 위해 1인칭 무기 메시를 반환한다.
+	UFUNCTION(BlueprintPure, Category = "First Person")
+	USceneComponent* GetViewWeaponMeshComponent() const;
 	
 	// 투척할 액터는 보존하고 장착 참조와 표시만 정리
 	void ClearGrenadeReference(AGrenadeActor* Grenade);

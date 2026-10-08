@@ -38,6 +38,7 @@
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
 #include "Net/UnrealNetwork.h"
+#include "Settings/FPSGameUserSettings.h"
 
 
 
@@ -348,6 +349,12 @@ void ACharacterPlayer::ClientSetViewWeapon_Implementation(const FWeaponData& Wea
 		return;
 	}
 
+	// 새 무기를 표시하기 전에 이전 총과 손의 반동을 제거
+	if (IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
+	
 	_ViewWeaponData = WeaponData;
 
 	_ViewWeaponMesh->SetAnimInstanceClass(nullptr);
@@ -745,8 +752,20 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 	if (Controller)
 	{
 		// 기본 감도는 유지, 실제 입력에 조준 배율 적용
-		const float Sensitivity = _LookSensitivity * (_bAiming ? _ViewWeaponData._AimSensitivityMultiplier : 1.0f);
+		float Sensitivity = _LookSensitivity;
+
+		const UFPSGameUserSettings* Settings = UFPSGameUserSettings::GetFPSGameUserSettings();
+		if (nullptr != Settings)
+		{
+			Sensitivity *= Settings->GetMouseSensitivity();
+		}
 		
+		// 조준 중이면 무기 테이블의 조준 감도 배율을 추가로 곱한다.
+		if (true == _bAiming)
+		{
+			Sensitivity *= _ViewWeaponData._AimSensitivityMultiplier;
+		}
+
 		AddControllerYawInput(-Aim.X * Sensitivity);
 		
 		AddControllerPitchInput(Aim.Y * Sensitivity);
@@ -958,6 +977,12 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 {
 	const bool HasGrenade = IsValid(_CurrentGrenade);
 	
+	// 수류탄을 든 로컬 플레이어의 총과 손의 반동을 제거한다.
+	if (IsLocallyControlled() && HasGrenade && IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
+	
 	const bool HasWeapon = IsValid(_CurrentWeapon);
 
 	// 총 Actor는 보존하되 수류탄을 들고 있을 때 외형을 숨긴다.
@@ -1149,6 +1174,11 @@ AGrenadeActor* ACharacterPlayer::GetEquippedGrenade() const
 	return _CurrentGrenade.Get();
 }
 
+USceneComponent* ACharacterPlayer::GetViewWeaponMeshComponent() const
+{
+	return _ViewWeaponMesh;
+}
+
 // Commit 건영 : 중복코드 제거
 // void ACharacterPlayer::ServerStartFire_Implementation()
 // {
@@ -1221,6 +1251,14 @@ void ACharacterPlayer::NotifyAbilityWeaponFired(AWeaponActor* Weapon)
 	
 	GetWorldTimerManager().SetTimer(_FiringTagTimerHandle, this, &ACharacterPlayer::StopFiringPresentation, FMath::Max(0.1f, Weapon->GetProjectileInterval() + 0.05f), false);
 
+	// 서버의 탄 번호를 갱신
+	// 호스트 자신의 총이라면 반동 연출도 처리
+	if (IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->WeaponFired(Weapon->GetWeaponData()._WeaponId);
+	}
+	
+	// 원격 소유 클라이언트에 실제 발사 성공을 알린다.
 	ClientWeaponFired(Weapon->GetWeaponData()._WeaponId);
 }
 
@@ -1274,11 +1312,19 @@ void ACharacterPlayer::RequestEquipSlot(int32 Index)
 
 void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
 {
-	if (IsLocallyControlled() && IsValid(_ControlShakeManager)
-		&& IsValid(_AbilitySystemComponent) && _AbilitySystemComponent->CanAttack())
+	// if (IsLocallyControlled() && IsValid(_ControlShakeManager)
+	// 	&& IsValid(_AbilitySystemComponent) && _AbilitySystemComponent->CanAttack())
+	// {
+	// 	_ControlShakeManager->WeaponFired(WeaponID);
+	// }
+	// Commit 건영 : 호스트는 서버의 발사 성공 처리에서 이미 반동을 적용했음
+	if (HasAuthority() || !IsLocallyControlled() || !IsValid(_ControlShakeManager))
 	{
-		_ControlShakeManager->WeaponFired(WeaponID);
+		return;
 	}
+	
+	// 서버가 확정한 발사 결과이므로 현재 공격 가능 여부를 다시 검사하지 않음
+	_ControlShakeManager->WeaponFired(WeaponID);
 }
 
 void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Montage, FName Section)

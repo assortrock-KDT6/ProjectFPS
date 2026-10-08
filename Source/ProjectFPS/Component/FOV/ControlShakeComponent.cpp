@@ -31,6 +31,30 @@ void UControlShakeComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	// 이번 프레임의 카메라 합계와 총, 손 합계를 각각 계산한다.
 	FRotator ShakeSum = FRotator::ZeroRotator;
 	ShakeSumPreview   = FRotator::ZeroRotator;
+	DeltaShake        = FRotator::ZeroRotator;
+	
+	for (int32 Index = ActiveShakes.Num() -1; Index >= 0; --Index)
+	{
+		FRotator Value = FRotator::ZeroRotator;
+		
+		if (ActiveShakes[Index] && ActiveShakes[Index]->UpdateShake(DeltaTime, Value))
+		{
+			if (ActiveShakes[Index]->ControlShakeParams.bAffectCamera)
+			{
+				// 카메라는 각 탄의 조준 변화량 모두 누적
+				DeltaShake += Value;
+			}
+			else if (Value.Euler().SizeSquared() > ShakeSumPreview.Euler().SizeSquared())
+			{
+				// 총과 손은 겹친 사격 반동 중 가장 큰 움직임을 사용
+				ShakeSumPreview = Value;
+			}
+		}
+		else
+		{
+			ActiveShakes.RemoveAtSwap(Index);
+		}
+	}
 	
 	if (LoopingShake)
 	{
@@ -53,30 +77,37 @@ void UControlShakeComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		}
 	}
 	
-	for (int32 Index = ActiveShakes.Num() -1; Index >= 0; --Index)
-	{
-		FRotator Value = FRotator::ZeroRotator;
-		
-		if (ActiveShakes[Index] && ActiveShakes[Index]->UpdateShake(DeltaTime, Value))
-		{
-			if (ActiveShakes[Index]->ControlShakeParams.bAffectCamera)
-			{
-				ShakeSum += Value;
-			}
-			else
-			{
-				ShakeSumPreview += Value;
-			}
-		}
-		else
-		{
-			ActiveShakes.RemoveAtSwap(Index);
-		}
-	}
+	// 반복 카메라 반동은 기존처럼 합계의 차이를 적용
+	DeltaShake += ShakeSum - CameraShakeSum;
 	
-	// 카메라에는 직전 프레임에서 달라진 양만 전달
-	DeltaShake		= ShakeSum - CameraShakeSum;
-	CameraShakeSum  = ShakeSum;
+	CameraShakeSum = ShakeSum;
+	
+	// for (int32 Index = ActiveShakes.Num() -1; Index >= 0; --Index)
+	// {
+	// 	FRotator Value = FRotator::ZeroRotator;
+	// 	
+	// 	if (ActiveShakes[Index] && ActiveShakes[Index]->UpdateShake(DeltaTime, Value))
+	// 	{
+	// 		if (ActiveShakes[Index]->ControlShakeParams.bAffectCamera)
+	// 		{
+	// 			// ShakeSum += Value;
+	// 			DeltaShake += Value;
+	// 		}
+	// 		else
+	// 		{
+	// 			ShakeSumPreview += Value;
+	// 		}
+	// 	}
+	// 	else
+	// 	{
+	// 		ActiveShakes.RemoveAtSwap(Index);
+	// 	}
+	// }
+	
+	// Commit 건영 : 계산 위로 올렸어요
+	// 카메라에는 직전 프레임에서 달라진 양만 전달 
+	// DeltaShake		= ShakeSum - CameraShakeSum;
+	// CameraShakeSum  = ShakeSum;
 	
 	Character->AddControllerPitchInput(static_cast<float>(DeltaShake.Pitch));
 	Character->AddControllerYawInput(static_cast<float>(DeltaShake.Yaw));
@@ -239,3 +270,23 @@ void UControlShakeComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
+void UControlShakeComponent::ClearWeaponRecoil()
+{
+	// 배열에서 삭제해도 아직 검사하지 않은 항목을 건너뛰지 않도록 역순으로 순회
+	for (int32 Index = ActiveShakes.Num() -1; Index >= 0; --Index)
+	{
+		if (IsValid(ActiveShakes[Index]) && !ActiveShakes[Index]->ControlShakeParams.bAffectCamera)
+		{
+			ActiveShakes.RemoveAtSwap(Index);
+		}
+	}
+	
+	// 반복 반동도 총과 손에 적용되는 경우에만 종료
+	if (IsValid(LoopingShake) && !LoopingShake->ControlShakeParams.bAffectCamera)
+	{
+		ClearLoopingShake();
+	}
+	
+	// 다음 틱을 기다리지 않고 AnimBP에 전달할 시각적 반동 합계를 비워준다
+	ShakeSumPreview = FRotator::ZeroRotator;
+}
