@@ -15,8 +15,6 @@
 #include "Components/PanelWidget.h"
 
 
-
-
 void UItemInfoWidget::SetWeaponAbility(FName TID)
 {
 	// 테이블에서 무기 능력치 가져오기

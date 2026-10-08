@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Weapons/WeaponTypes.h"
 #include "PlayerMatchStats.generated.h"
 
 /** 리스폰과 무관하게 경기 동안 누적되는 개인 기록. */
@@ -34,4 +35,26 @@ struct PROJECTFPS_API FPlayerMatchResult
 	// Kill이 같으면 공동 순위다. Death는 순위에 영향을 주지 않는다.
 	UPROPERTY(BlueprintReadOnly, Category = "Match")
 	int32 _Rank = 0;
+};
+
+USTRUCT(BlueprintType)
+struct PROJECTFPS_API FPlayerKillLogResult
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	FString _KillerPlayerName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	FString _KilledPlayerName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	UTexture2D* _WeaponIcon = nullptr;
+
+
+
+	bool IsValid() const
+	{
+		return false == _KillerPlayerName.IsEmpty() && false == _KilledPlayerName.IsEmpty();
+	}
 };

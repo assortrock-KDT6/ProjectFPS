@@ -10,7 +10,70 @@
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "GameInstance/FPSOnlineSessionSubsystem.h"
-#include "Common/GameDatas.h"
+#include "Misc/PackageName.h"
+
+FFPSPlayableMap ULobbyStartWidget::GetQuickMatchMap() const
+{
+	if (!_SelectedQuickMap.Level.IsNull())
+	{
+		return _SelectedQuickMap;
+	}
+
+	const FString DefaultMapPath = GameLevel.ToSoftObjectPath().GetLongPackageName();
+	if (const UFPSOnlineSessionSubsystem* Subsystem = GetSessionSubsystem())
+	{
+		if (const FFPSPlayableMap* CatalogMap = Subsystem->FindPlayableMap(DefaultMapPath))
+		{
+			return *CatalogMap;
+		}
+	}
+
+	FFPSPlayableMap DefaultMap;
+	if (!GameLevel.IsNull() && FPackageName::IsValidLongPackageName(DefaultMapPath)
+		&& FPackageName::DoesPackageExist(DefaultMapPath))
+	{
+		DefaultMap.Level = GameLevel;
+		DefaultMap.DisplayName = FText::FromString(FPackageName::GetShortName(DefaultMapPath));
+		DefaultMap.Mode = EFPSMatchMode::PVP;
+	}
+	return DefaultMap;
+}
+
+bool ULobbyStartWidget::SetQuickMatchMap(const FFPSPlayableMap& Map)
+{
+	const UFPSOnlineSessionSubsystem* Subsystem = GetSessionSubsystem();
+	if (!IsValid(Subsystem) || Subsystem->IsBusy() || Subsystem->IsAutoMatchInProgress()
+		|| Subsystem->IsExitInProgress() || Subsystem->GetConnectionState() != EFPSOnlineConnectionState::None)
+	{
+		return false;
+	}
+
+	const FString MapPath = Map.GetMapPath();
+	if (Map.Level.IsNull() || !FPackageName::IsValidLongPackageName(MapPath)
+		|| !FPackageName::DoesPackageExist(MapPath))
+	{
+		return false;
+	}
+
+	if (const FFPSPlayableMap* CatalogMap = Subsystem->FindPlayableMap(MapPath, Map.Mode))
+	{
+		_SelectedQuickMap = *CatalogMap;
+		return true;
+	}
+
+	// The original editor-configured level remains available when it is not in the catalog.
+	if (!GameLevel.IsNull() && MapPath == GameLevel.ToSoftObjectPath().GetLongPackageName()
+		&& Map.Mode == EFPSMatchMode::PVP)
+	{
+		FFPSPlayableMap DefaultMap;
+		DefaultMap.Level = GameLevel;
+		DefaultMap.DisplayName = FText::FromString(FPackageName::GetShortName(MapPath));
+		_SelectedQuickMap = MoveTemp(DefaultMap);
+		return true;
+	}
+
+	return false;
+}
 
 void ULobbyStartWidget::ClearSessionError()
 {
@@ -66,23 +129,6 @@ void ULobbyStartWidget::SetStartButtonEnabled(bool IsEnabled)
 	}
 }
 
-void ULobbyStartWidget::NativeOnInitialized()
-{
-	Super::NativeOnInitialized();
-
-	if (true == IsValid(StartButton))
-	{
-		StartButton->OnClicked.AddDynamic(this, &ThisClass::OnStartClicked);
-	}
-
-	UFPSOnlineSessionSubsystem* SessionSubsystem = GetSessionSubsystem();
-	if (nullptr != SessionSubsystem)
-	{
-		SessionSubsystem->_OnAutoMatchCompleted.AddUniqueDynamic(this, &ThisClass::HandleAutoMatchCompleted);
-		SessionSubsystem->_OnTravelFailed.AddUniqueDynamic(this, &ThisClass::HandleSessionTravelFailed);
-	}
-}
-
 void ULobbyStartWidget::NativeDestruct()
 {
 	ClearSessionError();
@@ -104,8 +150,15 @@ void ULobbyStartWidget::NativeDestruct()
 void ULobbyStartWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+	if (IsValid(StartButton))
+	{
+		StartButton->OnClicked.AddUniqueDynamic(this, &ThisClass::OnStartClicked);
+	}
+
 	if (UFPSOnlineSessionSubsystem* Subsystem = GetSessionSubsystem())
 	{
+		Subsystem->_OnAutoMatchCompleted.AddUniqueDynamic(this, &ThisClass::HandleAutoMatchCompleted);
+		Subsystem->_OnTravelFailed.AddUniqueDynamic(this, &ThisClass::HandleSessionTravelFailed);
 		SetStartButtonEnabled(!Subsystem->IsBusy() && !Subsystem->IsAutoMatchInProgress());
 		const FString Error = Subsystem->GetLastSessionError();
 		if (!Error.IsEmpty())
@@ -117,8 +170,9 @@ void ULobbyStartWidget::NativeConstruct()
 
 void ULobbyStartWidget::OnStartClicked()
 {
+	const FFPSPlayableMap SelectedMap = GetQuickMatchMap();
 	// 레벨 미지정 방어.
-	if (true == GameLevel.IsNull())
+	if (true == SelectedMap.Level.IsNull())
 	{
 		ShowSessionError(TEXT("Game level is not configured."));
 		return;
@@ -131,7 +185,7 @@ void ULobbyStartWidget::OnStartClicked()
 		return;
 	}
 
-	const FString MapPath = GameLevel.ToSoftObjectPath().GetLongPackageName();
+	const FString MapPath = SelectedMap.GetMapPath();
 	if (true == MapPath.IsEmpty())
 	{
 		ShowSessionError(TEXT("Game Level Package path is invalid."));
@@ -145,6 +199,7 @@ void ULobbyStartWidget::OnStartClicked()
 	FFPSSessionCreateOptions Options;
 	Options._MaxPlayers = _PublicConnections;
 	Options._MapId		= MapPath;
+	Options._GameModeId = FPSMatchModeUtils::ToId(SelectedMap.Mode);
 
 	/**
 	* 참가 가능한 Session이 있으면 Guest로 들어가고, 없으면 직접 Host가 된다.
@@ -152,7 +207,7 @@ void ULobbyStartWidget::OnStartClicked()
 	* 결과는 HandleAutoMatchCompleted에서 한 번만 받는다.
 	*/
 	_QuickMatchRequested = true;
-	if (false == SessionSubsystem->AutoJoinOrHost(Options))
+	if (false == SessionSubsystem->AutoJoinOrHost(Options, 100, true))
 	{
 		_QuickMatchRequested = false;
 		SetStartButtonEnabled(true);

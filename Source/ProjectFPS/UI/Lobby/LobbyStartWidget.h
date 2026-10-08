@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Common/GameDatas.h"
 #include "LobbyStartWidget.generated.h"
 
 /**
@@ -20,8 +21,14 @@ UCLASS()
 class PROJECTFPS_API ULobbyStartWidget : public UUserWidget
 {
 	GENERATED_BODY()
+public:
+	UFUNCTION(BlueprintCallable, Category = "Travel")
+	bool SetQuickMatchMap(const FFPSPlayableMap& Map);
+
+	UFUNCTION(BlueprintPure, Category = "Travel")
+	FFPSPlayableMap GetQuickMatchMap() const;
+
 protected:
-	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 
@@ -55,6 +62,9 @@ protected:
 	void HandleSessionTravelFailed(const FString& ErrorMessage);
 
 private:
+	UPROPERTY(Transient)
+	FFPSPlayableMap _SelectedQuickMap;
+
 	bool _QuickMatchRequested = false;
 
 	void ShowSessionError(const FString& ErrorMessage);

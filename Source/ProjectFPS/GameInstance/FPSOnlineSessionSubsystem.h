@@ -108,6 +108,7 @@ class PROJECTFPS_API UFPSOnlineSessionSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 	friend struct FSessionWorkflowTestAccess;
+	friend struct FSessionQuickMatchTestAccess;
 public:
 	// 각 로컬 플레이어가 세션을 정리하고 독립된 로비 메뉴로 돌아간다.
 	void ReturnToLobby();
@@ -300,6 +301,7 @@ private:
 	* 검색 -> 참가 시도 -> 생성으로 이어지는 비동기 구간 동안 보존해야 한다.
 	*/
 	FFPSSessionCreateOptions		_AutoMatchHostOptions;
+	bool _AutoMatchRequireExactMap = false;
 
 	/* 참가를 시도할 검색 결과 Index 목록과 현재 시도 중인 위치. */
 	TArray<int32>					_AutoMatchCandidates;
@@ -333,9 +335,10 @@ public:
 	*
 	* HostOptions._MapId는 Host로 전환될 때 Listen Server로 열 Map이므로
 	* 참가로 끝나는 경우에도 유효한 Map이어야 한다.
+	* RequireExactMap이면 같은 맵과 모드를 광고하는 Session만 참가 후보로 사용한다.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "FPS|Online Session")
-	bool AutoJoinOrHost(const FFPSSessionCreateOptions& HostOptions, int32 MaxResults = 100);
+	bool AutoJoinOrHost(const FFPSSessionCreateOptions& HostOptions, int32 MaxResults = 100, bool RequireExactMap = false);
 
 	/* 자동 매치가 진행 중이면 true를 반환한다. */
 	UFUNCTION(BlueprintPure, Category = "FPS|Online Session")
@@ -451,6 +454,7 @@ private:
 	void BroadcastJoinCompleted(bool WasSuccessful, const FString& ErrorMessage);
 
 	/* 검색 결과에서 참가 후보를 추리고, 후보가 없으면 Host로 전환한다. */
+	bool IsAutoMatchCandidate(const FFPSOnlineSessionInfo& Information) const;
 	void ContinueAutoMatchAfterFind(bool WasSuccessful, const TArray<FFPSOnlineSessionInfo>& Sessions);
 
 	/* 후보 참가에 실패했을 때 다음 후보로 넘어가거나 Host로 전환한다. */

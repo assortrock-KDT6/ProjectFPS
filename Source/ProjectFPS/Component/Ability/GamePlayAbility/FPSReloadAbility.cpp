@@ -7,8 +7,22 @@
 #include "Character/CharacterPlayer.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"
-#include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"
-#include "Engine/World.h"
+#include "Component/Ability/Tasks/FPSAbilityTask_PlayMontage.h"
+#include "Abilities/Tasks/AbilityTask_WaitDelay.h"
+#include "Animation/AnimMontage.h"
+
+// 처음부터 끝까지 섹션 이동/반복 없이 재생하는 리로드를 기준으로 한다.
+float UFPSReloadAbility::GetReloadMontagePlayRate(const UAnimMontage* Montage, float ReloadTime) const
+{
+	if (!IsValid(Montage) || !FMath::IsFinite(ReloadTime) || ReloadTime <= 0.f
+		|| !FMath::IsFinite(Montage->RateScale) || Montage->RateScale <= 0.f)
+	{
+		return 0.f;
+	}
+	const float PlayRate = Montage->GetPlayLength() / ReloadTime / Montage->RateScale;
+
+	return FMath::IsFinite(PlayRate) && PlayRate > 0.f ? PlayRate : 0.f;
+}
 
 UFPSReloadAbility::UFPSReloadAbility()
 {
@@ -59,7 +73,9 @@ bool UFPSReloadAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Hand
 void UFPSReloadAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const FGameplayEventData* TriggerEventData)
 {
 	ACharacterPlayer* Character = ActorInfo ? Cast<ACharacterPlayer>(ActorInfo->AvatarActor.Get()) : nullptr;
+	
 	UFPSAbilitySystemComponent* ASC = ActorInfo ? Cast<UFPSAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get()) : nullptr;
+	
 	AWeaponActor* Weapon = IsValid(Character) ? Character->GetEquippedWeapon() : nullptr;
 
 	if (false == IsValid(Character) || false == Character->HasAuthority() || false == IsValid(ASC)
@@ -86,8 +102,55 @@ void UFPSReloadAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 		}
 	}
 
-	// TODO: 무기별 1인칭/3인칭 리로드 몽타주 재생을 연결한다.
-	GetWorld()->GetTimerManager().SetTimer(_ReloadTimer, this, &UFPSReloadAbility::CompleteReload, Weapon->GetReloadTime(), false);
+	StartReloadTasks(Weapon);
+}
+
+void UFPSReloadAbility::StartReloadTasks(AWeaponActor* Weapon)
+{
+	if (!IsValid(Weapon))
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	const FWeaponData& WeaponData = Weapon->GetWeaponData();
+
+	const float ReloadTime = Weapon->GetReloadTime();
+
+	if (!FMath::IsFinite(ReloadTime) || ReloadTime <= 0.f)
+	{
+		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
+		return;
+	}
+
+	// 3인칭 표시는 Status.Reloading을 받은 AnimBP에서 처리한다.
+	// 변경 -> 3인칭도 무기 타입별로 지정된 몽타주를 사용한다.
+
+	const TObjectPtr<UAnimMontage>*		MontageEntry	= _ReloadMontageFP.Find(WeaponData._WeaponType);
+	const TObjectPtr<UAnimMontage>*		TPMontageEntry	= _ReloadMontageTP.Find(WeaponData._WeaponType);
+
+	UAnimMontage* FPMontage = MontageEntry ? MontageEntry->Get() : nullptr;
+	const float FPPlayRate = GetReloadMontagePlayRate(FPMontage, ReloadTime);
+
+	UAnimMontage* TPMontage = TPMontageEntry ? TPMontageEntry->Get() : nullptr;
+	const float TPPlayRate = GetReloadMontagePlayRate(TPMontage, ReloadTime);
+
+	if (FPPlayRate > 0.f)
+	{
+		UFPSAbilityTask_PlayMontage* Task = UFPSAbilityTask_PlayMontage::PlayMontage(
+			this, FPMontage, TPMontage, FPPlayRate, TPPlayRate);
+		Task->ReadyForActivation();
+	}
+
+	if (!IsActive())
+	{
+		return;
+	}
+
+	// 몽타주 설정 여부와 무관하게 서버의 ReloadTime으로 완료를 판정한다.
+	UAbilityTask_WaitDelay* DelayTask = UAbilityTask_WaitDelay::WaitDelay(this, ReloadTime);
+	DelayTask->OnFinish.AddDynamic(this, &UFPSReloadAbility::CompleteReload);
+	DelayTask->ReadyForActivation();
 }
 
 void UFPSReloadAbility::CompleteReload()
@@ -98,7 +161,9 @@ void UFPSReloadAbility::CompleteReload()
 	}
 
 	ACharacterPlayer* Character = Cast<ACharacterPlayer>(GetAvatarActorFromActorInfo());
+
 	UFPSAbilitySystemComponent* ASC = Cast<UFPSAbilitySystemComponent>(GetAbilitySystemComponentFromActorInfo());
+
 	AWeaponActor* Weapon = _ReloadingWeapon.Get();
 
 	if (false == IsValid(Character) || false == Character->HasAuthority() || false == IsValid(ASC)
@@ -124,11 +189,6 @@ void UFPSReloadAbility::OnBlockedTagChanged(FGameplayTag Tag, int32 Count)
 
 void UFPSReloadAbility::EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled)
 {
-	if (GetWorld())
-	{
-		GetWorld()->GetTimerManager().ClearTimer(_ReloadTimer);
-	}
-
 	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
 	{
 		for (const auto& Entry : _BlockedTagDelegates)
@@ -145,9 +205,10 @@ void UFPSReloadAbility::EndAbility(const FGameplayAbilitySpecHandle Handle, cons
 			Character->SetAnimationStateTag(FPSGameplayTags::Status_Reloading, false);
 		}
 	}
+
 	_ReloadStateApplied = false;
 	_ReloadingWeapon.Reset();
 
-	// TODO: 취소 시 리로드 몽타주 정지를 연결한다. 탄약 충전은 완료 함수에서만 한다.
+	// FP Task가 소유 클라이언트 팔 몽타주를 정리한다.
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

@@ -56,5 +56,8 @@ namespace FPSGameplayTags
 	// GameplyCue
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Weapon_Fire); // 총 발사음.
 
+	// 총알 탄착 연출 (데칼)
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Weapon_Impact);
+
 
 }
