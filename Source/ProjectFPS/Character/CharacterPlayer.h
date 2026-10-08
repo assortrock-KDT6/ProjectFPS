@@ -71,6 +71,10 @@ protected:
 	UFUNCTION(BlueprintPure, Category = "Weapon | Spread")
 	float GetWeaponSpreadValue() const;
 	
+	// AnimBP 에서 사용할 순수 시선 입력을 조회하는 조회용 함수
+	UFUNCTION(BlueprintPure, Category = "Input")
+	FVector2D GetLookInput() const;
+	// AnimBP 용 시선 입력 조회 인터페이스를 선언 -> 실제 입력은 EnhancedInput 에서 읽으며 캐릭터에 따로 저장하지 않음
 	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -114,6 +118,7 @@ protected:
 	// 현재 상호작용 범위 안에 있는 월드 무기
 	UPROPERTY()
 	TObjectPtr<AWeaponPickUp> _NearbyWeaponPickUp;
+
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
@@ -179,6 +184,10 @@ public:
 	AWeaponActor* GetEquippedWeapon() const;
 	
 	AGrenadeActor* GetEquippedGrenade() const;
+
+	// 1인칭 GameplayCue를 뷰 무기 총구에 붙이기 위해 1인칭 무기 메시를 반환한다.
+	UFUNCTION(BlueprintPure, Category = "First Person")
+	USceneComponent* GetViewWeaponMeshComponent() const;
 	
 	// 투척할 액터는 보존하고 장착 참조와 표시만 정리
 	void ClearGrenadeReference(AGrenadeActor* Grenade);

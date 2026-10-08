@@ -34,6 +34,14 @@ struct FWeaponRecoilInfo
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.001"))
 	float SingleRecoilDuration = 0.15f;
+	
+	// 총과 손의 시각적 반동에 사용하는 전용 커브
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Recoil")
+	TObjectPtr<UCurveVector> WeaponRecoilCurve = nullptr;
+	
+	// 총과 손의 반동 재생 시간. 카메라 반동 시간과 독립적으로 설정
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon Recoil", meta = (ClampMin = "0.001"))
+	float WeaponRecoilDuration = 0.15f;	
 };
 
 UCLASS()

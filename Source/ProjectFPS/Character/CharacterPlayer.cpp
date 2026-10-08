@@ -4,8 +4,10 @@
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/InputSettings.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedPlayerInput.h"
 #include "InputMappingContext.h"
 #include "InputActionValue.h"
 #include "InputAction.h"
@@ -36,6 +38,7 @@
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
 #include "Net/UnrealNetwork.h"
+#include "Settings/FPSGameUserSettings.h"
 
 
 
@@ -346,6 +349,12 @@ void ACharacterPlayer::ClientSetViewWeapon_Implementation(const FWeaponData& Wea
 		return;
 	}
 
+	// 새 무기를 표시하기 전에 이전 총과 손의 반동을 제거
+	if (IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
+	
 	_ViewWeaponData = WeaponData;
 
 	_ViewWeaponMesh->SetAnimInstanceClass(nullptr);
@@ -743,8 +752,20 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 	if (Controller)
 	{
 		// 기본 감도는 유지, 실제 입력에 조준 배율 적용
-		const float Sensitivity = _LookSensitivity * (_bAiming ? _ViewWeaponData._AimSensitivityMultiplier : 1.0f);
+		float Sensitivity = _LookSensitivity;
+
+		const UFPSGameUserSettings* Settings = UFPSGameUserSettings::GetFPSGameUserSettings();
+		if (nullptr != Settings)
+		{
+			Sensitivity *= Settings->GetMouseSensitivity();
+		}
 		
+		// 조준 중이면 무기 테이블의 조준 감도 배율을 추가로 곱한다.
+		if (true == _bAiming)
+		{
+			Sensitivity *= _ViewWeaponData._AimSensitivityMultiplier;
+		}
+
 		AddControllerYawInput(-Aim.X * Sensitivity);
 		
 		AddControllerPitchInput(Aim.Y * Sensitivity);
@@ -956,6 +977,12 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 {
 	const bool HasGrenade = IsValid(_CurrentGrenade);
 	
+	// 수류탄을 든 로컬 플레이어의 총과 손의 반동을 제거한다.
+	if (IsLocallyControlled() && HasGrenade && IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
+	
 	const bool HasWeapon = IsValid(_CurrentWeapon);
 
 	// 총 Actor는 보존하되 수류탄을 들고 있을 때 외형을 숨긴다.
@@ -1147,6 +1174,11 @@ AGrenadeActor* ACharacterPlayer::GetEquippedGrenade() const
 	return _CurrentGrenade.Get();
 }
 
+USceneComponent* ACharacterPlayer::GetViewWeaponMeshComponent() const
+{
+	return _ViewWeaponMesh;
+}
+
 // Commit 건영 : 중복코드 제거
 // void ACharacterPlayer::ServerStartFire_Implementation()
 // {
@@ -1219,6 +1251,14 @@ void ACharacterPlayer::NotifyAbilityWeaponFired(AWeaponActor* Weapon)
 	
 	GetWorldTimerManager().SetTimer(_FiringTagTimerHandle, this, &ACharacterPlayer::StopFiringPresentation, FMath::Max(0.1f, Weapon->GetProjectileInterval() + 0.05f), false);
 
+	// 서버의 탄 번호를 갱신
+	// 호스트 자신의 총이라면 반동 연출도 처리
+	if (IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->WeaponFired(Weapon->GetWeaponData()._WeaponId);
+	}
+	
+	// 원격 소유 클라이언트에 실제 발사 성공을 알린다.
 	ClientWeaponFired(Weapon->GetWeaponData()._WeaponId);
 }
 
@@ -1272,11 +1312,19 @@ void ACharacterPlayer::RequestEquipSlot(int32 Index)
 
 void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
 {
-	if (IsLocallyControlled() && IsValid(_ControlShakeManager)
-		&& IsValid(_AbilitySystemComponent) && _AbilitySystemComponent->CanAttack())
+	// if (IsLocallyControlled() && IsValid(_ControlShakeManager)
+	// 	&& IsValid(_AbilitySystemComponent) && _AbilitySystemComponent->CanAttack())
+	// {
+	// 	_ControlShakeManager->WeaponFired(WeaponID);
+	// }
+	// Commit 건영 : 호스트는 서버의 발사 성공 처리에서 이미 반동을 적용했음
+	if (HasAuthority() || !IsLocallyControlled() || !IsValid(_ControlShakeManager))
 	{
-		_ControlShakeManager->WeaponFired(WeaponID);
+		return;
 	}
+	
+	// 서버가 확정한 발사 결과이므로 현재 공격 가능 여부를 다시 검사하지 않음
+	_ControlShakeManager->WeaponFired(WeaponID);
 }
 
 void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Montage, FName Section)
@@ -1622,4 +1670,58 @@ void ACharacterPlayer::OnRep_CurrentWeapon()
 	//
 	// OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
 	OnRep_CurrentGrenade();
+}
+
+FVector2D ACharacterPlayer::GetLookInput() const
+{
+	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	
+	// 로컬 플레이어의 이 허용된 경우에만 조회
+	if (!IsValid(PlayerController) || !PlayerController->IsLocalController() || PlayerController->IsLookInputIgnored() || !IsValid(_DefaultInput) || !IsValid(_DefaultInput->_MouseLook))
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	const UEnhancedPlayerInput* PlayerInput = Cast<UEnhancedPlayerInput>(PlayerController->PlayerInput);
+	
+	if (!IsValid(PlayerInput))
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	const FInputActionInstance* Action = PlayerInput->FindActionInstanceData(_DefaultInput->_MouseLook);
+	
+	// 기존 MoveLookAction과 동일한 발등 상태의 입력을 사용
+	if (Action == nullptr || Action->GetTriggerEvent() != ETriggerEvent::Triggered)
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	FVector2D Aim = Action->GetValue().Get<FVector2D>();
+	
+	const float Sensitivity = _LookSensitivity * (_bAiming ? _ViewWeaponData._AimSensitivityMultiplier : 1.0f);
+	
+	// 실제 시선 조작과 같은 부호화 감도를 적용
+	Aim.X *= -Sensitivity;
+	Aim.Y *= Sensitivity;
+	
+	// 컨트롤러의 추가 입력 배율을 반영
+	if (GetDefault<UInputSettings>()->bEnableLegacyInputScales)
+	{
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
+		Aim.X *= PlayerController->GetDeprecatedInputYawScale();
+		Aim.Y *= PlayerController->GetDeprecatedInputPitchScale();
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	}
+	// 위에서 사용한 DEPRECATED API 는 현재 프로젝트가 활성화한 Legacy배율을 읽기 위해서 사용
+	// 경고 억제 범위도 이 두 호출로 제한함
+	
+	// 반등과 카메라 각도 제한이 적용되기 전의 사용자 회전 입력
+	return Aim;
+	
+	/* Commit 건영
+	 * 목적	    : 발사 반동이 섞이지 않은 시선 입력을 제공
+	 * 사용 위치 : AnimBP의 게임 스레드 입력 수집 단계
+	 * 실행 흐름 : 입력 허용 확인 -> 액션 조회 -> 감도 와 컨트롤러 배율 적용 -> 반환
+	 */
 }
