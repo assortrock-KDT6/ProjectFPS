@@ -24,10 +24,11 @@ bool UFPSFireAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle
 
 	const AWeaponActor* Weapon = IsValid(Character) ? Character->GetEquippedWeapon() : nullptr;
 
-	return true == IsValid(Weapon) && true == Character->CanFireFromAbility()
-		&& Weapon->SupportsFireMode(Weapon->GetFireMode()) && Weapon->GetProjectileInterval() > 0.f
-		&& Weapon->GetRemainingFireInterval() <= 0.
-		&& Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	return true == IsValid(Weapon) && 
+		   true == Character->CanFireFromAbility() && 
+		   Weapon->SupportsFireMode(Weapon->GetFireMode()) &&
+		   Weapon->GetProjectileInterval() > 0.f && 
+		   Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
 void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
