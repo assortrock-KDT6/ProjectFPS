@@ -3,6 +3,10 @@
 #include "GameMode/FPSGameState.h"
 #include "Pawn/FPSSpectatorPawn.h"
 #include "Character/CharacterPlayer.h"
+#include "Weapons/WeaponActor.h"
+#include "Weapons/WeaponTypes.h"
+#include "Table/TableSubsystem.h"
+#include "Table/TableDatas.h"
 #include "Controller/PlayerControllerBase.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -215,8 +219,13 @@ void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerSta
 	}
 
 	APlayerControllerBase* PlayerController = Cast<APlayerControllerBase>(DeadCharacter->GetController());
+
 	APlayerStateBase* DeadPlayerState = DeadCharacter->GetPlayerState<APlayerStateBase>();
-	if (false == IsValid(PlayerController) || false == IsValid(DeadPlayerState) || DeadPlayerState->IsDead())
+
+	AFPSGameState* FPSGameState = GetGameState<AFPSGameState>();
+
+	if (false == IsValid(PlayerController) || false == IsValid(DeadPlayerState) ||
+		false == IsValid(FPSGameState) || DeadPlayerState->IsDead())
 	{
 		return;
 	}
@@ -224,15 +233,40 @@ void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerSta
 	// 빙의를 해제하면 Pawn의 PlayerState가 비워진다. 점수는 그 전에 확정한다.
 	DeadPlayerState->SetDead(true);
 	DeadPlayerState->AddDeathScore();
+
 	if (true == IsValid(KillerPlayerState) && KillerPlayerState != DeadPlayerState
 		&& !KillerPlayerState->IsOnlyASpectator() && !KillerPlayerState->IsInactive()
 		&& GameState->PlayerArray.Contains(KillerPlayerState))
 	{
 		KillerPlayerState->AddKillScore();
+
+		/**
+		 * KillLog Data Setting 
+		 */
+
+		FPlayerKillLogResult KillLogResult;
+		KillLogResult._KillerPlayerName = KillerPlayerState->GetPlayerName();
+		KillLogResult._KilledPlayerName = DeadPlayerState->GetPlayerName();
+
+		ACharacterPlayer* KillerPlayer = Cast<ACharacterPlayer>(KillerPlayerState->GetPawn());
+		if (nullptr != KillerPlayer)
+		{
+			// TODO :	죽은 원인이 수류탄 일 수 있지만 우선 테스트용으로 EquippedWeapon으로 한다.
+			//			제대로 하려면 플레이어가 죽는 순간에 죽는 원인(무기)를 저장해줘야함.
+			AWeaponActor* KillerWeapon = Cast<AWeaponActor>(KillerPlayer->GetEquippedWeapon());
+			if (nullptr != KillerWeapon)
+			{
+				KillLogResult._WeaponIcon = KillerWeapon->GetWeaponData()._Icon;
+			}
+		}
+
+		// TODO KillLog Widget 
+		FPSGameState->MultiCastKillLogged(KillLogResult);
 	}
 
 	FVector CameraLocation;
 	FRotator CameraRotation;
+
 	PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
 
 	DeadCharacter->StopCombat();
@@ -247,7 +281,7 @@ void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerSta
 
 	PlayerController->EnterDeathSpectating(CameraLocation, CameraRotation);
 
-	DeadCharacter->SetLifeSpan(5.f);
+	DeadCharacter->SetLifeSpan(0.01f);
 
 	ScheduleRespawn(PlayerController);
 }

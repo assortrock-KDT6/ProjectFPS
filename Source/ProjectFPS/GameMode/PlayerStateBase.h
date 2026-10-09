@@ -10,6 +10,8 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPlayerMatchStatsChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerDeathStateChanged, bool, IsDead);
 
+struct FPlayerKillLogResult;
+
 /**
  * *인벤토리 -> 컴포넌트로 이동예정	
  */
@@ -31,6 +33,7 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Match")
 	FPlayerDeathStateChanged _OnDeathStateChanged;
+
 private:
 	// 인벤 컴포넌트 부착
 	UPROPERTY(VisibleAnywhere)
@@ -76,7 +79,7 @@ public:
 	void AddKillScore();
 	
 	void AddDeathScore();
-	
+
 	void ResetMatchStats();
 
 	void SetDead(bool IsDead);

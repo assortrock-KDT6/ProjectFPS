@@ -6,6 +6,7 @@
 #include "FPSGameState.generated.h"
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FMatchInformationChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnKillLoggedDelegate, const FPlayerKillLogResult&, Result);
 
 UCLASS()
 class PROJECTFPS_API AFPSGameState : public AGameState
@@ -15,6 +16,9 @@ class PROJECTFPS_API AFPSGameState : public AGameState
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Match")
 	FMatchInformationChanged _OnMatchInformationChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "KillLog")
+	FOnKillLoggedDelegate	_OnKillLogged;
 
 private:
 	UPROPERTY(ReplicatedUsing = OnRep_MatchInformation)
@@ -38,8 +42,27 @@ private:
 	UPROPERTY(ReplicatedUsing = OnRep_MatchInformation)
 	TArray<FPlayerMatchResult> _MatchResults;
 
+private:
+	struct FServerTimeSample
+	{
+		double Offset = 0.0;
+		double RoundTripSeconds = 0.0;
+		double ReceivedAt = 0.0;
+	};
+
+	TArray<FServerTimeSample> _ServerTimeSamples;
+
+	bool _HasServerTimeSync = false;
+
+	double _ServerTimeSyncStartedAt = 0.0;
+
+	double _SynchronizedServerTimeOffset = 0.0;
+
+	mutable double _LastSynchronizedServerTime = 0.0;
+
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
 	virtual double GetServerWorldTimeSeconds() const override;
 
 	UFUNCTION(BlueprintPure, Category = "Match|Time")
@@ -81,6 +104,10 @@ public:
 		return _MatchResults;
 	}
 
+	UFUNCTION(NetMulticast, Reliable)
+	void MultiCastKillLogged(const FPlayerKillLogResult& Result);
+	void MultiCastKillLogged_Implementation(const FPlayerKillLogResult& Result);
+
 public:
 	void StartMatchClock(float DurationSeconds);
 
@@ -95,19 +122,6 @@ public:
 	void RecordMatchResults();
 
 private:
-	struct FServerTimeSample
-	{
-		double Offset = 0.0;
-		double RoundTripSeconds = 0.0;
-		double ReceivedAt = 0.0;
-	};
-
-	TArray<FServerTimeSample> _ServerTimeSamples;
-	bool _HasServerTimeSync = false;
-	double _ServerTimeSyncStartedAt = 0.0;
-	double _SynchronizedServerTimeOffset = 0.0;
-	mutable double _LastSynchronizedServerTime = 0.0;
-
 	UFUNCTION()
 	void OnRep_MatchInformation();
 };

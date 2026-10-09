@@ -136,7 +136,7 @@ struct FWeaponData : public FTableRowBase
 	// 해당 총기 SkeletalMesh의 호환되는 애니메이션 블루프린트
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon| View")
 	TSubclassOf<UAnimInstance> _ViewAnimationInstance;
-	
+
 	// 줌 가능 여부
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Aim")
 	bool _CanAim = false;
@@ -211,4 +211,21 @@ struct FWeaponAbilityDataTable : public FTableRowBase
 		                                                                     ClampMin    = "0" , ClampMax = "30", 
 																			 UIMin       = "0" , UIMax    = "30"))
 	uint8 _BulletCount = 30;
+};
+
+USTRUCT(BlueprintType)
+struct FWeaponSlotData  
+{
+	GENERATED_BODY()
+
+	FName _WeaponId = NAME_None;
+
+	int _CurrentAmmo = 0;
+
+	int _MaxAmmo	 = 0;
+
+	bool IsNone() const
+	{
+		return _WeaponId == NAME_None;
+	}
 };

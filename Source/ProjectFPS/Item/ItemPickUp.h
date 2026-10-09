@@ -42,7 +42,7 @@ protected:
 	// 서버가 지정한 수량을 클라이언트에도 전달함.
 	UPROPERTY(EditAnywhere, Replicated, Category = "ItemInfo")
 	int32 _Count = 1;
-	
+
 public:
 	// 조준 받은 아이템의 외곽선 강조.
 	/*void SetHightlight(bool bOn);*/ // 나중에 쉐이더로 처리할게요.

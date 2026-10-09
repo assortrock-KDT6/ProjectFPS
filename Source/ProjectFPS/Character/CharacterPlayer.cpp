@@ -308,6 +308,10 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	// 무기를 바꾸면서 이전 무기의 연사가 이어지지 않게 한다.
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	_bAiming = false;
 
@@ -407,6 +411,10 @@ void ACharacterPlayer::BeginPlay()
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	if (true == HasAuthority())
 	{
@@ -531,6 +539,11 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Cook,        ETriggerEvent::Started,   this, &ACharacterPlayer::CookAction);
 	InputComp->BindAction(_DefaultInput->_WeaponSlot3, ETriggerEvent::Started,   this, &ACharacterPlayer::EquipGrenadeAction);
 	
+	if (IsValid(_AbilitySystemComponent))
+	{
+		InputComp->BindAction(_DefaultInput->_Reload, ETriggerEvent::Started, _AbilitySystemComponent.Get(), &UFPSAbilitySystemComponent::Reload);
+	}
+
 	PlayerController->RefreshInputMappingContext();
 }
 
@@ -560,6 +573,10 @@ void ACharacterPlayer::ClearEquippedWeapon()
 {
 	// 연사 중이면 끊는다
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	_bAiming = false;
 
@@ -587,6 +604,10 @@ void ACharacterPlayer::ClearEquippedWeapon()
 	OnRep_CurrentGrenade();
 }
 
+/**
+ * 이렇게 했을 때 탄환이 보존 안됨. 수정하겠습니다. 
+ */
+
 bool ACharacterPlayer::TryEquipSlot(int32 Index)
 {
 	// 서버 확인
@@ -604,16 +625,26 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 		return false;
 
 	// 지점 슬롯에 들어 있는 아이템 TID 확인.
-	const FName TID = Inv->GetWeaponTID(Index);
-	if (TID.IsNone())
+	const FWeaponSlotData* WeaponSlotData = Inv->GetWeaponData(Index);
+
+	if (nullptr == WeaponSlotData)
+	{
 		return false;
+	}
+
+	FName WeaponID = WeaponSlotData->_WeaponId;
+
+	if (WeaponID.IsNone())
+	{
+		return false;
+	}
 
 	UTableSubsystem* Sub = UTableSubsystem::Get(this);
 	if (nullptr == Sub)
 		return false;
 
 	// 아이템 정보에서 무기 ID 확인.
-	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), WeaponID);
 
 	if (nullptr == Row)
 		return false;
@@ -621,9 +652,32 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 	if (Row->_WeaponId.IsNone())
 		return false;
 
+	if (nullptr != _CurrentWeapon)
+	{
+		int32 PrevWeaponIndex		= Inv->GetEquippedWeaponIndex();
+
+		FName PrevWeaponTID			= Inv->GetWeaponTID(PrevWeaponIndex);
+
+		int32 PrevWeaponCurrentAmmo = _CurrentWeapon->GetCurrentAmmo();
+
+		int32 PrevWeaponMaxAmmo		= _CurrentWeapon->GetMaxAmmo();
+
+		FWeaponSlotData PrevWeaponSlotData;
+
+		PrevWeaponSlotData._WeaponId	= PrevWeaponTID;
+
+		PrevWeaponSlotData._CurrentAmmo = PrevWeaponCurrentAmmo;
+
+		PrevWeaponSlotData._MaxAmmo		= PrevWeaponMaxAmmo;
+
+		Inv->SetWeaponSlotData(PrevWeaponIndex, PrevWeaponSlotData);
+	}
+
 	// 손에 들 새 무기 액터 준비
 	if (false == EquipWeapon(Row->_WeaponId))
 		return false;
+
+	_CurrentWeapon->SetCurrentAmmo(WeaponSlotData->_CurrentAmmo);
 
 	// 실제 장착에 맞춰 인벤토리의 장착 슬롯 번호 기록.
 	Inv->SetEquippedWEaponIndex(Index);
@@ -702,6 +756,9 @@ bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
 
 	// 픽업
 	AItemPickUp::FinishSpawnFromTID(Pickup, Transform);
+
+	// 나중에 매니저나 관리자로 빼줄 것.
+	Pickup->SetLifeSpan(30.f);
 	return true;
 }
 
@@ -960,6 +1017,7 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 
 	// 새 수류탄 준비가 성공한 뒤 기존 총의 공격을 중단
 	StopAttacking();
+	_AbilitySystemComponent->CancelWeaponReload();
 	
 	_bAiming = false;
 	
@@ -1228,15 +1286,43 @@ USceneComponent* ACharacterPlayer::GetViewWeaponMeshComponent() const
 // 	}
 // }
 
+// 일부는 태그 막는 걸로 처리할 수 있을 것 같음. 
+// Movement 상태때문에 따로 함수로 빼놓음.
 bool ACharacterPlayer::CanFireFromAbility() const
 {
 	const UFPSCharacterMovementComponent* Movement = Cast<UFPSCharacterMovementComponent>(GetCharacterMovement());
-	return !IsValid(_CurrentGrenade) 
-		 && IsValid(_CurrentWeapon) 
-		 && IsValid(GetWorld())
-		 && IsValid(Movement) 
-		 && !Movement->GetTraversalState().IsActive() 
-		 && !Movement->IsTraversing();
+
+	if (false == IsValid(GetWorld()))
+	{
+		return false;
+	}
+
+	if (true == IsValid(_CurrentGrenade))
+	{
+		return false;
+	}
+
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return false;
+	}
+
+	if (false == IsValid(Movement))
+	{
+		return false;
+	}
+
+	if (true == Movement->GetTraversalState().IsActive())
+	{
+		return false;
+	}
+
+	if (true == Movement->IsTraversing())
+	{
+		return false;
+	}
+
+	return true;
 }
 
 void ACharacterPlayer::NotifyAbilityWeaponFired(AWeaponActor* Weapon)
@@ -1325,6 +1411,28 @@ void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
 	
 	// 서버가 확정한 발사 결과이므로 현재 공격 가능 여부를 다시 검사하지 않음
 	_ControlShakeManager->WeaponFired(WeaponID);
+}
+
+void ACharacterPlayer::ClientPlayMontage_Implementation(EAnimMeshType Type, UAnimMontage* Montage, float PlayRate)
+{
+	USkeletalMeshComponent* MeshComp = EAnimMeshType::FirstPerson == Type ? Get_FirstPersonMesh() : Get_ThirtPersonMesh();
+	UAnimInstance* AnimInstance = IsValid(MeshComp) ? MeshComp->GetAnimInstance() : nullptr;
+	if (!IsLocallyControlled() || !IsValid(AnimInstance) || !IsValid(Montage)
+		|| !FMath::IsFinite(PlayRate) || PlayRate <= 0.f)
+	{
+		return;
+	}
+	AnimInstance->Montage_Play(Montage, PlayRate, EMontagePlayReturnType::MontageLength, 0.f, false);
+}
+
+void ACharacterPlayer::ClientStopMontage_Implementation(EAnimMeshType Type,UAnimMontage* Montage)
+{
+	USkeletalMeshComponent* MeshComp = EAnimMeshType::FirstPerson == Type ? Get_FirstPersonMesh() : Get_ThirtPersonMesh();
+	UAnimInstance* AnimInstance = IsValid(MeshComp) ? MeshComp->GetAnimInstance() : nullptr;
+	if (IsLocallyControlled() && IsValid(AnimInstance) && IsValid(Montage))
+	{
+		AnimInstance->Montage_Stop(Montage->GetDefaultBlendOutTime(), Montage);
+	}
 }
 
 void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Montage, FName Section)
@@ -1422,6 +1530,10 @@ void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
 	ServerDropEquippedWeapon();
 }
 
+/**
+ * 이렇게 했을 때 매번 새로운 WeaponActor 가 생성되는 문제가 있음. => 탄환수 보존이 안됨.
+ * Slot 에 현재 탄환수 저장하고 불러오게 해야할 듯.
+ */
 void ACharacterPlayer::EquipMainWeaponAction(const FInputActionValue& value)
 {
 	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Main"));
@@ -1724,4 +1836,5 @@ FVector2D ACharacterPlayer::GetLookInput() const
 	 * 사용 위치 : AnimBP의 게임 스레드 입력 수집 단계
 	 * 실행 흐름 : 입력 허용 확인 -> 액션 조회 -> 감도 와 컨트롤러 배율 적용 -> 반환
 	 */
+}
 }

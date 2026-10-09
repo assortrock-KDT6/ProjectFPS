@@ -21,6 +21,7 @@
 #include "Misc/Parse.h"
 #include "GameMode/FPSLobbyGameState.h"
 #include "GameInstance/SessionMapCatalog.h"
+#include "GameInstance/SessionDisplayNameCodec.h"
 
 DEFINE_LOG_CATEGORY(LogFPSOnlineSession);
 
@@ -31,7 +32,6 @@ DEFINE_LOG_CATEGORY(LogFPSOnlineSession);
  */
 namespace OnlineSessionSubsystemUtils
 {
-	const FName ProjectDisplayName(TEXT("FPSDISPLAYNAME"));
 	const FName ProjectKey(TEXT("FPSPROJECT"));
 	const FString ProjectId(TEXT("ProjectFPS_SteamSockets_v1"));
 
@@ -544,7 +544,7 @@ bool UFPSOnlineSessionSubsystem::StartCreateSession()
 	Settings.bUseLobbiesIfAvailable = true;
 	Settings.bIsLANMatch = OnlineSessionSubsystemUtils::IsNullSubsystem(GetWorld());
 	Settings.Set(SETTING_MAPNAME, _PendingCreateOptions._MapId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
-	Settings.Set(OnlineSessionSubsystemUtils::ProjectDisplayName, _PendingCreateOptions._DisplayName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	FPSSessionDisplayName::Write(Settings, _PendingCreateOptions._DisplayName);
 	Settings.Set(SETTING_GAMEMODE, _PendingCreateOptions._GameModeId, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	
 
@@ -905,7 +905,7 @@ void UFPSOnlineSessionSubsystem::HandleFindSessionComplete(bool WasSuccessful)
 		Information._CurrentPlayers = FMath::Clamp(Information._MaxPlayers - Result.Session.NumOpenPublicConnections, 0, Information._MaxPlayers);
 		Information._IsLan = Result.Session.SessionSettings.bIsLANMatch;
 
-		Result.Session.SessionSettings.Get(OnlineSessionSubsystemUtils::ProjectDisplayName, Information._DisplayName);
+		Information._DisplayName = FPSSessionDisplayName::Read(Result.Session.SessionSettings);
 		Result.Session.SessionSettings.Get(SETTING_GAMEMODE, Information._GameModeId);
 
 		// 표시 이름이 비어 있으면 소유자 이름으로 대체한다.
@@ -2066,7 +2066,7 @@ bool UFPSOnlineSessionSubsystem::GetCurrentSessionInfo(FFPSOnlineSessionInfo& In
 		return false;
 	}
 	Information._SessionOwnerName = Session->OwningUserName;
-	Session->SessionSettings.Get(OnlineSessionSubsystemUtils::ProjectDisplayName, Information._DisplayName);
+	Information._DisplayName = FPSSessionDisplayName::Read(Session->SessionSettings);
 	Session->SessionSettings.Get(SETTING_MAPNAME, Information._MapName);
 	Session->SessionSettings.Get(SETTING_GAMEMODE, Information._GameModeId);
 	Information._MaxPlayers = Session->SessionSettings.NumPublicConnections;
@@ -2254,7 +2254,7 @@ void UFPSOnlineSessionSubsystem::BroadcastJoinCompleted(bool WasSuccessful, cons
 	}
 }
 
-bool UFPSOnlineSessionSubsystem::AutoJoinOrHost(const FFPSSessionCreateOptions& HostOptions, int32 MaxResults)
+bool UFPSOnlineSessionSubsystem::AutoJoinOrHost(const FFPSSessionCreateOptions& HostOptions, int32 MaxResults, bool RequireExactMap)
 {
 	FString ErrorMessage;
 
@@ -2302,6 +2302,7 @@ bool UFPSOnlineSessionSubsystem::AutoJoinOrHost(const FFPSSessionCreateOptions& 
 
 	ResetAutoMatch();
 	_AutoMatchHostOptions = MoveTemp(ValidatedOptions);
+	_AutoMatchRequireExactMap = RequireExactMap;
 	_AutoMatchStage = EFPSSessionAutoMatchStage::Finding;
 
 	UE_LOG(LogFPSOnlineSession, Log, TEXT("AutoMatch: searching for a joinable session."));
@@ -2312,6 +2313,26 @@ bool UFPSOnlineSessionSubsystem::AutoJoinOrHost(const FFPSSessionCreateOptions& 
 	*/
 	FindSessions(MaxResults);
 	return true;
+}
+
+bool UFPSOnlineSessionSubsystem::IsAutoMatchCandidate(const FFPSOnlineSessionInfo& Information) const
+{
+	EFPSMatchMode CandidateMode;
+	if (Information._ResultIndex == INDEX_NONE || Information._CurrentPlayers >= Information._MaxPlayers
+		|| !FPSMatchModeUtils::TryParse(Information._GameModeId, CandidateMode)
+		|| FPSMatchModeUtils::ToId(CandidateMode) != _AutoMatchHostOptions._GameModeId)
+	{
+		return false;
+	}
+
+	if (!_AutoMatchRequireExactMap)
+	{
+		return true;
+	}
+
+	const FString CandidateMap = OnlineSessionSubsystemUtils::NormalizeMapPath(Information._MapName.TrimStartAndEnd());
+	const FString RequestedMap = OnlineSessionSubsystemUtils::NormalizeMapPath(_AutoMatchHostOptions._MapId);
+	return !CandidateMap.IsEmpty() && CandidateMap == RequestedMap;
 }
 
 void UFPSOnlineSessionSubsystem::ContinueAutoMatchAfterFind(bool WasSuccessful, const TArray<FFPSOnlineSessionInfo>& Sessions)
@@ -2326,14 +2347,10 @@ void UFPSOnlineSessionSubsystem::ContinueAutoMatchAfterFind(bool WasSuccessful, 
 
 	if (true == WasSuccessful)
 	{
-		// 자리가 남아 있는 Session만 참가 후보로 사용한다.
+		// 요청한 모드, 정원, 선택적 맵 조건을 모두 만족하는 Session만 참가한다.
 		for (const FFPSOnlineSessionInfo& Information : Sessions)
 		{
-			EFPSMatchMode CandidateMode;
-			if (INDEX_NONE != Information._ResultIndex &&
-				Information._CurrentPlayers < Information._MaxPlayers &&
-				FPSMatchModeUtils::TryParse(Information._GameModeId, CandidateMode) &&
-				FPSMatchModeUtils::ToId(CandidateMode) == _AutoMatchHostOptions._GameModeId)
+			if (IsAutoMatchCandidate(Information))
 			{
 				_AutoMatchCandidates.Add(Information._ResultIndex);
 			}
@@ -2432,6 +2449,7 @@ void UFPSOnlineSessionSubsystem::ResetAutoMatch()
 	_AutoMatchCandidates.Reset();
 	_AutoMatchCandidateCursor = 0;
 	_AutoMatchHostOptions = FFPSSessionCreateOptions{};
+	_AutoMatchRequireExactMap = false;
 }
 
 bool UFPSOnlineSessionSubsystem::IsAutoMatchInProgress() const
