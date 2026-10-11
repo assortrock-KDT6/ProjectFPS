@@ -123,8 +123,7 @@ void UFPSReloadAbility::StartReloadTasks(AWeaponActor* Weapon)
 		return;
 	}
 
-	// 3인칭 표시는 Status.Reloading을 받은 AnimBP에서 처리한다.
-	// 변경 -> 3인칭도 무기 타입별로 지정된 몽타주를 사용한다.
+	// 각 시점의 몽타주를 독립적으로 선택한다. 3인칭은 Task에서 GAS로 복제한다.
 
 	const TObjectPtr<UAnimMontage>*		MontageEntry	= _ReloadMontageFP.Find(WeaponData._WeaponType);
 	const TObjectPtr<UAnimMontage>*		TPMontageEntry	= _ReloadMontageTP.Find(WeaponData._WeaponType);
@@ -135,7 +134,7 @@ void UFPSReloadAbility::StartReloadTasks(AWeaponActor* Weapon)
 	UAnimMontage* TPMontage = TPMontageEntry ? TPMontageEntry->Get() : nullptr;
 	const float TPPlayRate = GetReloadMontagePlayRate(TPMontage, ReloadTime);
 
-	if (FPPlayRate > 0.f)
+	if (FPPlayRate > 0.f || TPPlayRate > 0.f)
 	{
 		UFPSAbilityTask_PlayMontage* Task = UFPSAbilityTask_PlayMontage::PlayMontage(
 			this, FPMontage, TPMontage, FPPlayRate, TPPlayRate);
@@ -209,6 +208,6 @@ void UFPSReloadAbility::EndAbility(const FGameplayAbilitySpecHandle Handle, cons
 	_ReloadStateApplied = false;
 	_ReloadingWeapon.Reset();
 
-	// FP Task가 소유 클라이언트 팔 몽타주를 정리한다.
+	// Task가 1인칭 표시와 서버/클라이언트의 3인칭 몽타주를 정리한다.
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

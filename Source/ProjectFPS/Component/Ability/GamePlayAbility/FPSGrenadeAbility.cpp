@@ -444,8 +444,6 @@ void UFPSGrenadeAbility::OnGrenadeRelease(FName NotifyName, const FBranchingPoin
 		}
 	}
 	
-	const FVector ReleaseLocation = Arms->GetSocketLocation(TEXT("GrenadeGrip"));
-	
 	const FVector Direction = Character->GetControlRotation().Vector();
 	
 	if (Grenade->Throw(Direction))
@@ -456,8 +454,8 @@ void UFPSGrenadeAbility::OnGrenadeRelease(FName NotifyName, const FBranchingPoin
 			Inventory->RemoveItem(SlotIndex, 1);
 		}
 		
-		Grenade->SetActorLocation(ReleaseLocation, false, nullptr, ETeleportType::TeleportPhysics);
-		
+		// 투척할 때 손에 든 액터의 위치·회전을 유지한다. 리타기팅된 3인칭 손은
+		// 이 1인칭 노티파이보다 먼저 평가되므로 1인칭 소켓 위치로 다시 이동시키지 않는다.
 		Character->ClearGrenadeReference(Grenade);
 	}
 	

@@ -107,8 +107,6 @@ UCLASS(Config=Game)
 class PROJECTFPS_API UFPSOnlineSessionSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
-	friend struct FSessionWorkflowTestAccess;
-	friend struct FSessionQuickMatchTestAccess;
 public:
 	// 각 로컬 플레이어가 세션을 정리하고 독립된 로비 메뉴로 돌아간다.
 	void ReturnToLobby();

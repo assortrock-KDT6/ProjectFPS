@@ -116,6 +116,20 @@ protected:
 	// 유효하면 현재 수류탄을 장착한 상태
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentGrenade, VisibleAnywhere, BlueprintReadOnly, Category = "Grenade")
 	TObjectPtr<AGrenadeActor> _CurrentGrenade;
+
+	// 메타휴먼의 리타기팅된 Body를 표시용 손의 기준으로 사용하고, 없으면 기본 캐릭터 메시를 사용한다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "Third Person Grip Mesh Component"))
+	FName _GrenadeGripMeshComponentName = TEXT("Body");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "First Person Grip Offset"))
+	FTransform _GrenadeGripOffsetFP = FTransform::Identity;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "Third Person Grip Offset"))
+	FTransform _GrenadeGripOffsetTP = FTransform::Identity;
+
+	// 팔과 같은 화면 보정을 사용하는 1인칭 전용 수류탄 머티리얼이다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip")
+	TObjectPtr<class UMaterialInterface> _GrenadeViewMaterial;
 	
 	// 현재 상호작용 범위 안에 있는 월드 무기
 	UPROPERTY()
@@ -148,7 +162,20 @@ protected:
 	// 빙의 해제 직후 도착하는 피해에도 원래 플레이어를 식별한다.
 	TWeakObjectPtr<APlayerStateBase> _CombatPlayerState;
 
+	// 미지정이어도 사망 대기와 카메라는 동작한다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Death")
+	TObjectPtr<UAnimMontage> _DeathMontage;
+
 private:
+	UPROPERTY(ReplicatedUsing = OnRep_DeathStartServerTime)
+	double _DeathStartServerTime = -1.0;
+
+	UFUNCTION()
+	void OnRep_DeathStartServerTime();
+
+	void ApplyDeathPresentation();
+	void UpdateDeathMontage();
+
 	// 현재 플레이어가 조준을 유지하는지
 	UPROPERTY(BlueprintReadOnly, Category = "Aim", meta = (AllowPrivateAccess = "true"))
 	bool _bAiming = false;
@@ -156,6 +183,11 @@ private:
 	// 로컬 화면에서 사용할 현재 무기 설정
 	UPROPERTY(BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
 	FWeaponData _ViewWeaponData;
+
+	// 소유권 초기화보다 먼저 받은 RPC 데이터도 로컬 준비 후 적용한다.
+	bool _bPendingViewWeaponUpdate = false;
+	void ApplyPendingViewWeapon();
+	void NotifyWeaponEquippedChanged();
 
 	// 시작 시 카메라에 설정된 기본 FOV 와 현재 목표 FOV
 	float _BaseCameraFOV = 90.f;
@@ -183,9 +215,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool EquipWeapon(FName WeaponID);
 
+	bool EquipWeapon(FWeaponData& Data);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	bool EquipWeaponFromData(FWeaponData& Data);
+
 	AWeaponActor* GetEquippedWeapon() const;
 	
 	AGrenadeActor* GetEquippedGrenade() const;
+
+	UFUNCTION(BlueprintPure, Category = "Grenade | Grip")
+	USkeletalMeshComponent* GetGrenadeGripMesh() const;
+
+	// 궤적 미리보기와 실제 투척은 손에 든 수류탄 액터의 월드 위치를 시작점으로 사용한다.
+	UFUNCTION(BlueprintPure, Category = "Grenade | Throw")
+	FVector GetGrenadeReleaseLocation() const;
 
 	// 1인칭 GameplayCue를 뷰 무기 총구에 붙이기 위해 1인칭 무기 메시를 반환한다.
 	UFUNCTION(BlueprintPure, Category = "First Person")
@@ -214,6 +258,8 @@ public:
 	void ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
 
 protected:
+	virtual void PostInitializeComponents() override;
+
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 	
@@ -252,6 +298,12 @@ public:
 
 public:
 	void StopCombat();
+
+	// GameMode가 서버에서 한 번 시작하고, 사망 시각을 클라이언트에 복제한다.
+	void BeginDeath();
+
+	UFUNCTION(BlueprintPure, Category = "Death")
+	bool IsDeathStarted() const;
 	
 	void StopAttacking();
 	
@@ -264,7 +316,7 @@ public:
 	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
 	USkeletalMeshComponent* Get_ViewWeaponMesh() const;
 
-	// AbilityTask의 1인칭 표시 경로. 탄약/완료 판정은 서버 Ability에 남긴다.
+	// AbilityTask의 소유 클라이언트 표시 경로. 비소유 클라이언트의 3인칭은 GAS로 복제한다.
 	UFUNCTION(Client, Reliable)
 	void ClientPlayMontage(EAnimMeshType Type, UAnimMontage* Montage, float PlayRate);
 	void ClientPlayMontage_Implementation(EAnimMeshType Type, UAnimMontage* Montage, float PlayRate);
@@ -330,6 +382,12 @@ protected:
 	
 	// 서버에서 장착을 해제하고 표시를 갱신
 	void ClearEquippedGrenade();
+
+	void UpdateGrenadeGripTick(bool Equipped);
+	TWeakObjectPtr<USkeletalMeshComponent> _GrenadeTickMesh;
+	uint8 _GrenadeSavedAnimTickOption = 0;
+	bool _GrenadeSavedUpdateRateOptimization = false;
+	bool _GrenadeSavedTickEnabled = false;
 	
 	// Commit 건영 : 현재 발사 시작과 종료요청은 ASC의 SetFireInput() 경로가 담당한다.
 	// UFUNCTION(Server, Reliable)

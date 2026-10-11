@@ -30,6 +30,8 @@
 class UInputMappingContext;
 class UMatchResultWidget;
 class AFPSGameState;
+class ACharacterPlayer;
+class AFPSDeathCameraActor;
 
 UCLASS()
 class PROJECTFPS_API APlayerControllerBase : public APlayerController
@@ -60,6 +62,9 @@ private:
 	// 빙의 이후 ClientRestart에서 초기화되는 엔진 입력 스택과는 별도로 관리한다.	
 	bool _LoadingInputBlocked = false;
 
+	bool _DeathCameraActive = false;
+	TWeakObjectPtr<ACharacterPlayer> _DeathCharacter;
+
 protected:
 	UPROPERTY(BlueprintReadWrite)
 	uint8 _TeamId = 0;
@@ -72,6 +77,12 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMatchResultWidget> _MatchResultWidget;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Death Camera")
+	TSubclassOf<AFPSDeathCameraActor> _DeathCameraClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AFPSDeathCameraActor> _DeathCamera;
 
 public:
 	virtual void ChangeState(FName NewState) override;
@@ -96,6 +107,12 @@ public:
 
 	virtual void OnRep_Pawn() override;
 
+	virtual void ClientRestart_Implementation(APawn* NewPawn) override;
+
+	virtual void ServerAcknowledgePossession_Implementation(APawn* InPawn) override;
+
+	virtual void AutoManageActiveCameraTarget(AActor* SuggestedTarget) override;
+
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	virtual void ClientReturnToMainMenuWithTextReason_Implementation(const FText& ReturnReason) override;
@@ -103,7 +120,8 @@ public:
 	void SetLoadingInputBlocked(bool Blocked);
 
 public:
-	void EnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation);
+	void EnterDeathSpectating(ACharacterPlayer* DeadCharacter, double DeathEndServerTime,
+		const FVector& CameraLocation, const FRotator& CameraRotation);
 
 	void RefreshInputMappingContext();
 
@@ -116,7 +134,8 @@ public:
 
 protected:
 	UFUNCTION(Client, Reliable)
-	void ClientEnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation);
+	void ClientEnterDeathSpectating(ACharacterPlayer* DeadCharacter, double DeathEndServerTime,
+		const FVector& CameraLocation, const FRotator& CameraRotation);
 
 private:
 	// 유실된 샘플은 별도로 큐에 보관하지 않고, 다음 요청에서 다시 시도한다.
@@ -128,5 +147,7 @@ private:
 
 private:
 	void UpdateServerTimeSync();
+	void TryFinishDeathCamera();
+	void ClearDeathCamera(bool RestoreViewTarget);
 
 };

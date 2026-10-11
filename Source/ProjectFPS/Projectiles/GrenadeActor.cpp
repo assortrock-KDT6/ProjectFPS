@@ -74,6 +74,7 @@ bool AGrenadeActor::Throw(const FVector& Direction)
 	LaunchDirection = FRotator(FMath::Clamp(LaunchDirection.Rotation().Pitch + _ThrowAngle, -89.0, 89.0), LaunchDirection.Rotation().Yaw, 0.0).Vector();
 	
 	// 손을 떠날 때 현재 월드 위치와 회전을 유지한다.
+	GetRootComponent()->UpdateComponentToWorld();
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	
 	_Thrown = true;
@@ -104,6 +105,7 @@ bool AGrenadeActor::Drop()
 	}
 	
 	// 현재 손의 월드 위치에서 분리
+	GetRootComponent()->UpdateComponentToWorld();
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	
 	// 기존 물리 이동 상태와 복제 처리를 사용
