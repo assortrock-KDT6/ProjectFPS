@@ -7,7 +7,8 @@
 class ACharacterPlayer;
 class UAnimMontage;
 
-// 1인칭 표시는 소유 클라이언트에 전달한다. 리로드 완료 판정은 Ability가 담당한다.
+// 1인칭은 소유 클라이언트 RPC, 3인칭은 서버 GAS 복제와 소유 클라이언트 RPC로 표시한다.
+// 리로드 완료 판정은 Ability가 담당한다.
 UCLASS()
 class PROJECTFPS_API UFPSAbilityTask_PlayMontage : public UAbilityTask
 {
@@ -41,5 +42,7 @@ private:
 	float _TPPlayRate		= 1.f;
 
 	bool _StopWhenAbilityEnds = true;
-	bool _PlayRequested = false;
+	bool _FirstPersonPlayRequested = false;
+	bool _ThirdPersonPlayRequested = false;
+	bool _ThirdPersonMontageStarted = false;
 };

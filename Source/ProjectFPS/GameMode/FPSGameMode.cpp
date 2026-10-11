@@ -19,6 +19,8 @@ AFPSGameMode::AFPSGameMode()
 	PlayerControllerClass = APlayerControllerBase::StaticClass();
 	DefaultPawnClass = ACharacterPlayer::StaticClass();
 	SpectatorClass = AFPSSpectatorPawn::StaticClass();
+	// 죽음 몽타주와 카메라를 보여주는 시간. BP의 Min Respawn Delay로 조절한다.
+	MinRespawnDelay = 3.f;
 }
 
 void AFPSGameMode::InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage)
@@ -269,21 +271,18 @@ void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerSta
 
 	PlayerController->GetPlayerViewPoint(CameraLocation, CameraRotation);
 
-	DeadCharacter->StopCombat();
-
-	DeadCharacter->GetCharacterMovement()->StopMovementImmediately();
-
-	DeadCharacter->GetCharacterMovement()->DisableMovement();
-
-	DeadCharacter->SetActorEnableCollision(false);
+	DeadCharacter->BeginDeath();
 
 	DeadCharacter->DetachFromControllerPendingDestroy();
 
-	PlayerController->EnterDeathSpectating(CameraLocation, CameraRotation);
-
-	DeadCharacter->SetLifeSpan(0.01f);
+	// 새 Pawn의 빙의 확인 전에 다시 죽었으면 이전 생명의 시체부터 정리한다.
+	CleanupDeadCharacter(PlayerController, 0.f);
+	_DeadCharacters.Add(PlayerController, DeadCharacter);
 
 	ScheduleRespawn(PlayerController);
+
+	const double DeathEndServerTime = FPSGameState->GetServerWorldTimeSeconds() + GetRespawnDelaySeconds();
+	PlayerController->EnterDeathSpectating(DeadCharacter, DeathEndServerTime, CameraLocation, CameraRotation);
 }
 
 bool AFPSGameMode::PlayerCanRestart_Implementation(APlayerController* Player)
@@ -320,6 +319,7 @@ void AFPSGameMode::RestartPlayer(AController* NewPlayer)
 		if (WasDead)
 		{
 			Character->InitializeAfterRespawn();
+			HandlePlayerRespawnReady(PlayerController);
 		}
 	}
 	else if (false == IsValid(NewPlayer->GetPawn()))
@@ -342,7 +342,12 @@ void AFPSGameMode::ScheduleRespawn(APlayerController* PlayerController)
 	const FTimerDelegate RespawnDelegate = FTimerDelegate::CreateUObject(this, &AFPSGameMode::RespawnPlayer, WeakController);
 
 	// 0초 타이머는 예약이 해제되므로 최소 한 번의 지연을 보장한다.
-	GetWorldTimerManager().SetTimer(RespawnTimer, RespawnDelegate, FMath::Max(0.01f, MinRespawnDelay), false);
+	GetWorldTimerManager().SetTimer(RespawnTimer, RespawnDelegate, GetRespawnDelaySeconds(), false);
+}
+
+float AFPSGameMode::GetRespawnDelaySeconds() const
+{
+	return FMath::IsFinite(MinRespawnDelay) ? FMath::Max(0.01f, MinRespawnDelay) : 3.f;
 }
 
 void AFPSGameMode::RespawnPlayer(TWeakObjectPtr<APlayerController> PlayerController)
@@ -387,6 +392,7 @@ void AFPSGameMode::Logout(AController* Exiting)
 	}
 
 	CancelRespawn(Cast<APlayerController>(Exiting));
+	CleanupDeadCharacter(Cast<APlayerController>(Exiting), 0.f);
 
 	Super::Logout(Exiting);
 }
@@ -402,6 +408,7 @@ void AFPSGameMode::FinishTimedMatch()
 void AFPSGameMode::HandleMatchHasEnded()
 {
 	ClearMatchTimers();
+	ClearDeadCharacters();
 
 	SetPlayersMatchCombatBlocked(true);
 
@@ -488,5 +495,56 @@ void AFPSGameMode::ClearMatchTimers()
 void AFPSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	ClearMatchTimers();
+	ClearDeadCharacters();
 	Super::EndPlay(EndPlayReason);
+}
+
+void AFPSGameMode::HandlePlayerRespawnReady(APlayerController* PlayerController)
+{
+	if (false == HasAuthority() || false == IsValid(PlayerController))
+	{
+		return;
+	}
+
+	const ACharacterPlayer* Character = Cast<ACharacterPlayer>(PlayerController->GetPawn());
+	if (false == IsValid(Character) || true == Character->IsDeathStarted()
+		|| (false == PlayerController->IsLocalController() && PlayerController->AcknowledgedPawn != Character))
+	{
+		return;
+	}
+
+	// 원격 클라이언트가 새 Pawn을 받기 전에는 시체를 지우지 않는다.
+	const float CleanupDelay = FMath::IsFinite(_CorpseCleanupDelaySeconds)
+		? FMath::Max(0.1f, _CorpseCleanupDelaySeconds) : 1.f;
+	CleanupDeadCharacter(PlayerController, CleanupDelay);
+}
+
+void AFPSGameMode::CleanupDeadCharacter(APlayerController* PlayerController, float DelaySeconds)
+{
+	TWeakObjectPtr<ACharacterPlayer> DeadCharacter;
+	if (false == _DeadCharacters.RemoveAndCopyValue(PlayerController, DeadCharacter) || false == DeadCharacter.IsValid())
+	{
+		return;
+	}
+
+	if (DelaySeconds > 0.f)
+	{
+		DeadCharacter->SetLifeSpan(DelaySeconds);
+	}
+	else
+	{
+		DeadCharacter->Destroy();
+	}
+}
+
+void AFPSGameMode::ClearDeadCharacters()
+{
+	for (const TPair<TWeakObjectPtr<APlayerController>, TWeakObjectPtr<ACharacterPlayer>>& Entry : _DeadCharacters)
+	{
+		if (true == Entry.Value.IsValid())
+		{
+			Entry.Value->Destroy();
+		}
+	}
+	_DeadCharacters.Empty();
 }

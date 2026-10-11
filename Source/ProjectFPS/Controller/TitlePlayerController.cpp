@@ -45,8 +45,6 @@ void ATitlePlayerController::BeginPlay()
 		return;
 	}
 
-	UE_LOG(LogTitlePlayerController, Display, TEXT("Title menu ready; lobby=%s"),
-		*LobbyLevel.ToSoftObjectPath().ToString());
 }
 
 void ATitlePlayerController::InitializeTitleCamera(UWorld& World)
@@ -137,8 +135,6 @@ void ATitlePlayerController::StartFromTitle()
 		}
 	}
 
-	UE_LOG(LogTitlePlayerController, Display, TEXT("Title Start clicked: transition to lobby %s"),
-		*PendingLobbyLevel.ToSoftObjectPath().ToString());
 
 	if (TravelDelay > 0.0f)
 	{
@@ -193,7 +189,6 @@ void ATitlePlayerController::QuitFromTitle()
 		TitleWidget->SetIsEnabled(false);
 	}
 
-	UE_LOG(LogTitlePlayerController, Display, TEXT("Title Quit clicked: quit game"));
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);
 }
 

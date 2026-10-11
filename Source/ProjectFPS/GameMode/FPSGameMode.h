@@ -26,6 +26,9 @@ private:
 
 	TMap<TWeakObjectPtr<APlayerController>, FTimerHandle> _RespawnTimers;
 
+	// 빙의가 해제된 시체는 리스폰 성공 또는 경기 종료까지 보존한다.
+	TMap<TWeakObjectPtr<APlayerController>, TWeakObjectPtr<ACharacterPlayer>> _DeadCharacters;
+
 public:
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
 
@@ -55,6 +58,8 @@ public:
 	bool IsCombatAllowed() const;
 
 	void HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerStateBase* KillerPlayerState);
+
+	void HandlePlayerRespawnReady(APlayerController* PlayerController);
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match", meta = (ClampMin = "1.0", Units = "s"))
 	float _MatchDurationSeconds = 300.f;
@@ -69,6 +74,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match|Start", meta = (ClampMin = "0.0", Units = "s"))
 	float _MatchStartDelaySeconds = 5.f;
+
+	// 새 Pawn의 복제와 카메라 전환 동안 시체가 먼저 사라지지 않도록 여유를 둔다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match|Death", meta = (ClampMin = "0.1", Units = "s"))
+	float _CorpseCleanupDelaySeconds = 1.f;
 
 private:
 	void FinishTimedMatch();
@@ -92,6 +101,12 @@ private:
 	void RespawnPlayer(TWeakObjectPtr<APlayerController> PlayerController);
 
 	void CancelRespawn(APlayerController* PlayerController);
+
+	float GetRespawnDelaySeconds() const;
+
+	void CleanupDeadCharacter(APlayerController* PlayerController, float DelaySeconds);
+
+	void ClearDeadCharacters();
 
 	void ClearMatchTimers();
 

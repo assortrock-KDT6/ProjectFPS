@@ -17,11 +17,6 @@
 class USkeletalMesh;
 class UAnimInstance;
 
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class PROJECTFPS_API UWeaponTypes : public UObject
-{
-	GENERATED_BODY()
-};
 
 
 // FPS 무기 분류
@@ -218,10 +213,13 @@ struct FWeaponSlotData
 {
 	GENERATED_BODY()
 
+	UPROPERTY()
 	FName _WeaponId = NAME_None;
 
+	UPROPERTY()
 	int _CurrentAmmo = 0;
 
+	UPROPERTY()
 	int _MaxAmmo	 = 0;
 
 	bool IsNone() const
