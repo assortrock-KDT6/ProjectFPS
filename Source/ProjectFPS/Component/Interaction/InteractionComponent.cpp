@@ -109,14 +109,14 @@ AActor* UInteractionComponent::TraceForInteractable() const
 	return Obj;
 }
 
-void UInteractionComponent::UpdateToolTipItem()
+void UInteractionComponent::UpdateInteractTarget()
 {
-	// 조준 대상을 확인. 
+	// 조준 대상을 확인
 	AActor* NewTarget = TraceForInteractable();
 	AActor* OldTarget = _CurrentTarget.Get();
 
-	// 가리키던 액터 사라졌는지 (습득처리)
-	const bool  bOldDestroyed = _CurrentTarget.IsStale();
+	// 가리키던 액터 사라졌는지(습득처리) 
+	const bool bOldDestroyed = _CurrentTarget.IsStale();
 
 	// 대상이 그대로면 아무것도 안함.
 	if (NewTarget == OldTarget && false == bOldDestroyed)
@@ -138,50 +138,15 @@ void UInteractionComponent::UpdateToolTipItem()
 		return;
 	}
 
-	// 조준한 대상이 아이템인지 확인용(GetTID()를 받기 위함-> 옮기면 수정해야함.)
+	// 조준한 대상이 아이템인지 확인용(GetTID()를 받기 위함)
 	AItemPickUp* NewItem = Cast<AItemPickUp>(NewTarget);
 	if (nullptr == NewItem)
 	{
 		HUD->HideItemInfo();
 		return;
 	}
+
 	HUD->ShowItemInfo(NewItem->GetTID());
-}
-
-void UInteractionComponent::UpdateInteractTarget()
-{
-	// 조준 대상을 확인
-	AActor* NewTarget = TraceForInteractable();
-	AActor* OldTarget = _CurrentTarget.Get();
-
-	// 가리키던 액터 사라졌는지(습득처리) 
-	const bool bOldDestroyed = _CurrentTarget.IsStale();
-
-	// 대상이 그대로면 아무것도 안함.
-	if (NewTarget == OldTarget && false == bOldDestroyed)
-		return;
-
-	_CurrentTarget = NewTarget;
-
-	APawn* Pawn = Cast<APawn>(GetOwner());
-	APlayerController* Pc = Cast<APlayerController>(Pawn->GetController());
-
-	AGameHUD* HUD = nullptr;
-	if (nullptr != Pc)
-		HUD = Cast<AGameHUD>(Pc->GetHUD());
-
-	// 조준한 대상이 아이템인지 확인용(GetTID()를 받기 위함)
-	AItemPickUp* NewItem = Cast<AItemPickUp>(NewTarget);
-	if (nullptr == NewItem)
-	{
-		if (nullptr == NewItem)
-			HUD->HideItemInfo();
-		return;
-	}
-
-	if (nullptr != HUD)
-		HUD->ShowItemInfo(NewItem->GetTID());
-
 }
 
 void UInteractionComponent::PickUpInteract()

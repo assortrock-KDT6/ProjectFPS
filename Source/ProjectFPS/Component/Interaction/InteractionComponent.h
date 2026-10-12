@@ -52,7 +52,6 @@ private:
 	AActor* TraceForInteractable() const;
 	
 	//조준 대상이 변경될 때 정보 패널 갱신
-	void UpdateToolTipItem();
 	void UpdateInteractTarget();
 
 

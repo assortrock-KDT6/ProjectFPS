@@ -103,6 +103,7 @@ protected:
 
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentAmmo)
 	int32 _CurrentAmmo = 0;
+
 protected:
 
 	UFUNCTION()

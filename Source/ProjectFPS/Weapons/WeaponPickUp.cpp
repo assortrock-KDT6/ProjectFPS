@@ -1,5 +1,7 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 #include "Weapons/WeaponPickUp.h"
+#include "Weapons/WeaponTypes.h"
+#include "Weapons/WeaponActor.h"
 #include "Character/CharacterPlayer.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
@@ -69,32 +71,6 @@ void AWeaponPickUp::OnInteractionSphereEndOverlap(UPrimitiveComponent* Overlappe
 
 void AWeaponPickUp::Interact_Implementation(AActor* Interactor)
 {
-	if (false == HasAuthority())
-	{
-		return;
-	}
-	
-	ACharacterPlayer* Character = Cast<ACharacterPlayer>(Interactor);
-	if (false == IsValid(Character))
-	{
-		return;
-	}
-	
-	UTableSubsystem* TableSubsystem = UTableSubsystem::Get(this);
-	if (false == IsValid(TableSubsystem))
-	{
-		return;
-	}
-	
-	const FItemData* ItemData = TableSubsystem->FindTableRow<FItemData>(TEXT("ItemTable"), _TID);
-	
-	if (nullptr == ItemData || EItemType::Weapon != ItemData->_ItemType || ItemData->_WeaponId.IsNone())
-	{
-		return;
-	}
-	
-	Character->EquipWeapon(ItemData->_WeaponId);
-
 	Super::Interact_Implementation(Interactor);
 }
 
@@ -123,6 +99,16 @@ void AWeaponPickUp::OnConstruction(const FTransform& Transform)
 	}
 	
 	_Mesh->SetStaticMesh(ItemData->_WorldMesh);
+}
+
+int AWeaponPickUp::GetCurrentAmmo() const
+{
+	return _CurrentAmmo;
+}
+
+void AWeaponPickUp::SetCurrentAmmo(int Ammo)
+{
+	_CurrentAmmo = Ammo;
 }
 
 // Called when the game starts or when spawned

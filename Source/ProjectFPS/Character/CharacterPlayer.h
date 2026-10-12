@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -151,10 +151,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "FPS | AbilitySystem | Attribute")
 	TObjectPtr<class UFPSAttributeSet> _HealthAttribute;
 
-	// 준비만 되고 아직 확정 되지 않은 무기
-	UPROPERTY()
-	TObjectPtr<AWeaponActor> _PendingWeapon;
-
 	// 버릴 때 캐릭터 기준으로 떨어질 범위
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
 	float _DropForwardOffset = 100.f;
@@ -215,10 +211,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool EquipWeapon(FName WeaponID);
 
-	bool EquipWeapon(FWeaponData& Data);
-
-	UFUNCTION(BlueprintCallable, Category = "Weapon")
-	bool EquipWeaponFromData(FWeaponData& Data);
+	// 픽업 장착과 인벤토리 확정을 한곳에서 처리해 손의 무기와 슬롯 정보가 어긋나는 것을 방지한다.
+	bool TryAcquireWeapon(AWeaponPickUp* Pickup);
 
 	AWeaponActor* GetEquippedWeapon() const;
 	
@@ -256,6 +250,14 @@ public:
 	
 	// 등록된 WeaponPickUp의 범위에서 벗어나면 해제된다.
 	void ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
+
+private:
+	// 생성·초기화·부착을 확정 전에 수행해, 교체 준비 실패 시 기존 무기를 보존한다.
+	AWeaponActor* PrepareWeapon(FName WeaponID);
+	// 줍기와 슬롯 전환이 같은 경로로 공격 중단, 액터 교체, 표시 갱신을 수행하도록 분리했다.
+	void CommitPreparedWeapon(AWeaponActor* NewWeapon);
+	// 새 무기를 줍거나 전환할 때 기존 액터의 잔탄이 유실되지 않도록 슬롯 저장을 공통화했다.
+	void SaveCurrentWeaponToInventory();
 
 protected:
 	virtual void PostInitializeComponents() override;

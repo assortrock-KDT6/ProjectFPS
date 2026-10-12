@@ -1,4 +1,4 @@
-#include "Character/CharacterPlayer.h"
+﻿#include "Character/CharacterPlayer.h"
 #include "GameMode/FPSGameMode.h"
 #include "GameMode/PlayerStateBase.h"
 #include "Controller/PlayerControllerBase.h"
@@ -260,6 +260,18 @@ FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
 
 bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 {
+	AWeaponActor* NewWeapon = PrepareWeapon(WeaponID);
+	if (!IsValid(NewWeapon))
+		return false;
+	SaveCurrentWeaponToInventory();
+	CommitPreparedWeapon(NewWeapon);
+	return true;
+}
+
+// 생성·초기화·부착을 확정 전에 수행해, 교체 준비 실패 시 기존 무기를 보존한다.
+// 반환된 액터는 숨겨진 준비 상태다. 호출부는 확정에 사용하거나 후속 준비 실패 시 Destroy해야 한다.
+AWeaponActor* ACharacterPlayer::PrepareWeapon(FName WeaponID)
+{
 	USkeletalMeshComponent* BodyMesh = GetMesh();
 
 	static const FName PreferredWeaponGrip(TEXT("weapon_r"));
@@ -274,7 +286,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 		|| false == IsValid(BodyMesh)
 		|| BodyMesh->GetBoneIndex(WeaponGrip) == INDEX_NONE)
 	{
-		return false;
+		return nullptr;
 	}
 
 	FActorSpawnParameters SpawnParameters;
@@ -286,7 +298,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	if (false == IsValid(NewWeapon))
 	{
-		return false;
+		return nullptr;
 	}
 
 	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
@@ -294,7 +306,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	if (false == bInitialized)
 	{
 		NewWeapon->Destroy();
-		return false;
+		return nullptr;
 	}
 
 	const FWeaponData& WeaponData = NewWeapon->GetWeaponData();
@@ -302,7 +314,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	if (!IsValid(WeaponData._ViewMesh))
 	{
 		NewWeapon->Destroy();
-		return false;
+		return nullptr;
 	}
 
 	// 다른 플레이어에게 보이는 월드 무기는 소유 캐릭터의 3인칭 손에 부착된 상태로 네트워크 복제한다.
@@ -311,12 +323,23 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	if (false == NewWeapon->AttachToComponent(BodyMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponGrip))
 	{
 		NewWeapon->Destroy();
-		return false;
+		return nullptr;
 	}
 
 	// 라이플 메시의 총구는 +Y 방향이다. weapon_r 본에서 캐릭터 전방을
 	// 향하도록 돌리고, 메시의 위쪽(+Z)은 그대로 유지한다.
 	NewWeapon->GetRootComponent()->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator(0.f, 90.f, 0.f));
+
+	NewWeapon->SetActorHiddenInGame(true);
+
+	return NewWeapon;
+}
+
+// 줍기와 슬롯 전환이 같은 경로로 공격 중단, 액터 교체, 표시 갱신을 수행하도록 분리했다.
+// 서버에서 무기 준비와 필요한 슬롯 반영이 끝난 뒤 호출한다. 기존 액터를 파괴하므로 잔탄 저장은 먼저 수행해야 한다.
+void ACharacterPlayer::CommitPreparedWeapon(AWeaponActor* NewWeapon)
+{
+	const FWeaponData& WeaponData = NewWeapon->GetWeaponData();
 
 	// 무기를 바꾸면서 이전 무기의 연사가 이어지지 않게 한다.
 	StopAttacking();
@@ -335,6 +358,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	}
 
 	_CurrentWeapon = NewWeapon;
+	NewWeapon->SetActorHiddenInGame(false);
 	
 	// 새 총 장착이 성공 -> 수류탄 장착을 해제하기
 	if (IsValid(_CurrentGrenade))
@@ -353,20 +377,8 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	
 	//ClientSetViewWeapon(WeaponData._ViewMesh, WeaponData._ViewAnimationInstance);
 	ClientSetViewWeapon(WeaponData);
-	
-	
-	return true;
-}
 
-bool ACharacterPlayer::EquipWeapon(FWeaponData& Data)
-{
-	// TODO : 바닥에 떨어진 WEAPON 주울 때 데이터까지 같이 넘겨받는 경우.
-	return false;
-}
-
-bool ACharacterPlayer::EquipWeaponFromData(FWeaponData& Data)
-{
-	return EquipWeapon(Data);
+	ForceNetUpdate();
 }
 
 void ACharacterPlayer::ClientSetViewWeapon_Implementation(const FWeaponData& WeaponData)
@@ -486,10 +498,7 @@ void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		{
 			_CurrentWeapon->Destroy();
 		}
-		if (true == IsValid(_PendingWeapon))
-		{
-			_PendingWeapon->Destroy();
-		}
+
 		if (true == IsValid(_CurrentGrenade))
 		{
 			_CurrentGrenade->Destroy();
@@ -647,8 +656,13 @@ void ACharacterPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ACharacterPlayer, _DeathStartServerTime);
 }
 
+// 해제 중 다른 총을 암묵적으로 장착하지 않도록 현재 총과 슬롯 정리만 담당한다.
+// 다음 슬롯 자동 장착은 호출부(TryDropWeaponAt)가 결정하며, 수류탄 해제는 별도 경로다.
 void ACharacterPlayer::ClearEquippedWeapon()
 {
+	if (!HasAuthority())
+		return;
+	SaveCurrentWeaponToInventory();
 	// 연사 중이면 끊는다
 	StopAttacking();
 	if (IsValid(_AbilitySystemComponent))
@@ -665,26 +679,157 @@ void ACharacterPlayer::ClearEquippedWeapon()
 		_CurrentWeapon->Destroy();
 	}
 
-	_CurrentWeapon = _PendingWeapon;
+	_CurrentWeapon = nullptr;
+	ClientSetViewWeapon(FWeaponData());
 
-	_PendingWeapon = nullptr;
-
-	if (true == IsValid(_CurrentWeapon))
-	{
-		OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
-	}
-	else
-	{
-		// 빈손 -> 1인칭 뷰 무기도 삭제 -> 액터만 지우면 화면에는 그대로 남음.
-		ClientSetViewWeapon(FWeaponData());
-	}
-	
 	OnRep_CurrentGrenade();
+	APlayerStateBase* PS = GetPlayerState<APlayerStateBase>();
+	if (IsValid(PS) && IsValid(PS->GetInventory()))
+	{
+		PS->GetInventory()->SetEquippedWEaponIndex(INDEX_NONE, false);
+	}
+	ForceNetUpdate();
 }
 
-/**
- * 이렇게 했을 때 탄환이 보존 안됨. 수정하겠습니다. 
- */
+// 새 무기를 줍거나 전환할 때 기존 액터의 잔탄이 유실되지 않도록 슬롯 저장을 공통화했다.
+// 기존 액터 파괴 및 장착 슬롯 번호 변경 전에 호출한다. 버리기로 슬롯이 이미 제거됐다면 저장하지 않는다.
+void ACharacterPlayer::SaveCurrentWeaponToInventory()
+{
+	if (!HasAuthority() || !IsValid(_CurrentWeapon))
+	{
+		return;
+	}
+	APlayerStateBase* PS = GetPlayerState<APlayerStateBase>();
+
+	UInventoryComponent* Inv = IsValid(PS) ? PS->GetInventory() : nullptr;
+
+	if (!IsValid(Inv))
+	{
+		return;
+	}
+
+	const int32 Index = Inv->GetEquippedWeaponIndex();
+
+	const FWeaponSlotData* Slot = Inv->GetWeaponData(Index);
+
+	if (!Slot || Slot->IsNone())
+	{
+		return;
+	}
+
+	FWeaponSlotData Data = *Slot;
+
+	Data._CurrentAmmo = _CurrentWeapon->GetCurrentAmmo();
+
+	Data._MaxAmmo = _CurrentWeapon->GetMaxAmmo();
+
+	Inv->SetWeaponSlotData(Index, Data);
+}
+
+// 픽업 장착과 인벤토리 확정을 한곳에서 처리해 손의 무기와 슬롯 정보가 어긋나는 것을 방지한다.
+// 새 무기와 밀려날 픽업 준비 -> 기존 잔탄 저장 -> 슬롯 확정 -> 장착 확정 -> 픽업·UI 마무리 순서다.
+// 준비 실패 시 임시 액터만 제거하며, 교체로 떨어지는 무기에도 실제 잔탄을 전달한다.
+bool ACharacterPlayer::TryAcquireWeapon(AWeaponPickUp* Pickup)
+{
+	if (!HasAuthority() || !IsValid(Pickup) || IsDeathStarted())
+	{
+		return false;
+	}
+
+	APlayerStateBase* PS = GetPlayerState<APlayerStateBase>();
+
+	UInventoryComponent* Inv = IsValid(PS) ? PS->GetInventory() : nullptr;
+
+	UTableSubsystem* Table = UTableSubsystem::Get(this);
+
+	if (!IsValid(Inv) || !IsValid(Table))
+	{
+		return false;
+	}
+
+	const FName TID = Pickup->GetTID();
+
+	const FItemData* Row = Table->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+
+	int32 SlotIndex = INDEX_NONE;
+
+	FName ReplacedTID = NAME_None;
+
+	if (!Row || Row->_ItemType != EItemType::Weapon || Row->_WeaponId.IsNone()
+		|| !Inv->FindEquipSlot(TID, SlotIndex, ReplacedTID))
+	{
+		return false;
+	}
+
+	AWeaponActor* NewWeapon = PrepareWeapon(Row->_WeaponId);
+	if (!IsValid(NewWeapon))
+	{
+		return false;
+	}
+
+	NewWeapon->SetCurrentAmmo(Pickup->GetCurrentAmmo());
+
+	// 모든 준비가 성공할 때까지 기존 액터와 슬롯을 유지한다.
+	AWeaponPickUp* DroppedWeapon = nullptr;
+
+	const FTransform DropTransform = Pickup->GetActorTransform();
+
+	if (!ReplacedTID.IsNone())
+	{
+		AItemPickUp* PreparedPickup = AItemPickUp::BeginSpawnFromTID(GetWorld(), ReplacedTID, 1, DropTransform);
+
+		DroppedWeapon = Cast<AWeaponPickUp>(PreparedPickup);
+
+		if (!IsValid(DroppedWeapon))
+		{
+			if (IsValid(PreparedPickup))
+			{
+				PreparedPickup->Destroy();
+			}
+			NewWeapon->Destroy();
+			return false;
+		}
+
+		const FWeaponSlotData* OldSlot = Inv->GetWeaponData(SlotIndex);
+
+		const int32 OldAmmo = SlotIndex == Inv->GetEquippedWeaponIndex() && IsValid(_CurrentWeapon)
+			? _CurrentWeapon->GetCurrentAmmo() : OldSlot->_CurrentAmmo;
+
+		DroppedWeapon->SetCurrentAmmo(OldAmmo);
+	}
+
+	SaveCurrentWeaponToInventory();
+
+	FWeaponSlotData Data;
+
+	Data._WeaponId = TID;
+
+	Data._CurrentAmmo = NewWeapon->GetCurrentAmmo();
+
+	Data._MaxAmmo = NewWeapon->GetMaxAmmo();
+
+	if (!Inv->CommitEquip(Data, SlotIndex, false))
+	{
+		NewWeapon->Destroy();
+		if (IsValid(DroppedWeapon))
+		{
+			DroppedWeapon->Destroy();
+		}
+		return false;
+	}
+
+	CommitPreparedWeapon(NewWeapon);
+
+	if (IsValid(DroppedWeapon))
+	{
+		AItemPickUp::FinishSpawnFromTID(DroppedWeapon, DropTransform);
+	}
+
+	Pickup->Destroy();
+
+	Inv->NotifyWeaponsChanged();
+	return true;
+}
 
 bool ACharacterPlayer::TryEquipSlot(int32 Index)
 {
@@ -730,35 +875,19 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 	if (Row->_WeaponId.IsNone())
 		return false;
 
-	if (nullptr != _CurrentWeapon)
-	{
-		int32 PrevWeaponIndex		= Inv->GetEquippedWeaponIndex();
-
-		FName PrevWeaponTID			= Inv->GetWeaponTID(PrevWeaponIndex);
-
-		int32 PrevWeaponCurrentAmmo = _CurrentWeapon->GetCurrentAmmo();
-
-		int32 PrevWeaponMaxAmmo		= _CurrentWeapon->GetMaxAmmo();
-
-		FWeaponSlotData PrevWeaponSlotData;
-
-		PrevWeaponSlotData._WeaponId	= PrevWeaponTID;
-
-		PrevWeaponSlotData._CurrentAmmo = PrevWeaponCurrentAmmo;
-
-		PrevWeaponSlotData._MaxAmmo		= PrevWeaponMaxAmmo;
-
-		Inv->SetWeaponSlotData(PrevWeaponIndex, PrevWeaponSlotData);
-	}
-
-	// 손에 들 새 무기 액터 준비
-	if (false == EquipWeapon(Row->_WeaponId))
+	AWeaponActor* NewWeapon = PrepareWeapon(Row->_WeaponId);
+	if (!IsValid(NewWeapon))
 		return false;
 
-	_CurrentWeapon->SetCurrentAmmo(WeaponSlotData->_CurrentAmmo);
+	SaveCurrentWeaponToInventory();
 
-	// 실제 장착에 맞춰 인벤토리의 장착 슬롯 번호 기록.
-	Inv->SetEquippedWEaponIndex(Index);
+	NewWeapon->SetCurrentAmmo(WeaponSlotData->_CurrentAmmo);
+
+	Inv->SetEquippedWEaponIndex(Index, false);
+
+	CommitPreparedWeapon(NewWeapon);
+
+	Inv->NotifyWeaponsChanged();
 
 	return true;
 
@@ -814,7 +943,19 @@ bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
 
 	// 인벤 확정 실패시 준비한 픽업 정리.
 	const bool bWasEquipped = (Index == Inv->GetEquippedWeaponIndex());
-	if (false == Inv->RemoveWeapon(Index))
+
+	const FWeaponSlotData* Slot = Inv->GetWeaponData(Index);
+	const int32 CurrentAmmoData = bWasEquipped && IsValid(_CurrentWeapon)
+		? _CurrentWeapon->GetCurrentAmmo() : Slot->_CurrentAmmo;
+	AWeaponPickUp* WeaponPickUp = Cast<AWeaponPickUp>(Pickup);
+	if (!IsValid(WeaponPickUp))
+	{
+		Pickup->Destroy();
+		return false;
+	}
+	WeaponPickUp->SetCurrentAmmo(CurrentAmmoData);
+
+	if (false == Inv->RemoveWeapon(Index, false))
 	{
 		Pickup->Destroy();
 		return false;
@@ -835,8 +976,7 @@ bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
 	// 픽업
 	AItemPickUp::FinishSpawnFromTID(Pickup, Transform);
 
-	// 나중에 매니저나 관리자로 빼줄 것.
-	Pickup->SetLifeSpan(30.f);
+	Inv->NotifyWeaponsChanged();
 	return true;
 }
 
@@ -1526,10 +1666,11 @@ void ACharacterPlayer::RequestEquipSlot(int32 Index)
 	UInventoryComponent* Inv = Ps->GetInventory();
 	if (nullptr == Inv)
 		return;
-
-	// 이미 그 슬롯을 들고 있으면 할 일 없음.
-	if (Index == Inv->GetEquippedWeaponIndex() && nullptr == _CurrentGrenade)
-		return;
+	
+	//	 서버에서 동일한 조건을 검사하고 있으므로 해당 줄은 주석처리하겠음. 
+	//// 이미 그 슬롯을 들고 있으면 할 일 없음.
+	//if (Index == Inv->GetEquippedWeaponIndex() && IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade))
+	//	return;
 
 	// 빈 슬롯이면 무시. _Weapons는 복제되니 클라에서도 안다.
 	if (Inv->GetWeaponTID(Index).IsNone())
@@ -1947,8 +2088,10 @@ void ACharacterPlayer::ServerEquipSlot_Implementation(int32 Index)
 		return;
 
 	// 서버 재 검증 
-	if (Index == Inv->GetEquippedWeaponIndex())
+	if (Index == Inv->GetEquippedWeaponIndex() && IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade))
+	{
 		return;
+	}
 
 	TryEquipSlot(Index);
 
@@ -1979,6 +2122,7 @@ void ACharacterPlayer::ServerDropEquippedWeapon_Implementation()
 		ClearEquippedGrenade();
 		return;
 	}
+
 	TryDropWeaponAt(Inv->GetEquippedWeaponIndex());
 }
 
