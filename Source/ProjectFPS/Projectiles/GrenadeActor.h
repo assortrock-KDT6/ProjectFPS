@@ -14,6 +14,7 @@
 class USphereComponent;
 class UStaticMeshComponent;
 class UGameplayEffect;
+class UNiagaraSystem;
 
 UCLASS()
 class PROJECTFPS_API AGrenadeActor : public AActor
@@ -50,6 +51,10 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Explosion")
 	TSubclassOf<UGameplayEffect> _DamageEffect;
 	
+	// BP 클래스 기본값에서 사용할 폭발 이펙트를 지정한다
+	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Explosion")
+	TObjectPtr<UNiagaraSystem> _ExplosionEffect = nullptr;
+	
 public:	
 	AGrenadeActor();
 	
@@ -80,4 +85,8 @@ private:
 	
 	UFUNCTION()
 	void OnRep_Thrown();
+	
+	// 서버가 폭발 위치를 전달하면 각 화면에서 이펙트를 재생하기 위한 함수
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayExplosion(const FVector& Location);
 };

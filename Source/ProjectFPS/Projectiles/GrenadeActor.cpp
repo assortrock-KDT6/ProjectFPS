@@ -10,6 +10,8 @@
 #include "GameTag/FPSGameplayTag.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "NiagaraSystem.h"
+#include "NiagaraFunctionLibrary.h"
 #include "Engine/World.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -74,6 +76,7 @@ bool AGrenadeActor::Throw(const FVector& Direction)
 	LaunchDirection = FRotator(FMath::Clamp(LaunchDirection.Rotation().Pitch + _ThrowAngle, -89.0, 89.0), LaunchDirection.Rotation().Yaw, 0.0).Vector();
 	
 	// 손을 떠날 때 현재 월드 위치와 회전을 유지한다.
+	GetRootComponent()->UpdateComponentToWorld();
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	
 	_Thrown = true;
@@ -104,6 +107,7 @@ bool AGrenadeActor::Drop()
 	}
 	
 	// 현재 손의 월드 위치에서 분리
+	GetRootComponent()->UpdateComponentToWorld();
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 	
 	// 기존 물리 이동 상태와 복제 처리를 사용
@@ -165,6 +169,17 @@ void AGrenadeActor::BeginPlay()
 	}
 }
 
+void AGrenadeActor::MulticastPlayExplosion_Implementation(const FVector& Location)
+{
+	if (GetNetMode() == NM_DedicatedServer || !IsValid(_ExplosionEffect.Get())) // 리슨서버는 해당되지않음, 전용서버를 가지게 되면 그때 적용되는 코드 -> 리슨처럼 직접 플레이하지 않는 서버에서는 그리지말라는 코드에요
+	{
+		return;
+	}
+	
+	// 폭발 위치에 Niagara 이펙트를 생성하고 즉시 재생
+	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, _ExplosionEffect.Get(), Location, FRotator::ZeroRotator, FVector(1.f), true, true);
+}
+
 void AGrenadeActor::LifeSpanExpired()
 {
 	if (!HasAuthority() || !IsValid(GetWorld()))
@@ -173,6 +188,11 @@ void AGrenadeActor::LifeSpanExpired()
 		
 		return;
 	}
+	
+	// 현재 수류탄 위치를 폭발 연출과 피해 계산에 같이 사용
+	const FVector ExplosionLocation = GetActorLocation(); // 현재 수류탄 위치 사용
+	
+	MulticastPlayExplosion(ExplosionLocation);			  // 해당 위치에서 폭발 이펙트를 재생하도록 알림
 	
 	ACharacterPlayer* Character = Cast<ACharacterPlayer>(GetOwner());
 	
@@ -205,8 +225,6 @@ void AGrenadeActor::LifeSpanExpired()
 		
 		return;
 	}
-	
-	const FVector ExplosionLocation = GetActorLocation();
 	
 	// 수류탄의 폭발범위에 걸친 Pawn을 검색 -> 이때 수류탄을 던진 플레이어도 포함
 	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
@@ -245,7 +263,9 @@ void AGrenadeActor::LifeSpanExpired()
 		}
 		
 		// 폭발 지점부터 대상 중심까지 벽이 막고 있으면 피해를 주지 못함
-		if (GetWorld()->LineTraceTestByChannel(ExplosionLocation, Target->GetActorLocation(), ECC_Visibility, TraceParams))
+		// 중심과 상체 위쪽이 모두 가려졌을 때만 폭발 피해를 차단한다
+		if (GetWorld()->LineTraceTestByChannel(ExplosionLocation, Target->GetActorLocation(), ECC_Visibility, TraceParams) &&
+			GetWorld()->LineTraceTestByChannel(ExplosionLocation,Target->GetActorLocation() + FVector::UpVector * Target->GetSimpleCollisionHalfHeight() * 0.75f, ECC_Visibility, TraceParams))
 		{
 			continue;
 		}

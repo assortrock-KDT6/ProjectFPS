@@ -24,11 +24,40 @@ bool UFPSFireAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle
 
 	const AWeaponActor* Weapon = IsValid(Character) ? Character->GetEquippedWeapon() : nullptr;
 
-	return true == IsValid(Weapon) && 
-		   true == Character->CanFireFromAbility() && 
-		   Weapon->SupportsFireMode(Weapon->GetFireMode()) &&
-		   Weapon->GetProjectileInterval() > 0.f && 
-		   Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	if (false == IsValid(Weapon))
+	{
+		return false;
+	}
+
+	if (false == Character->CanFireFromAbility())
+	{
+		return false;
+	}
+
+	if (false == Weapon->SupportsFireMode(Weapon->GetFireMode()))
+	{
+		return false;
+	}
+
+	if (Weapon->GetProjectileInterval() <= 0.f)
+	{
+		return false;
+	}
+
+	// commit 건영 : 발사 직후 버튼을 놓았다가 빠르게 다시 누르며느 계속 누르고 있어도 사격이 재개되지 않을 수 있는데
+	//				남은 발사 간격 때문에 사격 능력 자체가 시작되지 않는게 원인 발사간격은 존 FireNextShot()에서 기다리도록 구현되어있음
+	//				따라서 이 조건을 제거해도 제한보다 빠르게 발사되진 않음
+	// if (Weapon->GetRemainingFireInterval() > 0.f)
+	// {
+	// 	return false;
+	// }
+
+	if (Weapon->GetCurrentAmmo() <= 0)
+	{
+		return false;
+	}
+
+	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
 void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -52,6 +81,7 @@ void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	{
 		_BlockedTagDelegates.Add(Tag, AbilitySystemComponent->RegisterGameplayTagEvent(Tag).AddUObject(this, &UFPSFireAbility::OnBlockedTagChanged));
 	}
+
 	FireNextShot();
 }
 
@@ -70,7 +100,7 @@ void UFPSFireAbility::FireNextShot()
 
 	if (false == IsValid(Character) || false == IsValid(Weapon) || false == IsValid(AbilitySystemComponent) || false == AbilitySystemComponent->CanAttack()
 		|| true == AbilitySystemComponent->HasAnyMatchingGameplayTags(ActivationBlockedTags) || false == Character->CanFireFromAbility()
-		|| Character->GetEquippedWeapon() != Weapon || Weapon->GetOwner() != Character)
+		|| Character->GetEquippedWeapon() != Weapon || Weapon->GetOwner() != Character || Weapon->GetCurrentAmmo() <= 0)
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
@@ -79,7 +109,7 @@ void UFPSFireAbility::FireNextShot()
 	// Timers may wake slightly early; retain the weapon's interval across activations.
 	const double Remaining = Weapon->GetRemainingFireInterval();
 
-	if (Remaining > 0.)
+	if (Remaining > 0.0)
 	{
 		GetWorld()->GetTimerManager().SetTimer(_ShotTimer, this, &UFPSFireAbility::FireNextShot, FMath::Max(static_cast<float>(Remaining), 0.001f), false);
 		return;

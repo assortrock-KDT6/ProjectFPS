@@ -21,8 +21,6 @@ public:
 	void ShowItemInfo(FName TID);
 	void HideItemInfo();
 	
-
-
 protected:
 	virtual void NativeConstruct() override;
 

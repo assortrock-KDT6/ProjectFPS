@@ -16,7 +16,6 @@ UCLASS(Config=Game)
 class PROJECTFPS_API UFPSLoadingSubsystem : public UGameInstanceSubsystem
 {
     GENERATED_BODY()
-    friend struct FSessionWorkflowTestAccess;
 private:
     UPROPERTY(Config)
     TSoftObjectPtr<UFPSLoadingScreenData> ScreenData;
