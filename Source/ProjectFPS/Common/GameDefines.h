@@ -131,6 +131,15 @@ enum class EItemState : uint8
 	None
 };
 
+UENUM(BlueprintType)
+enum class EAnimMeshType : uint8
+{
+	FirstPerson = 0,
+	ThirdPerson = 1,
+	WeaponMesh	= 2,		// 혹시 몰라서 추가해놓음. 당장 사용할 enum은 FirstPerson 과 ThirdPerson
+	None
+};
+
 // OnlineSubsystemTypes.h 헤더 파일 참고해서 만듦.
 namespace FCharacterStateUtils
 {

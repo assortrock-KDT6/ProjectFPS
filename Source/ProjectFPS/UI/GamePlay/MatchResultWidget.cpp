@@ -48,8 +48,7 @@ void UMatchResultWidget::PopulateResults()
 	if (!ResultRowsBox) return;
 	ResultRowsBox->ClearChildren();
 
-	if (!ensureMsgf(ResultRowWidgetClass && !ResultRowWidgetClass->HasAnyClassFlags(CLASS_Abstract),
-		TEXT("Match result Widget Blueprint must specify a concrete ResultRowWidgetClass."))) return;
+	if (!(ResultRowWidgetClass && !ResultRowWidgetClass->HasAnyClassFlags(CLASS_Abstract))) return;
 
 	for (const FPlayerMatchResult& Result : _Results)
 	{

@@ -11,6 +11,8 @@ struct FGameplayTagContainer;
 class UFPSFireAbility;
 class UFPSChangeFireModeAbility;
 class UFPSGrenadeAbility;
+class UFPSReloadAbility;
+
 /**
  * 모든 전투 기능을 처리하는 거대한 컴포넌트를 만들면 안된다.
  * 
@@ -46,13 +48,17 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|Abilities")
 	TSubclassOf<UFPSGrenadeAbility> GrenadeAbilityClass;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Abilities")
+	TSubclassOf<UFPSReloadAbility> ReloadAbilityClass;
+
 private:
 	FGameplayAbilitySpecHandle _FireAbilityHandle;
 	
 	FGameplayAbilitySpecHandle _ChangeFireModeAbilityHandle;
 	
 	FGameplayAbilitySpecHandle _GrenadeAbilityHandle;
-	
+
+	FGameplayAbilitySpecHandle _ReloadAbilityHandle;
 	FActiveGameplayEffectHandle _MatchCombatBlockEffectHandle;
 	
 	FDelegateHandle _CombatBlockedTagDelegate;
@@ -75,19 +81,29 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
 	void ChangeFireMode();
 
+	// 입력이나 Blueprint에서 호출하는 재장전 시작 함수.
+	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
+	void Reload();
+
 	UFUNCTION(BlueprintPure, Category = "Combat")
 	bool CanAttack() const;
 
 private:
 	UFUNCTION(Server, Reliable)
 	void ServerSetFireInput(bool Pressed);
+
 	UFUNCTION(Server, Reliable)
 	void ServerChangeFireMode();
+
 	UFUNCTION(Server, Reliable)
 	void ServerCookGrenade();
+
+	UFUNCTION(Server, Reliable)
+	void ServerReload();
 	
 public:
 	void CancelWeaponFire();
+	void CancelWeaponReload();
 
 	// GameMode만 매치 소유 효과를 추가/제거한다. 다른 효과의 동일 태그는 유지한다.
 	void SetMatchCombatBlocked(bool Blocked);

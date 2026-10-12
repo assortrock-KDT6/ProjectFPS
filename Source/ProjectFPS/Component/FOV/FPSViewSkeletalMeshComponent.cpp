@@ -69,27 +69,27 @@ void UFPSViewSkeletalMeshComponent::UpdateFOV()
 {
 	float FinalHFOV = CurrentHFOV;
 	UGameViewportClient* ViewportClient = GetWorld() ? GetWorld()->GetGameViewport() : nullptr;
-	
+
 	if (ViewportClient)
 	{
 		FVector2D ViewportSize = FVector2D::ZeroVector;
 		ViewportClient->GetViewportSize(ViewportSize);
-		
 		if (ViewportSize.X > 0.f && ViewportSize.Y > 0.f)
 		{
-			// DefaultHFOV 는 16 : 9 화면의 수평 FOV를 기준으로 한다. TODO : 환경설정을 구현할 예정이라면 21 : 9 등 옵션달아도 괜찮을것 같아요
+			// 16:9 기준 수평 FOV를 현재 창의 화면 비율에 맞춰 변환한다.
 			const float VerticalHalfAngle = FMath::Atan(FMath::Tan(FMath::DegreesToRadians(CurrentHFOV * 0.5f)) * (9.f / 16.f));
 			FinalHFOV = FMath::RadiansToDegrees(2.f * FMath::Atan(FMath::Tan(VerticalHalfAngle) * (ViewportSize.X / ViewportSize.Y)));
 		}
 	}
-	
-	for (int32 Index = 0; Index < GetNumMaterials(); ++Index)
+
+	// 동일 프레임의 화면 비율과 FOV를 팔 및 부착 표시물에 함께 반영한다.
+	for (UPrimitiveComponent* Target : {static_cast<UPrimitiveComponent*>(this), FOVFollower.Get()})
 	{
-		UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(GetMaterial(Index));
-		
-		if (Material)
+		if (!IsValid(Target)) continue;
+		for (int32 Index = 0; Index < Target->GetNumMaterials(); ++Index)
 		{
-			Material->SetScalarParameterValue(TEXT("FOV"), FinalHFOV);
+			UMaterialInstanceDynamic* Material = Cast<UMaterialInstanceDynamic>(Target->GetMaterial(Index));
+			if (Material) Material->SetScalarParameterValue(TEXT("FOV"), FinalHFOV);
 		}
 	}
 }

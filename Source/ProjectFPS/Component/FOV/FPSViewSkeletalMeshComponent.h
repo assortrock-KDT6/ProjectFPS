@@ -30,6 +30,9 @@ public:
 	void SetTargetHFOV(float InTargetHFOV, float TransientInterSpeed = -1.f);
 	
 	void UpdateFOV();
+
+	// 부착된 1인칭 표시물도 팔과 같은 화면 보정 값을 사용한다.
+	void SetFOVFollower(UPrimitiveComponent* InFollower) { FOVFollower = InFollower; }
 	
 protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "View Mesh", meta = (ClampMin = "1.0", ClampMax = "179.0"))
@@ -39,6 +42,7 @@ protected:
 	float InterpSpeed = 10.f;
 	
 private:
+	TWeakObjectPtr<UPrimitiveComponent> FOVFollower;
 	float TargetHFOV = 80.f;
 	float CurrentHFOV = 80.f;
 	float CurrentInterpSpeed = 10.f;

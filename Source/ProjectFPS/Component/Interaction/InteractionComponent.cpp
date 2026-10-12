@@ -11,9 +11,6 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Actor.h"
 
-
-
-
 UInteractionComponent::UInteractionComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true; // 하이라이트용
@@ -61,9 +58,6 @@ AActor* UInteractionComponent::TraceForInteractable() const
 
 	bool bHit = GetWorld()->LineTraceSingleByChannel(GroundHit, Start, End, ECC_Visibility, Params);
 	
-	// 디버그 확인용 - 라인
-	if (_bDrawDebug)
-		DrawDebugLine(GetWorld(), Start, End, bHit ? FColor::Green : FColor::Red, false, _DebugDrawTime, 0, 2.f);
 
 	// 부딪힌 곳이 없으면 종료
 	if (false == bHit)
@@ -79,9 +73,6 @@ AActor* UInteractionComponent::TraceForInteractable() const
 		FCollisionShape::MakeSphere(50.f),	//// 반지름의 크기 50
 		Params);	// 본인 캐릭터 제외 
 
-	// 디버그 확인용 - 구체
-	if (_bDrawDebug)
-		DrawDebugSphere(GetWorld(), GroundHit.ImpactPoint, 50.f, 24, FColor::Yellow, false, _DebugDrawTime, 0, 1.f);
 
 	if (false == bOverlap)
 		return nullptr;
@@ -134,24 +125,27 @@ void UInteractionComponent::UpdateToolTipItem()
 	_CurrentTarget = NewTarget;
 
 	APawn* Pawn = Cast<APawn>(GetOwner());
-	APlayerController* Pc = Cast<APlayerController>(Pawn->GetController());
+	APlayerController* PC = Cast<APlayerController>(Pawn->GetController());
 
 	AGameHUD* HUD = nullptr;
-	if (nullptr != Pc)
-		HUD = Cast<AGameHUD>(Pc->GetHUD());
+	if (nullptr != PC)
+	{
+		HUD = Cast<AGameHUD>(PC->GetHUD());
+	}
+
+	if (nullptr == HUD)
+	{
+		return;
+	}
 
 	// 조준한 대상이 아이템인지 확인용(GetTID()를 받기 위함-> 옮기면 수정해야함.)
 	AItemPickUp* NewItem = Cast<AItemPickUp>(NewTarget);
 	if (nullptr == NewItem)
 	{
-		if (nullptr != HUD)
-			HUD->HideItemInfo();
-
+		HUD->HideItemInfo();
 		return;
 	}
-
-	if (nullptr != HUD)
-		HUD->ShowItemInfo(NewItem->GetTID());
+	HUD->ShowItemInfo(NewItem->GetTID());
 }
 
 void UInteractionComponent::UpdateInteractTarget()

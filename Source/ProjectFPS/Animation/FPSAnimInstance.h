@@ -93,12 +93,6 @@ protected:
 
 	virtual void InitializeWithAbilitySystem(UAbilitySystemComponent* AbilitySystemComponent);
 
-#if WITH_EDITOR
-	/**
-	 * 태그 오류를 잡아주는 역할을 한다.
-	 */
-	virtual EDataValidationResult IsDataValid(FDataValidationContext& Context) const override;
-#endif //WITH_EDITOR
 
 	virtual void NativeInitializeAnimation() override;
 	virtual void NativeUninitializeAnimation() override;

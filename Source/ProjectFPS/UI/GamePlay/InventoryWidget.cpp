@@ -108,16 +108,15 @@ void UInventoryWidget::Refresh()
 	}
 	
 	// 무기 슬롯으로
-	const TArray<FName>& Weapons = Inv->GetWeapons();
+	const TArray<FWeaponSlotData>& Weapons = Inv->GetWeapons();
 	if (_MainWeaponSlot)
-		_MainWeaponSlot->SetSlot(Weapons.IsValidIndex(0) ? Weapons[0]: NAME_None);
+		_MainWeaponSlot->SetSlot(Weapons.IsValidIndex(0) ? Weapons[0]._WeaponId : NAME_None);
 
 	if (_SubWeaponSlot)
-		_SubWeaponSlot->SetSlot(Weapons.IsValidIndex(1) ? Weapons[1] : NAME_None);
-
-
+		_SubWeaponSlot->SetSlot(Weapons.IsValidIndex(1) ? Weapons[1]._WeaponId : NAME_None);
 
 }
+
 void UInventoryWidget::HandleSlotDropRequested(EItemType Type, int32 Index, int32 Count)
 {
 	// 무기 1개 
@@ -149,7 +148,5 @@ void UInventoryWidget::RequestDrop(EItemType Type, int32 Index, int32 Count)
 		Character->ServerDropWeaponAt(Index);
 	else
 		Character->ServerDropItemAt(Index, Count);
-
-
 
 }

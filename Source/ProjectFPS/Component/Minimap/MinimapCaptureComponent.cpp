@@ -43,6 +43,7 @@ void UMinimapCaptureComponent::BeginPlay()
 	if (nullptr == OwnerPawn)
 	{
 		bCaptureEveryFrame = false;
+		bCaptureOnMovement = false;
 		SetComponentTickEnabled(false);
 		return;
 	}
@@ -126,11 +127,14 @@ void UMinimapCaptureComponent::ApplyLocalState()
 	if (false == bLocalPlayer)
 	{
 		bCaptureEveryFrame = false;
+		// Tick을 꺼도 부모 이동으로 캡처될 수 있으므로 함께 중단한다.
+		bCaptureOnMovement = false;
 		SetComponentTickEnabled(false);
 		return;
 	}
 	SetComponentTickEnabled(true);
 	bCaptureEveryFrame = true;
+	bCaptureOnMovement = true;
 	
 	if (false == _bInitialized)
 		InitializeCapture();

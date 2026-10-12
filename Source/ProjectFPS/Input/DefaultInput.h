@@ -67,4 +67,6 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _EquipSubWeapon;
 
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Reload;
 };

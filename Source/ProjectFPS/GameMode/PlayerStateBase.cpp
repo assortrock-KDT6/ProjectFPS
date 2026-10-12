@@ -5,6 +5,7 @@
 #include "Component/Inventory/InventoryComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "GameMode/FPSLobbyGameState.h"
+#include "GameMode/PlayerMatchStats.h"
 #include "Engine/World.h"
 
 APlayerStateBase::APlayerStateBase()

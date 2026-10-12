@@ -7,6 +7,7 @@
 
 namespace FPSGameplayTags
 {
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat_Reload, "Ability.Combat.Reload", "Weapon reload ability");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat,		 					"Ability.Combat",						"공격 어빌리티 분류");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat_Fire,  					"Ability.Combat.Fire",  				"Weapon firing ability");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Grenade_Cook,	 					"Event.Grenade.Cook",   				"수류탄 쿠킹 시작 요청");
