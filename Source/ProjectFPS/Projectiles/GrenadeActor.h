@@ -14,6 +14,8 @@
 class USphereComponent;
 class UStaticMeshComponent;
 class UGameplayEffect;
+class UNiagaraSystem;
+class USoundBase;
 
 UCLASS()
 class PROJECTFPS_API AGrenadeActor : public AActor
@@ -50,6 +52,14 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Explosion")
 	TSubclassOf<UGameplayEffect> _DamageEffect;
 	
+	// BP 클래스 기본값에서 사용할 폭발 이펙트를 지정한다. -> 나이아가라로 변경.
+	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Explosion")
+	TObjectPtr<UNiagaraSystem> _ExplosionEffect = nullptr;
+
+	// BP 클래스 기본값에서 사용할 폭발음을 지정한다. 거리 감쇠와 볼륨은 사운드 에셋 설정을 따른다.
+	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Explosion")
+	TObjectPtr<USoundBase> _ExplosionSound = nullptr;
+	
 public:	
 	AGrenadeActor();
 	
@@ -80,4 +90,8 @@ private:
 	
 	UFUNCTION()
 	void OnRep_Thrown();
+	
+	// 서버가 폭발 위치를 전달하면 각 화면에서 이펙트를 재생하기 위한 함수
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayExplosion(const FVector& Location);
 };
