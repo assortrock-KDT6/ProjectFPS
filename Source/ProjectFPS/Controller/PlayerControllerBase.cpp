@@ -31,6 +31,21 @@ APlayerControllerBase::APlayerControllerBase()
 	if (ResultWidget.Succeeded()) _MatchResultWidgetClass = ResultWidget.Class;
 }
 
+void APlayerControllerBase::ClientShowDamageNumber_Implementation(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	
+	if (ShieldDamage <= 0.f && HealthDamage <= 0.f)
+	{
+		return;
+	}
+	
+	ShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot);
+}
+
 void APlayerControllerBase::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
 {
 	ClearDeathCamera(true);

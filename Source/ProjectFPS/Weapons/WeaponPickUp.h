@@ -10,6 +10,7 @@
 
 class USphereComponent;
 class UPrimitiveComponent;
+struct FWeaponData;
 
 // AItemPickUp을 상속 -> 무기 픽업 시 손에 장착 기능까지.
 
@@ -28,7 +29,11 @@ public:
 	
 	// 에디터에서 ItemId에 해당하는 월드 Mesh를 미리 표시한다
 	virtual void OnConstruction(const FTransform& Transform) override;
-	
+
+public:
+	int		GetCurrentAmmo() const;
+	void	SetCurrentAmmo(int Ammo);
+
 protected:
 	UFUNCTION()
 	void OnInteractionSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
@@ -43,6 +48,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
 	TObjectPtr<USphereComponent> _PickupSphere;
+
+	UPROPERTY(BlueprintReadWrite, Category = "Weapon PickUp | Data")
+	int	_CurrentAmmo;
 	
 protected:
 	// Called when the game starts or when spawned

@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Item/ItemPickUp.h"
@@ -11,6 +11,7 @@
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
 #include "Character/CharacterPlayer.h"
+#include "Weapons/WeaponPickUp.h"
 #include "Net/UnrealNetwork.h"
 
 
@@ -198,43 +199,7 @@ void AItemPickUp::Interact_Implementation(AActor* Interactor)
 	if (nullptr == Character)
 		return;
 
-	// 슬롯찾기.
-	int32 SlotIndex = INDEX_NONE;
-	FName ReplacedTID = NAME_None;
-	if (false == Inv->FindEquipSlot(_TID, SlotIndex, ReplacedTID))
-		return;
-
-
-	// 밀려날 무기가 있으면 이 자리에 픽업 준비 (Deferred — 아직 월드에 없음)
-	AItemPickUp* DropPickUp = nullptr;
-	const FTransform DropTransform = GetActorTransform();
-	if (false == ReplacedTID.IsNone())
-	{
-		DropPickUp = BeginSpawnFromTID(GetWorld(), ReplacedTID, 1, DropTransform);
-		if (nullptr == DropPickUp)
-		{
-			UE_LOG(LogTemp, Error, TEXT("[ItemPickUp] '%s' 밀려날 무기 픽업 생성 실패 — 테이블 _PickUpClass 확인"), *ReplacedTID.ToString());
-			return;
-		}
-	}
-
-	// 인벤 확정 — 실패 시 준비한 픽업만 정리
-	if (false == Inv->CommitEquip(_TID, SlotIndex, false))
-	{
-		if (IsValid(DropPickUp))
-			DropPickUp->Destroy();
-		return;
-	}
-
-	// 마무리: 밀려난 픽업 등장 → 자기 삭제 → 알림
-	if (IsValid(DropPickUp))
-	{
-		AItemPickUp::FinishSpawnFromTID(DropPickUp, DropTransform);
-	}
-	Destroy();
-	Inv->NotifyWeaponsChanged();
-	
-
+	Character->TryAcquireWeapon(Cast<AWeaponPickUp>(this));
 }
 
 void AItemPickUp::OnConstruction(const FTransform& Transform)
