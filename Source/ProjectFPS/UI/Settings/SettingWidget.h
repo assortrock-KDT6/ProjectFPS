@@ -70,6 +70,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UButton> BTN_Apply;
 
+	// 미니맵 0 회전형 1 고정형
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UComboBoxString> CB_MinimapMode;
+
 private:
 	// CB_Resolution 항목과 같은 순서의 해상도 목록
 	TArray<FIntPoint> _Resolutions;
@@ -120,6 +124,9 @@ private:
 
 	UFUNCTION()
 	void HandleApplyClicked();
+
+	UFUNCTION()
+	void HandleMinimapModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
 
 

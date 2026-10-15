@@ -12,6 +12,8 @@
 #include "GameMode/FPSGameMode.h"
 #include "GameMode/PlayerStateBase.h"
 #include "GameTag/FPSGameplayTag.h"
+#include "AbilitySystemComponent.h"
+#include "Components/PrimitiveComponent.h"
 
 UFPSHealthSet::UFPSHealthSet()
 {
@@ -107,26 +109,41 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 			float CurrentShield = Get_Shield();
 			float CurrentHealth = Get_Health();
 			float DamageToApply = LocalDamageIn;
+			float ShieldDamage = 0.f;	// 쉴드가 흡수한 양.
 
 			if (CurrentShield > 0.f)
 			{
 				if (CurrentShield >= DamageToApply)
 				{
 					Set_Shield(CurrentShield - DamageToApply);
+					ShieldDamage = DamageToApply; //추가
 					DamageToApply = 0.f;
 				}
-				else
+				else 
 				{
+					ShieldDamage = CurrentShield; // 추가 
 					DamageToApply -= CurrentShield;
 					Set_Shield(0.f);
 				}
+			}
+
+			// 추가 : 쉴드가 줄어들면 쉴드 피격 연출
+			if (ShieldDamage > 0.f)
+			{
+				ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Shield, ShieldDamage);
 			}
 
 			if (DamageToApply > 0.f)
 			{
 				const float NewHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.f, Get_MaxHealth());
 				Set_Health(NewHealth);
-				
+
+				// 추가: 체력이 깎였으면 피 연출
+				if (NewHealth < CurrentHealth)
+				{
+					ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Health, CurrentHealth - NewHealth);
+				}
+
 				if (NewHealth <= 0.f && CurrentHealth > 0.f)
 				{
 					_OnOutOfHealth.Broadcast(GetDamagePlayerState(Data));
@@ -150,6 +167,80 @@ APlayerStateBase* UFPSHealthSet::GetDamagePlayerState(const FGameplayEffectModCa
 	}
 
 	return PlayerState;
+}
+
+void UFPSHealthSet::ExecuteHitCue(const FGameplayEffectModCallbackData& Data, const FGameplayTag& CueTag, float Damage) const
+{
+	UAbilitySystemComponent* AbilitySystem = GetOwningAbilitySystemComponent();
+	AActor* Avatar = Data.Target.GetAvatarActor();
+
+	if (false == IsValid(AbilitySystem) || false == IsValid(Avatar))
+	{
+		return;
+	}
+
+	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetContext();
+	AActor* Causer = Context.GetEffectCauser();
+
+	// 가해 액터를 모르면 피격자 중심에서 재생한다.
+	FVector HitLocation = Avatar->GetActorLocation();
+	FVector HitNormal = FVector::UpVector;
+
+	if (true == IsValid(Causer))
+	{
+		const FVector CauserLocation = Causer->GetActorLocation();
+		const FVector CauserVelocity = Causer->GetVelocity();
+		UPrimitiveComponent* Collision = Cast<UPrimitiveComponent>(Avatar->GetRootComponent());
+
+		bool bFoundEntry = false;
+
+		// 총알은 빨라서 판정 시점에 이미 몸을 지나쳐 있을 수 있다.
+		// 날아온 경로를 거슬러 올라가 몸에 처음 들어간 지점을 찾는다.
+		if (false == CauserVelocity.IsNearlyZero() && nullptr != Collision)
+		{
+			const FVector TravelDirection = CauserVelocity.GetSafeNormal();
+
+			// 한 프레임 이동 거리 + 캡슐 두께 여유만큼 뒤에서 시작
+			const float TraceBackDistance = CauserVelocity.Size() * Avatar->GetWorld()->GetDeltaSeconds() + 200.f;
+			const FVector TraceStart = CauserLocation - TravelDirection * TraceBackDistance;
+
+			FHitResult EntryHit;
+			if (Collision->LineTraceComponent(EntryHit, TraceStart, CauserLocation, FCollisionQueryParams::DefaultQueryParam))
+			{
+				HitLocation = EntryHit.ImpactPoint;
+				HitNormal = -TravelDirection; // 쏜 사람 쪽으로 튄다
+				bFoundEntry = true;
+			}
+		}
+
+		// 멈춰 있는 가해 액터(수류탄)이거나 경로를 못 찾았으면, 가해 액터 쪽 몸 표면을 쓴다.
+		if (false == bFoundEntry)
+		{
+			if (nullptr != Collision)
+			{
+				FVector ClosestPoint;
+				if (Collision->GetClosestPointOnCollision(CauserLocation, ClosestPoint) >= 0.f)
+				{
+					HitLocation = ClosestPoint;
+				}
+			}
+
+			const FVector ToCauser = (CauserLocation - Avatar->GetActorLocation()).GetSafeNormal();
+			if (false == ToCauser.IsNearlyZero())
+			{
+				HitNormal = ToCauser;
+			}
+		}
+	}
+
+	FGameplayCueParameters CueParameters;
+	CueParameters.Location = HitLocation;
+	CueParameters.Normal = HitNormal;
+	CueParameters.RawMagnitude = Damage;
+	CueParameters.Instigator = Context.GetInstigator();
+	CueParameters.EffectCauser = Causer;
+
+	AbilitySystem->ExecuteGameplayCue(CueTag, CueParameters);
 }
 
 APlayerStateBase* UFPSHealthSet::FindDamagePlayerState(AActor* DamageSource) const

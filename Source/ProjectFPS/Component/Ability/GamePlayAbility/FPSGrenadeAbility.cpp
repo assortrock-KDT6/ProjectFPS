@@ -518,6 +518,9 @@ void UFPSGrenadeAbility::OnGrenadeCook(FGameplayEventData Payload)
 			if (Inventory->RemoveItem(Index, 1))
 			{
 				Grenade->SetLifeSpan(5.f);
+				
+				// 쿠킹이 시작된 순간에만 소리를 한번 재생
+				Grenade->MulticastPlayCookSound(Grenade->GetActorLocation());
 			}
 			
 			return;

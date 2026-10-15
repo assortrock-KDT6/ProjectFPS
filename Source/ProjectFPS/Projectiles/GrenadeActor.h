@@ -59,7 +59,11 @@ protected:
 	// BP 클래스 기본값에서 사용할 폭발음을 지정한다. 거리 감쇠와 볼륨은 사운드 에셋 설정을 따른다.
 	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Explosion")
 	TObjectPtr<USoundBase> _ExplosionSound = nullptr;
-	
+
+	// BP 클래스 기본값에서 쿠킹 시작 시 재생할 소리를 지정한다
+	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Sound")
+	TObjectPtr<USoundBase> _CookSound = nullptr;
+
 public:	
 	AGrenadeActor();
 	
@@ -73,6 +77,10 @@ public:
 	
 	// 쿠킹 -> 무기교체 일때 쿠킹된 수류탄이 인벤토리로 가지 않고 떨어지는 기능
 	bool Drop();
+	
+	// 서버가 쿠킹 시작 위치를 전달하면 각 플레이어 쪽에서 소리를 재생한다.
+	UFUNCTION(NetMulticast, Reliable)
+	void MulticastPlayCookSound(const FVector& Location);
 	
 	virtual void GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const override;
 	

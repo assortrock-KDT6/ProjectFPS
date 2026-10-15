@@ -39,10 +39,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Minimap", meta = (ClampMin = "64" ))
 	int32 _Resolution = 512;
 
-	// 플레이어 시선 방향으로 지도를 돌릴지, 끌 경우 북쪽으로 고정시킴.
-	UPROPERTY(EditAnywhere, Category = "Minimap")
-	bool _bRotateWithPlayer = true;
-
 	// 자기 자신 외의 폰을 숨길지
 	UPROPERTY(EditAnywhere, Category = "Minimap|Hidden")
 	bool _bHideItherPawns = true;

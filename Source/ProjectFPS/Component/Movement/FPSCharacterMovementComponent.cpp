@@ -5,6 +5,7 @@
 #include "Character/CharacterPlayer.h"
 #include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
+#include "GameMode/FPSGameState.h"
 
 #include "Components/CapsuleComponent.h"
 
@@ -572,13 +573,15 @@ float UFPSCharacterMovementComponent::GetServerTimeSeconds() const
 	if (true == IsValid(GameState))
 	{
 		float ServerTimeSeconds = GameState->GetServerWorldTimeSeconds();
+		const AFPSGameState* FPSGameState = Cast<AFPSGameState>(GameState);
+		const bool HasSynchronizedServerTime = IsValid(FPSGameState) && FPSGameState->HasSynchronizedServerTime();
 
 		/**
-		 * GameState의 클라이언트 서버 시각은 전송 시간만큼 뒤에 있다. 실시간 Ping을 여기서
-		 * 다시 읽으면 서버가 예약할 때의 값과 달라져 액션마다 시작 위상이 튄다. 서버가 해당
-		 * 액션을 만들 때 확정해 복제한 편도 지연 추정값만 사용한다.
+		 * 동기화된 서버 시각에는 이미 지연 보정이 포함되어 있으므로 추가 보정하지 않는다.
+		 * 동기화 전에는 서버가 해당 액션을 만들 때 확정해 복제한 편도 지연 추정값만 사용한다.
 		 */
-		if (nullptr != CharacterOwner && ROLE_AutonomousProxy == CharacterOwner->GetLocalRole())
+		if (false == HasSynchronizedServerTime
+			&& nullptr != CharacterOwner && ROLE_AutonomousProxy == CharacterOwner->GetLocalRole())
 		{
 			ServerTimeSeconds += FMath::Max(0.f, _TraversalState._EstimatedOneWaySeconds);
 		}

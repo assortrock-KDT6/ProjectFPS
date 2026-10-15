@@ -20,6 +20,7 @@ void USettingWidget::NativeOnInitialized()
 	CB_Resolution->OnSelectionChanged.AddDynamic(this, &USettingWidget::HandleResolutionChanged);
 	CB_WindowMode->OnSelectionChanged.AddDynamic(this, &USettingWidget::HandleWindowModeChanged);
 	CB_Quality->OnSelectionChanged.AddDynamic(this, &USettingWidget::HandleQualityChanged);
+	CB_MinimapMode->OnSelectionChanged.AddDynamic(this, &USettingWidget::HandleMinimapModeChanged);
 
 	SL_MouseSensitivity->OnValueChanged.AddDynamic(this, &USettingWidget::HandleMouseSensitivityChanged);
 	SL_MasterVolume->OnValueChanged.AddDynamic(this, &USettingWidget::HandleMasterVolumeChanged);
@@ -70,6 +71,11 @@ void USettingWidget::InitOptions()
 	CB_Quality->AddOption(TEXT("중간"));
 	CB_Quality->AddOption(TEXT("높음"));
 	CB_Quality->AddOption(TEXT("매우 높음")); 
+
+	// 미니맵 : 회전형, 고정형
+	CB_MinimapMode->ClearOptions();
+	CB_MinimapMode->AddOption(TEXT("회전형"));
+	CB_MinimapMode->AddOption(TEXT("고정형"));
 }
 
 void USettingWidget::RefreshFromSettings()
@@ -95,6 +101,14 @@ void USettingWidget::RefreshFromSettings()
 
 	// 항목별로 따로 바꾼 상태(사용자 지정)면 -1이 와서 선택 없음으로 표시된다.
 	CB_Quality->SetSelectedIndex(Settings->GetOverallScalabilityLevel());
+	if (true == Settings->GetMinimapRotate())
+	{
+		CB_MinimapMode->SetSelectedIndex(0);
+	}
+	else
+	{
+		CB_MinimapMode->SetSelectedIndex(1);
+	}
 
 	// SetValue는 OnValueChanged를 부르지 않으므로 텍스트도 직접 갱신
 	SL_MouseSensitivity->SetValue(Settings->GetMouseSensitivity());
@@ -243,5 +257,18 @@ void USettingWidget::HandleApplyClicked()
 	if (UFPSSettingsSubsystem* Subsystem = GetSettingsSubsystem())
 	{
 		Subsystem->ApplyAndSave();
+	}
+}
+
+void USettingWidget::HandleMinimapModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+	if (ESelectInfo::Direct == SelectionType)
+	{
+		return;
+	}
+
+	if (UFPSGameUserSettings* Settings = GetSettings())
+	{
+		Settings->SetMinimapRotate(0 == CB_MinimapMode->GetSelectedIndex());
 	}
 }
