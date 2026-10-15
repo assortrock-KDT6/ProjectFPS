@@ -13,6 +13,9 @@
 void USettingWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
+
+	// 콤보 박스 항목은 한버만 채움 (열 때마다 선택만 다시 맞춤)
+	InitOptions();
 	
 	CB_Resolution->OnSelectionChanged.AddDynamic(this, &USettingWidget::HandleResolutionChanged);
 	CB_WindowMode->OnSelectionChanged.AddDynamic(this, &USettingWidget::HandleWindowModeChanged);
@@ -55,18 +58,18 @@ void USettingWidget::InitOptions()
 		CB_Resolution->AddOption(FString::Printf(TEXT("%d x %d"), Resolution.X, Resolution.Y));
 	}
 	
-	// 창모드 : EWindowMode 순서(0 전체화면, 1 창 저체 화면, 창)
+	// 창모드 : EWindowMode 순서(0 전체화면, 1 창 전체 화면, 창)
 	CB_WindowMode->ClearOptions();
 	CB_WindowMode->AddOption(TEXT("전체 화면"));
 	CB_WindowMode->AddOption(TEXT("창 전체 화면"));
 	CB_WindowMode->AddOption(TEXT("창 모드"));
 
-	// 그래픽 품질 : 스케일러빌리티 레벨 순서 (0 낮음 ~ 3 에픽)
+	// 그래픽 품질 : 스케일러빌리티 레벨 순서 (0 낮음 ~ 3 매우 높음)
 	CB_Quality->ClearOptions();
 	CB_Quality->AddOption(TEXT("낮음"));
 	CB_Quality->AddOption(TEXT("중간"));
 	CB_Quality->AddOption(TEXT("높음"));
-	CB_Quality->AddOption(TEXT("매우 높음")); // 왜 에픽이라고 표현하지? 
+	CB_Quality->AddOption(TEXT("매우 높음")); 
 }
 
 void USettingWidget::RefreshFromSettings()
@@ -84,7 +87,7 @@ void USettingWidget::RefreshFromSettings()
 	if (INDEX_NONE == ResolutionIndex)
 	{
 		ResolutionIndex = _Resolutions.Add(Resolution);
-		CB_Resolution->AddOption(FString::Printf(TEXT("%d x%d"), Resolution.X, Resolution.Y));
+		CB_Resolution->AddOption(FString::Printf(TEXT("%d x %d"), Resolution.X, Resolution.Y));
 	}
 	CB_Resolution->SetSelectedIndex(ResolutionIndex);
 

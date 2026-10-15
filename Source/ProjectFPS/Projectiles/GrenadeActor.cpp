@@ -10,8 +10,10 @@
 #include "GameTag/FPSGameplayTag.h"
 #include "GameFramework/Pawn.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/GameplayStatics.h"
 #include "NiagaraSystem.h"
 #include "NiagaraFunctionLibrary.h"
+#include "Sound/SoundBase.h"
 #include "Engine/World.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -171,13 +173,33 @@ void AGrenadeActor::BeginPlay()
 
 void AGrenadeActor::MulticastPlayExplosion_Implementation(const FVector& Location)
 {
-	if (GetNetMode() == NM_DedicatedServer || !IsValid(_ExplosionEffect.Get())) // 리슨서버는 해당되지않음, 전용서버를 가지게 되면 그때 적용되는 코드 -> 리슨처럼 직접 플레이하지 않는 서버에서는 그리지말라는 코드에요
+	// 리슨서버는 해당되지않음, 전용서버를 가지게 되면 그때 적용되는 코드 -> 리슨처럼 직접 플레이하지 않는 서버에서는 그리지말라는 코드에요
+	if (GetNetMode() == NM_DedicatedServer) 
 	{
 		return;
 	}
 	
 	// 폭발 위치에 Niagara 이펙트를 생성하고 즉시 재생
 	UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, _ExplosionEffect.Get(), Location, FRotator::ZeroRotator, FVector(1.f), true, true);
+	
+
+	// 폭발음도 같은 위치에서 재생한다. 수류탄 액터가 사라져도 소리는 끝까지 재생함.
+	if (IsValid(_ExplosionSound.Get()))
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, _ExplosionSound.Get(), Location);
+	}
+	
+}
+
+void AGrenadeActor::MulticastPlayCookSound_Implementation(const FVector& Location)
+{
+	// 플레이 화면과 소리가 없는 전용 서버에서는 재생하지 않는다.
+	if (GetNetMode() == NM_DedicatedServer || !IsValid(_CookSound.Get()))
+	{
+		return;
+	}
+	
+	UGameplayStatics::PlaySoundAtLocation(this, _CookSound.Get(), Location);
 }
 
 void AGrenadeActor::LifeSpanExpired()

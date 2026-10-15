@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -47,10 +47,10 @@ public:
 	bool FindEquipSlot(FName TID, int32& OutSlotIndex, FName& OutReplacedITD) const;
 
 	// FindEquipSlot 결과를 반영 (서버). 슬롯을 채우고 장착 슬롯으로 지정함.
-	bool CommitEquip(FName TID, int32 SlotIndex, bool bNotify);
+	bool CommitEquip(const FWeaponSlotData& Data, int32 SlotIndex, bool bNotify);
 	void NotifyWeaponsChanged() { OnRep_Weapons(); }
 	// 슬롯을 비운다 - 장비 서버전용
-	bool RemoveWeapon(int32 Index);
+	bool RemoveWeapon(int32 Index, bool bNotify = true);
 
 	// 슬롯에서 Count만큼 뺀다. 소모품 서버전용
 	bool RemoveItem(int32 Index, int32 Count);
@@ -102,7 +102,7 @@ public:
 	bool IsWeaponSlotFull() const;
 
 	// 장착 슬롯을지정 (서버) 범위 밖이면 INDEX_NONE 처리.
-	void SetEquippedWEaponIndex(int32 Index);
+	void SetEquippedWEaponIndex(int32 Index, bool bNotify = true);
 
 	void SetWeaponSlotData(int32 Index, const FWeaponSlotData& Data);
 

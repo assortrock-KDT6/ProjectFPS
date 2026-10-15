@@ -12,6 +12,9 @@
 #include "GameMode/FPSGameMode.h"
 #include "GameMode/PlayerStateBase.h"
 #include "GameTag/FPSGameplayTag.h"
+#include "Controller/PlayerControllerBase.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/HitResult.h"
 
 UFPSHealthSet::UFPSHealthSet()
 {
@@ -97,43 +100,82 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 {
 	Super::PostGameplayEffectExecute(Data);
 
-	if (Get_DamageInAttribute() == Data.EvaluatedData.Attribute)
+	if (Get_DamageInAttribute() != Data.EvaluatedData.Attribute)
 	{
-		const float LocalDamageIn = Get_DamageIn();
-		Set_DamageIn(0.f);
+		return;
+	}
+	const float LocalDamageIn = Get_DamageIn();
+	Set_DamageIn(0.f);
 
-		if (LocalDamageIn > 0.f)
+	if (!(LocalDamageIn > 0.f))
+	{
+		return;
+	}
+
+	// 실제 감소량을 구하기 위해 차감 전 값을 보관
+	const float CurrentShield = Get_Shield();
+	const float CurrentHealth = Get_Health();
+	float DamageToApply = LocalDamageIn;
+
+	if (CurrentShield > 0.f)
+	{
+		if (CurrentShield >= DamageToApply)
 		{
-			float CurrentShield = Get_Shield();
-			float CurrentHealth = Get_Health();
-			float DamageToApply = LocalDamageIn;
-
-			if (CurrentShield > 0.f)
-			{
-				if (CurrentShield >= DamageToApply)
-				{
-					Set_Shield(CurrentShield - DamageToApply);
-					DamageToApply = 0.f;
-				}
-				else
-				{
-					DamageToApply -= CurrentShield;
-					Set_Shield(0.f);
-				}
-			}
-
-			if (DamageToApply > 0.f)
-			{
-				const float NewHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.f, Get_MaxHealth());
-				Set_Health(NewHealth);
-				
-				if (NewHealth <= 0.f && CurrentHealth > 0.f)
-				{
-					_OnOutOfHealth.Broadcast(GetDamagePlayerState(Data));
-				}
-
-			}
+			Set_Shield(CurrentShield - DamageToApply);
+			DamageToApply = 0.f;
 		}
+		else 
+		{
+			DamageToApply -= CurrentShield;
+			Set_Shield(0.f);
+		}
+	}
+
+	if (DamageToApply > 0.f)
+	{
+		const float NewHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.f, Get_MaxHealth());
+		Set_Health(NewHealth);
+	}
+	
+	// if (NewHealth <= 0.f && CurrentHealth > 0.f)
+	// {
+	// 	_OnOutOfHealth.Broadcast(GetDamagePlayerState(Data));
+	// }
+
+	// 표시 이벤트를 호출하기전에 이번 피해결과를 확정
+	const float ShieldDamage = FMath::Max(CurrentShield - Get_Shield(), 0.f);
+	const float HealthDamage = FMath::Max(CurrentHealth - Get_Health(), 0.f);
+	const bool  bOutOfHealth = CurrentHealth > 0.f && Get_Health() <= 0.f;
+	
+	APlayerStateBase* PlayerState = GetDamagePlayerState(Data);
+	APlayerControllerBase* Controller = IsValid(PlayerState) ? Cast<APlayerControllerBase>(PlayerState->GetPlayerController()) : nullptr;
+	
+	AActor* Target = Data.Target.GetAvatarActor();
+	
+	if (IsValid(Controller) && IsValid(Target) && (ShieldDamage > 0.f || HealthDamage > 0.f))
+	{
+		const FHitResult* Hit = Data.EffectSpec.GetContext().GetHitResult();
+		const bool bHeadShot  = Hit && Hit->BoneName == FName(TEXT("head"));
+		
+		// 머리 본을 찾지 못하면 대상 충돌 영역의 상단을 사용
+		FVector WorldLocation;
+		FVector BoundsExtent;
+		Target->GetActorBounds(true, WorldLocation, BoundsExtent);
+		WorldLocation.Z += BoundsExtent.Z;
+		
+		const USkeletalMeshComponent* Mesh = Hit ? Cast<USkeletalMeshComponent>(Hit->GetComponent()) : nullptr;
+		if (IsValid(Mesh) && Mesh->DoesSocketExist(TEXT("head")))
+		{
+			WorldLocation = Mesh->GetSocketLocation(TEXT("head"));
+		}
+		
+		Controller->ClientShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot);
+	}
+	
+	// 마지막 타격의 표시 정보를 보낸 뒤 기존 사망 처리를 실행
+	if (bOutOfHealth)
+	{
+		_OnOutOfHealth.Broadcast(PlayerState);
 	}
 }
 

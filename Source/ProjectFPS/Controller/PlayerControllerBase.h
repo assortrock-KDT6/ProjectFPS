@@ -126,6 +126,19 @@ public:
 	void RefreshInputMappingContext();
 
 public:
+	// Commit 건영 : 총알 피해 수치를 UMG로 띄우기
+	// UMG를 PlayerControllerBase에서 하는 이유는 피해숫자가 '공격한 플레이어 본인'에게만 보내기 위해서
+	// PlayerController는 플레이어 한 명의 입력과 네트워크 연결을 담당하는 객체인데 서버에서 특정 플레이어의 Controller에 Client 함수를 호출하면, 그 플레이어 쪽에서 실행
+	// 또한 Controller는 캐릭터가 죽고 다시 생성되는 리스폰 과정에서도 보통 유지돼서, 플레이어에게 보내는 화면 알림을 두기에 적합함
+	
+	// 서버에서 확정한 피해 정보를 공격자 본인에게 전달
+	UFUNCTION(Client, Reliable)
+	void ClientShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot);
+	
+	// 전달 받은 정보를 사용하는 위젯 연출은 Blueprint에서 구현
+	UFUNCTION(BlueprintImplementableEvent, Category = "UI | Damage")
+	void ShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot);
+	
 	UFUNCTION(Client, Reliable)
 	void ClientShowMatchResults(const TArray<FPlayerMatchResult>& Results, double ReturnServerTime);
 

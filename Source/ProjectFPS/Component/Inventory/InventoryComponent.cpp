@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Component/Inventory/InventoryComponent.h"
@@ -6,6 +6,7 @@
 #include "Table/TableDatas.h"
 #include "Common/GameDefines.h"
 #include "Net/UnrealNetwork.h"
+#include "GameFramework/Actor.h"
 
 
 
@@ -140,7 +141,7 @@ bool UInventoryComponent::FindEquipSlot(FName TID, int32& OutSlotIndex, FName& O
 }
 
 // 서버전용 슬롯을 비운다 장비템
-bool UInventoryComponent::RemoveWeapon(int32 Index)
+bool UInventoryComponent::RemoveWeapon(int32 Index, bool bNotify)
 {
 	// 서버 권한체크 
 	if (!GetOwner()->HasAuthority())
@@ -150,13 +151,14 @@ bool UInventoryComponent::RemoveWeapon(int32 Index)
 	if (false == _Weapons.IsValidIndex(Index) || _Weapons[Index].IsNone())
 		return false;
 
-	_Weapons[Index]._WeaponId = NAME_None;
+	_Weapons[Index] = FWeaponSlotData();
 
 	//손에 들고 있던 걸 빼면 장착 슬롯 해제
 	if (Index == _EquippedWeaponIndex)
 		_EquippedWeaponIndex = INDEX_NONE;
 
-	OnRep_Weapons();
+	if (bNotify)
+		OnRep_Weapons();
 	return true;
 }
 
@@ -187,39 +189,11 @@ bool UInventoryComponent::RemoveItem(int32 Index, int32 Count)
 	
 }
 
-bool UInventoryComponent::CommitEquip(FName TID, int32 SlotIndex, bool bNotify)
+bool UInventoryComponent::CommitEquip(const FWeaponSlotData& Data, int32 SlotIndex, bool bNotify)
 {
-	if (false == GetOwner()->HasAuthority())
+	if (!GetOwner()->HasAuthority() || Data.IsNone() || !_Weapons.IsValidIndex(SlotIndex))
 		return false;
-
-	if (TID.IsNone() || false == _Weapons.IsValidIndex(SlotIndex))
-		return false;
-
-	UTableSubsystem* TableLoader = UTableSubsystem::Get(this);
-
-	if (nullptr == TableLoader)
-	{
-		return false;
-	}
-
-	const FWeaponData* WeaponDataRow = TableLoader->FindTableRow<FWeaponData>(TEXT("WeaponDataTable"), TID);
-
-	if (nullptr == WeaponDataRow)
-	{
-		return false;
-	}
-
-	const FWeaponAbilityDataTable* WeaponAbilRow = TableLoader->FindTableRow<FWeaponAbilityDataTable>(TEXT("WeaponAbilityDataTable"), 
-		WeaponDataRow->_WeaponAbilId);
-
-	if (nullptr == WeaponAbilRow)
-	{
-		return false;
-	}
-
-	_Weapons[SlotIndex]._WeaponId = TID;
-	_Weapons[SlotIndex]._MaxAmmo = WeaponAbilRow->_BulletCount;
-	_Weapons[SlotIndex]._CurrentAmmo = _Weapons[SlotIndex]._MaxAmmo;
+	_Weapons[SlotIndex] = Data;
 
 	_EquippedWeaponIndex = SlotIndex;
 
@@ -243,7 +217,7 @@ bool UInventoryComponent::IsWeaponSlotFull() const
 	return _Weapons.Num() > 0;
 }
 
-void UInventoryComponent::SetEquippedWEaponIndex(int32 Index)
+void UInventoryComponent::SetEquippedWEaponIndex(int32 Index, bool bNotify)
 {
 	// 장착 슬롯 번호 기록
 	
@@ -252,7 +226,7 @@ void UInventoryComponent::SetEquippedWEaponIndex(int32 Index)
 		return;
 
 	// 현재 장착중인 슬롯 번호
-	if (_Weapons.IsValidIndex(Index))	// 비어있는지 확인 후 비어있으면 채워줌
+	if (_Weapons.IsValidIndex(Index) && !_Weapons[Index].IsNone())	// 비어있는지 확인 후 비어있으면 채워줌
 	{
 		_EquippedWeaponIndex = Index;
 	}
@@ -261,7 +235,8 @@ void UInventoryComponent::SetEquippedWEaponIndex(int32 Index)
 		_EquippedWeaponIndex = INDEX_NONE;
 	}
 
-	OnRep_Weapons();
+	if (bNotify)
+		OnRep_Weapons();
 }
 
 void UInventoryComponent::SetWeaponSlotData(int32 Index, const FWeaponSlotData& Data)

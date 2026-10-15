@@ -67,7 +67,6 @@ const FWeaponData& AWeaponActor::GetWeaponData() const
 
 USceneComponent* AWeaponActor::GetWeaponMeshComponent() const
 {
-
 	return _WeaponMesh;
 }
 
