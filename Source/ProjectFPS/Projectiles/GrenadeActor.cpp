@@ -191,6 +191,17 @@ void AGrenadeActor::MulticastPlayExplosion_Implementation(const FVector& Locatio
 	
 }
 
+void AGrenadeActor::MulticastPlayCookSound_Implementation(const FVector& Location)
+{
+	// 플레이 화면과 소리가 없는 전용 서버에서는 재생하지 않는다.
+	if (GetNetMode() == NM_DedicatedServer || !IsValid(_CookSound.Get()))
+	{
+		return;
+	}
+	
+	UGameplayStatics::PlaySoundAtLocation(this, _CookSound.Get(), Location);
+}
+
 void AGrenadeActor::LifeSpanExpired()
 {
 	if (!HasAuthority() || !IsValid(GetWorld()))

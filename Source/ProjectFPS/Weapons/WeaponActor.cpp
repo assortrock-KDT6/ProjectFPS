@@ -186,7 +186,9 @@ bool AWeaponActor::Fire(const FVector& AimPoint)
 	Projectile->FinishSpawning(FTransform(FireDirection.Rotation(), MuzzleLocation));
 	SubCurrentAmmo(1);
 	
-	return IsValid(Projectile);
+	// FinishSpawning의 초기 Overlap에서 즉시 명중해 파괴되어도 발사는 성공한 것이다.
+	// 투사체의 생존 여부로 실패를 반환하면 발사 연출이 누락되고 연사가 종료된다.
+	return true;
 }
 
 void AWeaponActor::SubCurrentAmmo(int NewAmmo)

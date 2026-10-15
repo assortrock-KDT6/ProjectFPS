@@ -67,7 +67,7 @@ protected:
 
 	bool IsLocalHUD() const;
 
-protected:
+public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleSettings();	// 로비, 게임 둘다 상속.
 

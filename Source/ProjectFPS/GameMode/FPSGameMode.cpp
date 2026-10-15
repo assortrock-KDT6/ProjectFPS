@@ -434,14 +434,18 @@ void AFPSGameMode::HandleMatchHasEnded()
 			Character->GetCharacterMovement()->DisableMovement();
 		}
 	}
+
 	Super::HandleMatchHasEnded();
 
 	const float ResultDuration = FMath::IsFinite(_ResultDisplayDurationSeconds)
 		? FMath::Max(0.1f, _ResultDisplayDurationSeconds) : 10.f;
+
 	const double ReturnServerTime = (IsValid(FPSGameState)
 		? FPSGameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds()) + ResultDuration;
+
 	const TArray<FPlayerMatchResult> Results = IsValid(FPSGameState)
 		? FPSGameState->GetMatchResults() : TArray<FPlayerMatchResult>();
+
 	for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
 	{
 		if (APlayerControllerBase* Controller = Cast<APlayerControllerBase>(Iterator->Get()))
@@ -450,6 +454,7 @@ void AFPSGameMode::HandleMatchHasEnded()
 			Controller->ClientShowMatchResults(Results, ReturnServerTime);
 		}
 	}
+
 	GetWorldTimerManager().SetTimer(_ReturnToLobbyTimer, this,
 		&AFPSGameMode::ReturnToLobbyAfterResults, ResultDuration, false);
 }

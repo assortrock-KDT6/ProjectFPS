@@ -19,8 +19,6 @@
 #include "GameMode/FPSGameMode.h"
 #include "UI/GamePlay/MatchResultWidget.h"
 #include "UI/MainHUD.h"
-#include "Components/InputComponent.h"
-#include "InputCoreTypes.h"
 
 APlayerControllerBase::APlayerControllerBase()
 {
@@ -29,6 +27,21 @@ APlayerControllerBase::APlayerControllerBase()
 	static ConstructorHelpers::FClassFinder<UMatchResultWidget> ResultWidget(
 		TEXT("/Game/Blueprints/UI/Widget/GamePlay/WBP_MatchResult"));
 	if (ResultWidget.Succeeded()) _MatchResultWidgetClass = ResultWidget.Class;
+}
+
+void APlayerControllerBase::ClientShowDamageNumber_Implementation(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	
+	if (ShieldDamage <= 0.f && HealthDamage <= 0.f)
+	{
+		return;
+	}
+	
+	ShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot);
 }
 
 void APlayerControllerBase::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
@@ -116,24 +129,6 @@ void APlayerControllerBase::ClientReturnToMainMenuWithTextReason_Implementation(
 	}
 
 	Super::ClientReturnToMainMenuWithTextReason_Implementation(ReturnReason);
-}
-
-void APlayerControllerBase::SetupInputComponent()
-{
-	Super::SetupInputComponent();
-
-	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ThisClass::ToggleExitMenu);
-}
-
-void APlayerControllerBase::ToggleExitMenu()
-{
-	if (true == IsLocalController())
-	{
-		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
-		{
-			HUD->ToggleExitMenu();
-		}
-	}
 }
 
 bool APlayerControllerBase::RestoreMatchResultInput()
