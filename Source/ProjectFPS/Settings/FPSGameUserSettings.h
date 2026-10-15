@@ -33,10 +33,6 @@ protected:
 	UPROPERTY(Config)
 	float _MusicVolume = 1.f;
 
-	// 미니맵 회전 방식 ture (시선 방향에 따라), false (북쪽 고정)
-	UPROPERTY(Config)
-	bool _bMinimapRotate = true;
-
 public:
 	// 블루프린트와  C++ 어디서든 현재 설정 객체를 가져온다.
 	UFUNCTION(BlueprintPure, category = "Settings")
@@ -68,12 +64,5 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Settings")
 	float GetMusicVolume() const;
-
-	UFUNCTION(BlueprintCallable, Category = "Settings")
-	void SetMinimapRotate(bool bRotate);
-
-	UFUNCTION(BlueprintPure, Category = "Settings")
-	bool GetMinimapRotate() const;
-
 
 };

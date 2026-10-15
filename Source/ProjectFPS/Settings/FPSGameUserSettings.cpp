@@ -59,13 +59,3 @@ float UFPSGameUserSettings::GetMusicVolume() const
 {
 	return _MusicVolume;
 }
-
-void UFPSGameUserSettings::SetMinimapRotate(bool bRotate)
-{
-	_bMinimapRotate = bRotate;
-}
-
-bool UFPSGameUserSettings::GetMinimapRotate() const
-{
-	return _bMinimapRotate;
-}

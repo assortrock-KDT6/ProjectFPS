@@ -5,8 +5,6 @@
 #include "Component/Minimap/MinimapCaptureComponent.h"
 #include "Components/Image.h"
 #include "Engine/TextureRenderTarget2D.h"
-#include "Settings/FPSGameUserSettings.h"
-#include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "Materials/MaterialInstanceDynamic.h"
 
@@ -45,8 +43,6 @@ void UMinimapWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	{
 		SetupFromPawn(Pawn);
 	}
-
-	UpdatePlayerMarker();
 }
 
 bool UMinimapWidget::SetupFromPawn(APawn* Pawn)
@@ -94,23 +90,4 @@ bool UMinimapWidget::SetupFromPawn(APawn* Pawn)
 	return true;
 
 
-}
-
-void UMinimapWidget::UpdatePlayerMarker()
-{
-	if (nullptr == _PlayerMarker)
-	{
-		return;
-	}
-
-	// 회전형은 지도가 돌기 때문에 마커는 항상 위를 본다.
-	// 고정형은 지도가 북쪽 고정이라 마커가 시선 방향으로 돈다.
-	float Angle = 0.f;
-	UFPSGameUserSettings* Settings = UFPSGameUserSettings::GetFPSGameUserSettings();
-	APlayerController* PlayerController = GetOwningPlayer();
-	if (nullptr != Settings && false == Settings->GetMinimapRotate() && nullptr != PlayerController)
-	{
-		Angle = PlayerController->GetControlRotation().Yaw;
-	}
-	_PlayerMarker->SetRenderTransformAngle(Angle);
 }

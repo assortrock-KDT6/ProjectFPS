@@ -59,8 +59,5 @@ namespace FPSGameplayTags
 	// 총알 탄착 연출 (데칼)
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Weapon_Impact);
 
-	// 피격 연출(피 / 쉴드)
-	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Character_Hit_Health);
-	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Character_Hit_Shield);
 
 }

@@ -7,7 +7,6 @@
 #include "Kismet/KismetRenderingLibrary.h"	// RenderTarget을 초기화 관리하는 렌더링 기능을 사용.
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
-#include "Settings/FPSGameUserSettings.h"
 #include "EngineUtils.h"					//	worlde에서 Actor을 검색/순회
 
 
@@ -92,8 +91,7 @@ void UMinimapCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 
 	// 바로 아래를 보되, 필요하면 시선 방향으로 돌린다.
 	float Yaw = 0.f;
-	UFPSGameUserSettings* Settings = UFPSGameUserSettings::GetFPSGameUserSettings();
-	if (nullptr != Settings && true == Settings->GetMinimapRotate())
+	if (_bRotateWithPlayer)
 	{
 		APawn* OwnerPawn = Cast<APawn>(OwnerActor);
 		if (nullptr != OwnerPawn)
