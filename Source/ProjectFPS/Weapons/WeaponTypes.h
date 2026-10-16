@@ -123,6 +123,14 @@ struct FWeaponData : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisPlayName = "WeaponInfomation | StaticMesh"))
 	TObjectPtr<UStaticMesh> _StaticMesh = nullptr;
+
+	// 장착된 3인칭 총기에만 적용한다. 1인칭 메시와 월드 픽업 크기는 유지한다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person", meta = (ClampMin = "0.5", ClampMax = "1.5"))
+	float _ThirdPersonScale = 1.f;
+
+	// 지지 손이 닿을 여유를 확보하도록 원본 오른손을 어깨 쪽으로 당기는 거리(cm).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person", meta = (ClampMin = "0.0", ClampMax = "15.0"))
+	float _ThirdPersonHandRetraction = 0.f;
 	
 	// 내 화면에표시할 1인칭 총기
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | View")

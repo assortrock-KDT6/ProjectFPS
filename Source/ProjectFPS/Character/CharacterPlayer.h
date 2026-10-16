@@ -1,10 +1,11 @@
-﻿// Fill out your copyright notice in the Description page of Project Settings.
+﻿// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 #pragma once
 
 #include "Character/CharacterBase.h"
 #include "TimerManager.h"				// 총알 연사를 구현하기 위해서 넣었습니다. - 건영 
 #include "Weapons/WeaponTypes.h"
+#include "Engine/NetSerialization.h"
 #include "CharacterPlayer.generated.h"
 
 
@@ -41,6 +42,21 @@ enum class EAnimMeshType : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWeaponEquippedChangedSignature, bool, bEquipped);
 
+// 조준 원점·방향·시각을 한 복제 상태로 보내 서로 다른 프레임의 값이 섞이지 않게 한다.
+USTRUCT()
+struct FWeaponPoseAimState
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FVector_NetQuantize100 _Origin = FVector::ZeroVector;
+
+	UPROPERTY()
+	FRotator _Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY()
+	double _ServerTime = 0.0;
+};
 
 UCLASS()
 class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
@@ -163,6 +179,18 @@ protected:
 	TObjectPtr<UAnimMontage> _DeathMontage;
 
 private:
+	// 관찰 클라이언트는 서버 조준 원점을 사용하여 비소유 카메라의 위치 차이를 배제한다.
+	UPROPERTY(ReplicatedUsing = OnRep_WeaponPoseAimPoint)
+	FWeaponPoseAimState _ReplicatedWeaponPoseAim;
+
+	bool _bHasReplicatedWeaponPoseAimPoint = false;
+	FRotator _WeaponPoseAngularVelocity = FRotator::ZeroRotator;
+	FRotator _PreviousWeaponPoseRotation = FRotator::ZeroRotator;
+	double _PreviousWeaponPoseServerTime = 0.0;
+
+	UFUNCTION()
+	void OnRep_WeaponPoseAimPoint();
+
 	UPROPERTY(ReplicatedUsing = OnRep_DeathStartServerTime)
 	double _DeathStartServerTime = -1.0;
 
@@ -206,6 +234,16 @@ public:
 	void ServerSetAiming_Implementation(bool bAiming);
 	// 카메라 중앙이 가리키는 월드 위치를 구하기
 	FVector GetAimPoint(float WeaponRange) const;
+
+	// 애니메이션은 조준점 중앙을 향하도록 하며, 무작위 탄퍼짐이 자세에 영향을 주지 않게 한다.
+	FVector GetWeaponPoseAimPoint(float WeaponRange) const;
+
+	// 포즈 평가보다 나중에 갱신되는 카메라 캐시 대신 현재 시점 입력을 사용한다.
+	FRotator GetWeaponAimRotation() const;
+	FVector GetWeaponAimOrigin() const;
+
+	// 벽 가림과 캐릭터 충돌을 함께 검사하는 공통 조준 트레이스다.
+	FVector TraceWeaponAimPoint(const FVector& Start, const FVector& Direction, float WeaponRange) const;
 
 	// 실제 무기는 3인칭 오른손에 장착하고, 로컬 표시용 무기는 별도로 설정한다.
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
@@ -262,7 +300,7 @@ private:
 protected:
 	virtual void PostInitializeComponents() override;
 
-	// Called when the game starts or when spawned
+	// 게임이 시작되거나 액터가 생성될 때 호출한다.
 	virtual void BeginPlay() override;
 	
 	// virtual void OnRep_PlayerState() override;
@@ -273,13 +311,13 @@ public:
 	virtual void Jump() override;
 
 public:
-	// Called every frame
+	// 매 프레임 호출한다.
 	virtual void Tick(float DeltaTime) override;
 
 	// Commit 건영 : AActor에 있는 함수인데 NearClip을 적용하기위해서 재정의해서 사용합니다.
 	virtual void CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult) override;
 	
-	// Called to bind functionality to input
+	// 입력에 동작을 바인딩할 때 호출한다.
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void PossessedBy(AController* Newcontroller) override;
@@ -370,6 +408,14 @@ protected:
 	UFUNCTION()
 	void StopFireAction(const FInputActionValue& value);
 
+	// 전용 근접 공격 입력은 무기 장착 상태에서도 사용할 수 있다.
+	UFUNCTION()
+	void MeleeAction(const FInputActionValue& Value);
+
+	// 입력 해제는 현재 공격을 취소하지 않고 눌림 상태만 갱신한다.
+	UFUNCTION()
+	void StopMeleeAction(const FInputActionValue& Value);
+
 	UFUNCTION()
 	void FireToggleAction(const FInputActionValue& value);
 
@@ -451,10 +497,12 @@ public:
 
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
-	
+
 	// 두 입력이 공유하는 사전 검사 통과하면 서버에 요청함.
 	void RequestEquipSlot(int32 Index);
 
+private:
+	TWeakObjectPtr<AWeaponActor> _ObservedWeaponData;
 
 
 

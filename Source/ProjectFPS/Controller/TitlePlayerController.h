@@ -1,13 +1,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/PlayerController.h"
+#include "Controller/CommonPlayerController.h"
 #include "TitlePlayerController.generated.h"
 
 class UTitleScreenWidget;
 
 UCLASS()
-class PROJECTFPS_API ATitlePlayerController : public APlayerController
+class PROJECTFPS_API ATitlePlayerController : public ACommonPlayerController
 {
 	GENERATED_BODY()
 

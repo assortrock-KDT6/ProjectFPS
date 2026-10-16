@@ -9,6 +9,9 @@
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "GameFramework/PlayerController.h"
+#include "UI/MainHUD.h"
+#include "InputCoreTypes.h"
 
 void USettingWidget::NativeOnInitialized()
 {
@@ -47,6 +50,16 @@ void USettingWidget::NativeConstruct()
 	RefreshFromSettings();
 }
 
+FReply USettingWidget::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (IsInViewport() && InKeyEvent.GetKey() == EKeys::Escape)
+	{
+		HandleCancelClicked();
+		return FReply::Handled();
+	}
+	return Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
+}
+
 void USettingWidget::InitOptions()
 {
 	// 해상도 : 모니터가 지원하는 전체 화면 해상도.
@@ -76,6 +89,13 @@ void USettingWidget::InitOptions()
 	CB_MinimapMode->ClearOptions();
 	CB_MinimapMode->AddOption(TEXT("회전형"));
 	CB_MinimapMode->AddOption(TEXT("고정형"));
+
+	// EDamageNumberDisplayMode의 값 순서
+	CB_DamageNumberMode->ClearOptions();
+	CB_DamageNumberMode->AddOption(TEXT("누적"));
+	CB_DamageNumberMode->AddOption(TEXT("개별"));
+	CB_DamageNumberMode->AddOption(TEXT("모두 적용"));
+	CB_DamageNumberMode->AddOption(TEXT("끄기"));
 }
 
 void USettingWidget::RefreshFromSettings()
@@ -198,6 +218,25 @@ void USettingWidget::HandleQualityChanged(FString SelectedItem, ESelectInfo::Typ
 	}
 }
 
+void USettingWidget::HandleDamageNumberModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+	// 설정값을 화면에 표시하는 과정에서 발생한 변경은 무시
+	if (ESelectInfo::Direct == SelectionType)
+	{
+		return;
+	}
+	
+	UFPSGameUserSettings* Settings = GetSettings();
+	const int32 Index = CB_DamageNumberMode->GetSelectedIndex();
+	
+	if (nullptr == Settings || Index < 0 || Index > static_cast<int32>(EDamageNumberDisplayMode::Off))
+	{
+		return;
+	}
+	
+	Settings->SetDamageNumberDisplayMode(static_cast<EDamageNumberDisplayMode>(Index));
+}
+
 void USettingWidget::HandleMouseSensitivityChanged(float Value)
 {
 	if (UFPSGameUserSettings* Settings = GetSettings())
@@ -250,6 +289,18 @@ void USettingWidget::HandleCancelClicked()
 		Subsystem->RevertChanges();
 	}
 	RefreshFromSettings();
+
+	// 로비에 내장된 설정 패널은 유지하고, HUD가 띄운 설정 창만 닫는다.
+	if (IsInViewport())
+	{
+		if (APlayerController* PC = GetOwningPlayer())
+		{
+			if (AMainHUD* HUD = Cast<AMainHUD>(PC->GetHUD()))
+			{
+				HUD->ToggleSettings();
+			}
+		}
+	}
 }
 
 void USettingWidget::HandleApplyClicked()

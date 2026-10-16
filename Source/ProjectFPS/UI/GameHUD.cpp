@@ -131,7 +131,7 @@ void AGameHUD::ApplyInputMode(bool bUIMode)
 	}
 }
 
-void AGameHUD::RestoreInputAfterExitMenu()
+void AGameHUD::RestoreInputMode()
 {
 	if (auto* PC = Cast<APlayerControllerBase>(GetOwningPlayerController()))
 	{

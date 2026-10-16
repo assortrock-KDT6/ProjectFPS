@@ -1,4 +1,4 @@
-﻿#include "Character/CharacterPlayer.h"
+#include "Character/CharacterPlayer.h"
 #include "GameMode/FPSGameMode.h"
 #include "GameMode/PlayerStateBase.h"
 #include "Controller/PlayerControllerBase.h"
@@ -26,6 +26,7 @@
 #include "Component/Parkour/MantleComponent.h"
 #include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Ability/Attributes/FPSHealthSet.h"
+#include "Component/Ability/GamePlayAbility/FPSMeleeAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"
 #include "UI/GameHUD.h"
 #include "Projectiles/GrenadeActor.h"
@@ -36,6 +37,8 @@
 #include "Component/FOV/ControlShakeComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Animation/WeaponAimSolver.h"
+#include "HAL/IConsoleManager.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
@@ -58,7 +61,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	{
 		MeshComp->SetRelativeLocation(FVector(0.f, 0.f, -90.f));
 		MeshComp->SetRelativeRotation(FVector(0.f, -90.f, 0.f).Rotation());
-		// The authoritative weapon/muzzle follows this mesh, including on a headless server.
+		// 화면을 렌더링하지 않는 서버에서도 서버 판정용 무기와 총구가 이 메시를 따라가도록 한다.
 		MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	}
 
@@ -84,6 +87,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	if (IsValid(MovementComp))
 	{
 		MovementComp->bOrientRotationToMovement = false;
+		MovementComp->GetNavAgentPropertiesRef().bCanCrouch = true;
 		bUseControllerRotationYaw = true;
 	}
 	
@@ -160,7 +164,7 @@ void ACharacterPlayer::SetAiming(bool bAiming)
 		_ViewWeaponMesh->SetTargetHFOV((_bAiming ? _ViewWeaponData._AimViewFOV : -1.f), 10.f);;
 	}
 	
-	// Both the arms and body AnimBPs map Status.ADS to GameplayTag_IsADS.
+	// 팔과 몸의 애니메이션 블루프린트 모두 Status.ADS를 GameplayTag_IsADS에 연결한다.
 	if (true == HasAuthority())
 	{
 		SetAnimationStateTag(FPSGameplayTags::Status_ADS, _bAiming);
@@ -259,6 +263,85 @@ FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
 	return bHit ? HitResult.ImpactPoint :TraceEnd;
 }
 
+FRotator ACharacterPlayer::GetWeaponAimRotation() const
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy && true == _bHasReplicatedWeaponPoseAimPoint)
+	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		const double Age = true == IsValid(GameState)
+			? GameState->GetServerWorldTimeSeconds() - _ReplicatedWeaponPoseAim._ServerTime : 0.0;
+		// 관전자 표시만 최대 50ms 예측한다. 패킷 지연이 길어져도 계속 회전시키지 않는다.
+		return WeaponAim::PredictRotation(_ReplicatedWeaponPoseAim._Rotation, _WeaponPoseAngularVelocity, Age);
+	}
+	// GetBaseAimRotation은 로컬 컨트롤러가 있으면 이전 카메라 캐시를 반환할 수 있다.
+	return true == IsValid(GetController()) ? GetControlRotation() : GetBaseAimRotation();
+}
+
+FVector ACharacterPlayer::GetWeaponAimOrigin() const
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy && true == _bHasReplicatedWeaponPoseAimPoint)
+	{
+		return _ReplicatedWeaponPoseAim._Origin;
+	}
+	if (false == IsValid(_CameraComponent) || false == IsValid(_SpringArmComponent))
+	{
+		return GetPawnViewLocation();
+	}
+	// 1인칭 팔의 평가 순서는 투척 노티파이에 필요하므로 바꾸지 않는다.
+	// 현재 입력 회전으로 카메라의 상대 위치를 재구성하여 이전 프레임 회전을 제거한다.
+	const FVector Anchor = _SpringArmComponent->GetComponentLocation();
+	const FQuat ViewDelta = GetWeaponAimRotation().Quaternion() * _CameraComponent->GetComponentQuat().Inverse();
+	return Anchor + ViewDelta.RotateVector(_CameraComponent->GetComponentLocation() - Anchor);
+}
+
+FVector ACharacterPlayer::TraceWeaponAimPoint(const FVector& Start, const FVector& Direction, float WeaponRange) const
+{
+	const FVector End = Start + Direction.GetSafeNormal() * WeaponRange;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(WeaponAim), false, this);
+	FHitResult WorldHit;
+	const bool WorldBlocked = GetWorld()->LineTraceSingleByChannel(WorldHit, Start, End, ECC_Visibility, Params);
+
+	// Pawn 프로필은 Visibility를 무시한다. 카메라가 캐릭터를 겨눠도 뒤쪽 벽을
+	// 조준점으로 삼지 않도록 Pawn 오브젝트를 별도로 검사하되, 앞의 벽을 통과하지 않는다.
+	FCollisionObjectQueryParams PawnObjects;
+	PawnObjects.AddObjectTypesToQuery(ECC_Pawn);
+	FHitResult PawnHit;
+	const bool PawnBlocked = GetWorld()->LineTraceSingleByObjectType(PawnHit, Start, End, PawnObjects, Params);
+	if (true == PawnBlocked && (false == WorldBlocked || PawnHit.Distance < WorldHit.Distance))
+	{
+		return PawnHit.ImpactPoint;
+	}
+	return true == WorldBlocked ? WorldHit.ImpactPoint : End;
+}
+
+FVector ACharacterPlayer::GetWeaponPoseAimPoint(float WeaponRange) const
+{
+	// 관전자도 서버 원점과 표시용 방향으로 가까운 충돌점을 구해 목표 경계의 깊이 변화를 반영한다.
+	return TraceWeaponAimPoint(GetWeaponAimOrigin(), GetWeaponAimRotation().Vector(), WeaponRange);
+}
+
+void ACharacterPlayer::OnRep_WeaponPoseAimPoint()
+{
+	const double Interval = _ReplicatedWeaponPoseAim._ServerTime - _PreviousWeaponPoseServerTime;
+	_WeaponPoseAngularVelocity = FRotator::ZeroRotator;
+	if (true == _bHasReplicatedWeaponPoseAimPoint)
+	{
+		_WeaponPoseAngularVelocity = WeaponAim::AngularVelocity(
+			_PreviousWeaponPoseRotation, _ReplicatedWeaponPoseAim._Rotation, Interval);
+	}
+	_PreviousWeaponPoseRotation = _ReplicatedWeaponPoseAim._Rotation;
+	_PreviousWeaponPoseServerTime = _ReplicatedWeaponPoseAim._ServerTime;
+	_bHasReplicatedWeaponPoseAimPoint = true;
+	const IConsoleVariable* Diagnostics = IConsoleManager::Get().FindConsoleVariable(TEXT("fps.WeaponAim.Diagnostics"));
+	if (nullptr != Diagnostics && Diagnostics->GetInt() != 0)
+	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		UE_LOG(LogTemp, Display, TEXT("WeaponAimReceive local=%.6f server=%.6f stamp=%.6f interval=%.6f yaw=%.6f velocity=%.6f"),
+			GetWorld()->GetTimeSeconds(), true == IsValid(GameState) ? GameState->GetServerWorldTimeSeconds() : 0.0,
+			_ReplicatedWeaponPoseAim._ServerTime, Interval, _ReplicatedWeaponPoseAim._Rotation.Yaw, _WeaponPoseAngularVelocity.Yaw);
+	}
+}
+
 bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 {
 	AWeaponActor* NewWeapon = PrepareWeapon(WeaponID);
@@ -329,7 +412,14 @@ AWeaponActor* ACharacterPlayer::PrepareWeapon(FName WeaponID)
 
 	// 라이플 메시의 총구는 +Y 방향이다. weapon_r 본에서 캐릭터 전방을
 	// 향하도록 돌리고, 메시의 위쪽(+Z)은 그대로 유지한다.
-	NewWeapon->GetRootComponent()->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator(0.f, 90.f, 0.f));
+	const FRotator WeaponRotation(0.f, 90.f, 0.f);
+	const float WeaponScale = FMath::Clamp(WeaponData._ThirdPersonScale, 0.5f, 1.5f);
+	const USceneComponent* WeaponMesh = NewWeapon->GetWeaponMeshComponent();
+	const FVector RightGrip = true == WeaponMesh->DoesSocketExist(TEXT("RightHandGrip"))
+		? WeaponMesh->GetSocketTransform(TEXT("RightHandGrip"), RTS_Component).GetLocation() : FVector::ZeroVector;
+	// 오른손 그립을 축소 중심으로 사용하여 총 크기가 바뀌어도 방아쇠 손이 밀리지 않게 한다.
+	const FVector GripPivotOffset = WeaponRotation.RotateVector(RightGrip * (1.f - WeaponScale));
+	NewWeapon->SetActorRelativeTransform(FTransform(WeaponRotation, GripPivotOffset, FVector(WeaponScale)));
 
 	NewWeapon->SetActorHiddenInGame(true);
 
@@ -340,8 +430,6 @@ AWeaponActor* ACharacterPlayer::PrepareWeapon(FName WeaponID)
 // 서버에서 무기 준비와 필요한 슬롯 반영이 끝난 뒤 호출한다. 기존 액터를 파괴하므로 잔탄 저장은 먼저 수행해야 한다.
 void ACharacterPlayer::CommitPreparedWeapon(AWeaponActor* NewWeapon)
 {
-	const FWeaponData& WeaponData = NewWeapon->GetWeaponData();
-
 	// 무기를 바꾸면서 이전 무기의 연사가 이어지지 않게 한다.
 	StopAttacking();
 	if (IsValid(_AbilitySystemComponent))
@@ -369,15 +457,9 @@ void ACharacterPlayer::CommitPreparedWeapon(AWeaponActor* NewWeapon)
 	
 	_bAiming = false;
 
-	// 서버 쪽 기존 애니메이션 이벤트를 유지한다.
-	// 로컬 플레이어의 이벤트는 아래 Client 함수에서 한 번 실행한다.
-	if (!IsLocallyControlled())
-	{
-		OnWeaponEquiped(WeaponData._WeaponType);
-	}
-	
-	//ClientSetViewWeapon(WeaponData._ViewMesh, WeaponData._ViewAnimationInstance);
-	ClientSetViewWeapon(WeaponData);
+	// 복제된 무기를 기준으로 1인칭 표시와 몸의 무기 자세를 함께 갱신한다.
+	// 별도 클라이언트 RPC는 무기 참조나 데이터보다 먼저 도착하여 몸이 맨손 자세로 남을 수 있다.
+	OnRep_CurrentWeapon();
 
 	ForceNetUpdate();
 }
@@ -523,6 +605,11 @@ void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ACharacterPlayer::Jump()
 {
 	Super::Jump();
+	
+	if (true == _bAiming)
+	{
+		SetAiming(false);
+	}
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)
@@ -541,6 +628,34 @@ void ACharacterPlayer::Tick(float DeltaTime)
 	}
 
 	ApplyPendingViewWeapon();
+
+	// 소유 클라이언트는 자신의 입력으로 즉시 조준하고, 관찰 클라이언트만 서버 값을 받는다.
+	// 이 값은 표시용 포즈에만 사용하며 실제 사격·피해 계산 경로와 분리한다.
+	if (true == HasAuthority() && true == IsValid(_CurrentWeapon) && false == IsValid(_CurrentGrenade))
+	{
+		_ReplicatedWeaponPoseAim._Origin = GetWeaponAimOrigin();
+		_ReplicatedWeaponPoseAim._Rotation = GetWeaponAimRotation();
+		_ReplicatedWeaponPoseAim._ServerTime = GetWorld()->GetTimeSeconds();
+	}
+
+	// 원격 플레이어도 복제된 몸 몽타주로 주먹 자세를 판단하여 무기를 숨긴다.
+	const UFPSMeleeAbility* MeleeDefaults = true == IsValid(_AbilitySystemComponent)
+		? _AbilitySystemComponent->MeleeAbilityClass.GetDefaultObject() : nullptr;
+	UAnimInstance* BodyAnim = true == IsValid(GetMesh()) ? GetMesh()->GetAnimInstance() : nullptr;
+	UAnimMontage* BodyMontage = true == IsValid(BodyAnim) ? BodyAnim->GetCurrentActiveMontage() : nullptr;
+	const bool HasBodyMeleePose = true == IsValid(MeleeDefaults) && true == MeleeDefaults->Attacks.ContainsByPredicate(
+		[BodyMontage](const FFPSMeleeAttack& Attack)
+		{
+			return true == IsValid(BodyMontage) && Attack.ThirdPersonMontage == BodyMontage;
+		});
+	if (true == IsValid(_CurrentWeapon) && true == IsValid(_CurrentWeapon->GetRootComponent()))
+	{
+		const bool Visible = false == IsValid(_CurrentGrenade) && false == HasBodyMeleePose;
+		if (_CurrentWeapon->GetRootComponent()->IsVisible() != Visible)
+		{
+			_CurrentWeapon->GetRootComponent()->SetVisibility(Visible, true);
+		}
+	}
 
 	if (false == IsLocallyControlled() || !IsValid(_CameraComponent))
 	{
@@ -568,7 +683,17 @@ void ACharacterPlayer::Tick(float DeltaTime)
 		// Blend Out 중에도 수류탄 동작이 남아 있으면 총을 그리지 않기
 		const bool HasGrenadePose = IsValid(Montage) && IsValid(AnimInstance) && AnimInstance->GetInstanceForMontage(Montage) != nullptr;
 		
-		const bool ShowWeapon = IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade) && !HasGrenadePose;
+		// 공격 상태가 해제되어도 팔 몽타주의 블렌딩이 끝날 때까지 1인칭 무기를 숨긴다.
+		const bool HasMeleePose = (true == IsValid(_AbilitySystemComponent)
+			&& true == _AbilitySystemComponent->HasMatchingGameplayTag(FPSGameplayTags::Status_Melee))
+			|| (true == IsValid(MeleeDefaults) && true == MeleeDefaults->Attacks.ContainsByPredicate(
+				[AnimInstance](const FFPSMeleeAttack& Attack)
+				{
+					return true == IsValid(AnimInstance) && true == IsValid(Attack.FirstPersonMontage)
+						&& nullptr != AnimInstance->GetInstanceForMontage(Attack.FirstPersonMontage);
+				}));
+		const bool ShowWeapon = true == IsValid(_CurrentWeapon) && false == IsValid(_CurrentGrenade)
+			&& false == HasGrenadePose && false == HasMeleePose;
 		
 		if (_ViewWeaponMesh->IsVisible() != ShowWeapon)
 		{
@@ -619,6 +744,14 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Canceled,  this, &ACharacterPlayer::StopFireAction);
+
+	if (true == IsValid(_DefaultInput->_Melee))
+	{
+		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Started,   this, &ACharacterPlayer::MeleeAction);
+		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Completed, this, &ACharacterPlayer::StopMeleeAction);
+		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Canceled,  this, &ACharacterPlayer::StopMeleeAction);
+	}
+
 	InputComp->BindAction(_DefaultInput->_FireToggle, ETriggerEvent::Started,   this, &ACharacterPlayer::FireToggleAction);
 	InputComp->BindAction(_DefaultInput->_DropItem, ETriggerEvent::Started, this, &ACharacterPlayer::DropItemAction);
 	InputComp->BindAction(_DefaultInput->_EquipMainWeapon, ETriggerEvent::Started, this, &ACharacterPlayer::EquipMainWeaponAction);
@@ -655,6 +788,7 @@ void ACharacterPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME(ACharacterPlayer, _CurrentWeapon);
 	DOREPLIFETIME(ACharacterPlayer, _CurrentGrenade);
 	DOREPLIFETIME(ACharacterPlayer, _DeathStartServerTime);
+	DOREPLIFETIME_CONDITION(ACharacterPlayer, _ReplicatedWeaponPoseAim, COND_SkipOwner);
 }
 
 // 해제 중 다른 총을 암묵적으로 장착하지 않도록 현재 총과 슬롯 정리만 담당한다.
@@ -1118,7 +1252,15 @@ void ACharacterPlayer::FireAction(const FInputActionValue& Value)
 {
 	if (IsValid(_AbilitySystemComponent))
 	{
-		_AbilitySystemComponent->SetFireInput(true);
+		// 맨손일 때는 일반 공격 입력을 근접 공격으로 전달한다.
+		if (false == IsValid(_CurrentWeapon) && false == IsValid(_CurrentGrenade))
+		{
+			_AbilitySystemComponent->SetMeleeInput(true);
+		}
+		else
+		{
+			_AbilitySystemComponent->SetFireInput(true);
+		}
 	}
 }
 
@@ -1127,6 +1269,24 @@ void ACharacterPlayer::StopFireAction(const FInputActionValue& value)
 	if (IsValid(_AbilitySystemComponent))
 	{
 		_AbilitySystemComponent->SetFireInput(false);
+		// 맨손 공격으로 전달된 입력도 해제하여 다음 누름을 콤보 입력으로 받을 수 있게 한다.
+		_AbilitySystemComponent->SetMeleeInput(false);
+	}
+}
+
+void ACharacterPlayer::MeleeAction(const FInputActionValue& Value)
+{
+	if (true == IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->SetMeleeInput(true);
+	}
+}
+
+void ACharacterPlayer::StopMeleeAction(const FInputActionValue& Value)
+{
+	if (true == IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->SetMeleeInput(false);
 	}
 }
 
@@ -1347,7 +1507,7 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 	}
 	else if (HasWeapon)
 	{
-		WeaponType = IsLocallyControlled() ? _ViewWeaponData._WeaponType : _CurrentWeapon->GetWeaponData()._WeaponType;
+		WeaponType = _CurrentWeapon->GetWeaponData()._WeaponType;
 	}
 
 	OnWeaponEquiped(WeaponType);
@@ -2191,6 +2351,31 @@ bool ACharacterPlayer::TryDropItemAt(int32 Index, int32 Count)
 
 void ACharacterPlayer::OnRep_CurrentWeapon()
 {
+	if (_ObservedWeaponData.Get() != _CurrentWeapon.Get())
+	{
+		AWeaponActor* Previous = _ObservedWeaponData.Get();
+		if (nullptr != Previous)
+		{
+			Previous->_OnWeaponDataChanged.RemoveDynamic(this, &ACharacterPlayer::OnRep_CurrentWeapon);
+		}
+
+		_ObservedWeaponData = _CurrentWeapon;
+		if (true == IsValid(_CurrentWeapon))
+		{
+			_CurrentWeapon->_OnWeaponDataChanged.AddUniqueDynamic(this, &ACharacterPlayer::OnRep_CurrentWeapon);
+		}
+	}
+
+	// WeaponID가 CurrentWeapon보다 늦게 복제되면 데이터 준비 알림에서 이 경로를 다시 실행한다.
+	if (true == IsLocallyControlled()
+		&& (false == IsValid(_CurrentWeapon) || true == _CurrentWeapon->GetWeaponData().IsValid()))
+	{
+		// ApplyPendingViewWeapon에서 몸의 애니메이션 레이어와 UI도 함께 갱신한다.
+		ClientSetViewWeapon_Implementation(true == IsValid(_CurrentWeapon)
+			? _CurrentWeapon->GetWeaponData() : FWeaponData());
+		return;
+	}
+
 	// 장착 해제도 같은 경로로 UI에 알리고, 수류탄을 든 상태도 함께 반영한다.
 	OnRep_CurrentGrenade();
 }

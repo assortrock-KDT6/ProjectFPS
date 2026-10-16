@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 #pragma once
 
@@ -12,6 +12,7 @@ class UFPSFireAbility;
 class UFPSChangeFireModeAbility;
 class UFPSGrenadeAbility;
 class UFPSReloadAbility;
+class UFPSMeleeAbility;
 
 /**
  * 모든 전투 기능을 처리하는 거대한 컴포넌트를 만들면 안된다.
@@ -51,7 +52,15 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|Abilities")
 	TSubclassOf<UFPSReloadAbility> ReloadAbilityClass;
 
+	// GA_MeleeBase에서 콤보 몽타주와 단계별 피해량을 조정한다.
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Abilities")
+	TSubclassOf<UFPSMeleeAbility> MeleeAbilityClass;
+
 private:
+	// 시작 시 즉시 로드하지 않아도 쿠커가 기본 능력 블루프린트를 포함하도록 참조를 보관한다.
+	UPROPERTY()
+	TSoftClassPtr<UFPSMeleeAbility> _DefaultMeleeBlueprint;
+
 	FGameplayAbilitySpecHandle _FireAbilityHandle;
 	
 	FGameplayAbilitySpecHandle _ChangeFireModeAbilityHandle;
@@ -59,6 +68,9 @@ private:
 	FGameplayAbilitySpecHandle _GrenadeAbilityHandle;
 
 	FGameplayAbilitySpecHandle _ReloadAbilityHandle;
+
+	FGameplayAbilitySpecHandle _MeleeAbilityHandle;
+
 	FActiveGameplayEffectHandle _MatchCombatBlockEffectHandle;
 	
 	FDelegateHandle _CombatBlockedTagDelegate;
@@ -71,9 +83,17 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
-	// Reliable, ordered input transport. Shot scheduling belongs to GA_Fire.
+	// 입력은 순서와 전달을 보장하여 전송하고, 발사 시점 관리는 GA_Fire에서 담당한다.
 	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
 	void SetFireInput(bool Pressed);
+
+	// 첫 입력은 능력을 활성화하고, 공격 중 추가 입력은 콤보 예약으로 전달한다.
+	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
+	void SetMeleeInput(bool Pressed);
+
+	// 부여된 근접 공격 능력의 인스턴스를 조회한다. 활성화 전에는 없을 수 있다.
+	UFUNCTION(BlueprintPure, Category = "Combat|Melee")
+	UFPSMeleeAbility* GetMeleeAbilityInstance() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Combat|Input")
 	void CookGrenade();

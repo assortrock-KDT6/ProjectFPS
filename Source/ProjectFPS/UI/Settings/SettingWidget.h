@@ -34,6 +34,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UComboBoxString> CB_Quality;
 
+	// 피해량 표시 방식
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UComboBoxString> CB_DamageNumberMode;
+	
 	// 조작
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<USlider> SL_MouseSensitivity;
@@ -81,6 +85,7 @@ private:
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeConstruct() override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 	
 private:
 	// 콤보 박스 항목 채우기
@@ -104,6 +109,9 @@ private:
 	UFUNCTION()
 	void HandleQualityChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
+	UFUNCTION()
+	void HandleDamageNumberModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	
 	UFUNCTION()
 	void HandleMouseSensitivityChanged(float Value);
 

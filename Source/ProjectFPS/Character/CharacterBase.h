@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 #pragma once
 
@@ -16,6 +16,9 @@ class PROJECTFPS_API ACharacterBase : public ACharacter, public IAbilitySystemIn
 
 public:
 	ACharacterBase(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+	// 빙의 전에 기존 블루프린트의 능력 컴포넌트 참조를 확인한다.
+	virtual void PostInitializeComponents() override;
 
 protected:
 	// 캐릭터의 고유 아이디
@@ -57,7 +60,7 @@ public:
 
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const ;
 
-	// Call on the server at action start/end/cancel.
+	// 행동을 시작·종료·취소할 때 서버에서 호출한다.
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "FPS|Animation")
 	void SetAnimationStateTag(FGameplayTag Tag, bool bActive);
 
