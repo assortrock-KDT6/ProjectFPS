@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 
 #include "Component/Ability/FPSAbilitySystemComponent.h"
@@ -10,6 +10,7 @@
 #include "GameTag/FPSGameplayTag.h"
 #include "Component/Ability/GamePlayAbility/FPSFireAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSReloadAbility.h"
+#include "Component/Ability/GamePlayAbility/FPSMeleeAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSChangeFireModeAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"	// 수류탄 행동을 처리하는 능력
 #include "Projectiles/GrenadeActor.h"								// 실제로 손에 들고 있는 수류탄 액터
@@ -19,6 +20,9 @@ UFPSAbilitySystemComponent::UFPSAbilitySystemComponent()
 	FireAbilityClass = UFPSFireAbility::StaticClass();
 	ChangeFireModeAbilityClass = UFPSChangeFireModeAbility::StaticClass();
 	ReloadAbilityClass = UFPSReloadAbility::StaticClass();
+	MeleeAbilityClass = UFPSMeleeAbility::StaticClass();
+	_DefaultMeleeBlueprint = TSoftClassPtr<UFPSMeleeAbility>(
+		FSoftObjectPath(TEXT("/Game/Blueprints/Ability/GameAbilites/GA_MeleeBase.GA_MeleeBase_C")));
 }
 
 void UFPSAbilitySystemComponent::GrantWeaponAbilities()
@@ -52,6 +56,62 @@ void UFPSAbilitySystemComponent::GrantWeaponAbilities()
 		FGameplayAbilitySpec* Existing = FindAbilitySpecFromClass(ReloadAbilityClass);
 		_ReloadAbilityHandle = Existing ? Existing->Handle : GiveAbility(FGameplayAbilitySpec(ReloadAbilityClass, 1));
 	}
+
+	// 재빙의 등으로 초기화가 반복되어도 기존 근접 공격 능력을 재사용한다.
+	if (nullptr == FindAbilitySpecFromHandle(_MeleeAbilityHandle) && nullptr != MeleeAbilityClass)
+	{
+		FGameplayAbilitySpec* Existing = FindAbilitySpecFromClass(MeleeAbilityClass);
+		_MeleeAbilityHandle = nullptr != Existing ? Existing->Handle : GiveAbility(FGameplayAbilitySpec(MeleeAbilityClass, 1));
+	}
+}
+
+void UFPSAbilitySystemComponent::SetMeleeInput(bool Pressed)
+{
+	const APawn* Pawn = Cast<APawn>(GetAvatarActor());
+	if (false == IsValid(Pawn)
+		|| (false == Pawn->HasAuthority() && false == Pawn->IsLocallyControlled())
+		|| nullptr == MeleeAbilityClass)
+	{
+		return;
+	}
+
+	FGameplayAbilitySpec* Spec = FindAbilitySpecFromClass(MeleeAbilityClass);
+	if (nullptr == Spec)
+	{
+		return;
+	}
+
+	Spec->InputPressed = Pressed;
+	if (false == Pressed)
+	{
+		AbilitySpecInputReleased(*Spec);
+		return;
+	}
+
+	if (false == Spec->IsActive())
+	{
+		TryActivateAbility(Spec->Handle);
+		return;
+	}
+
+	AbilitySpecInputPressed(*Spec);
+	const UGameplayAbility* Instance = Spec->GetPrimaryInstance();
+	if (false == IsValid(Instance))
+	{
+		return;
+	}
+
+	const FPredictionKey Key = Instance->GetCurrentActivationInfo().GetActivationPredictionKey();
+	// WaitInputPress가 활성화 예측 키로 입력 이벤트를 서버에 전달한다.
+	InvokeReplicatedEvent(EAbilityGenericReplicatedEvent::InputPressed, Spec->Handle, Key);
+}
+
+UFPSMeleeAbility* UFPSAbilitySystemComponent::GetMeleeAbilityInstance() const
+{
+	const FGameplayAbilitySpec* Spec = nullptr != MeleeAbilityClass
+		? const_cast<UFPSAbilitySystemComponent*>(this)->FindAbilitySpecFromClass(MeleeAbilityClass)
+		: nullptr;
+	return nullptr != Spec ? Cast<UFPSMeleeAbility>(Spec->GetPrimaryInstance()) : nullptr;
 }
 
 void UFPSAbilitySystemComponent::SetFireInput(bool Pressed)
@@ -216,6 +276,18 @@ void UFPSAbilitySystemComponent::CancelWeaponReload()
 void UFPSAbilitySystemComponent::InitAbilityActorInfo(AActor* InOwnerActor, AActor* InAvatarActor)
 {
 	Super::InitAbilityActorInfo(InOwnerActor, InAvatarActor);
+
+	// 생성자에서 로드하면 에디터 미리보기 에셋까지 너무 일찍 초기화된다.
+	// 엔진 초기화 이후, 능력을 부여하기 전에 기본 블루프린트를 로드한다.
+	if (MeleeAbilityClass == UFPSMeleeAbility::StaticClass() && true == IsValid(Cast<ACharacterPlayer>(InAvatarActor)))
+	{
+		UClass* MeleeBlueprint = _DefaultMeleeBlueprint.LoadSynchronous();
+		if (nullptr != MeleeBlueprint)
+		{
+			MeleeAbilityClass = MeleeBlueprint;
+		}
+	}
+
 	// GAS 몽타주는 몸에서 재생한다. 1인칭 팔은 별도 표시/투척 판정 경로를 사용한다.
 	if (const ACharacterPlayer* Character = Cast<ACharacterPlayer>(InAvatarActor))
 	{

@@ -51,7 +51,8 @@ struct PROJECTFPS_API FPlayerKillLogResult
 	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
 	UTexture2D* _WeaponIcon = nullptr;
 
-
+	UPROPERTY(BlueprintReadOnly, Category = "KillIcon")
+	EWeaponType _KillerWeaponType = EWeaponType::None;
 
 	bool IsValid() const
 	{

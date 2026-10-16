@@ -82,7 +82,9 @@ void AMainHUD::ApplyInputMode(bool bUIMode)
     {
         FInputModeUIOnly Mode;
 
-        UUserWidget* Focus = IsExitMenuOpen() ? static_cast<UUserWidget*>(ExitMenuWidget.Get()) : _CurrentScreen.Get();
+        UUserWidget* Focus = IsValid(SettingWidget) && SettingWidget->IsInViewport()
+            ? SettingWidget.Get()
+            : (IsExitMenuOpen() ? static_cast<UUserWidget*>(ExitMenuWidget.Get()) : _CurrentScreen.Get());
 
         if (Focus)
         {
@@ -104,7 +106,43 @@ void AMainHUD::ApplyInputMode(bool bUIMode)
 
 void AMainHUD::ToggleSettings()
 {
-    ToggleOverlay(SettingWidgetClass, SettingWidget);
+    if (!IsLocalHUD())
+    {
+        return;
+    }
+
+    if (IsValid(SettingWidget) && SettingWidget->IsInViewport())
+    {
+        CloseOverlay(SettingWidget);
+        if (IsExitMenuOpen())
+        {
+            ExitMenuWidget->SetIsEnabled(true);
+            AMainHUD::ApplyInputMode(true);
+        }
+        else
+        {
+            RestoreInputMode();
+        }
+        return;
+    }
+
+    SettingWidget = nullptr;
+    if (!SettingWidgetClass)
+    {
+        return;
+    }
+
+    // Exit 메뉴(2000)보다 앞에 표시하며, 닫힐 때까지 게임 입력 차단을 유지한다.
+    if (ToggleOverlay(SettingWidgetClass, SettingWidget, 2100))
+    {
+        if (IsExitMenuOpen())
+        {
+            ExitMenuWidget->SetIsEnabled(false);
+        }
+        SettingWidget->SetIsFocusable(true);
+        AMainHUD::ApplyInputMode(true);
+        SettingWidget->SetUserFocus(GetOwningPlayerController());
+    }
 }
 
 void AMainHUD::ToggleExitMenu()
@@ -158,6 +196,7 @@ void AMainHUD::CloseExitMenu()
         return;
     }
 
+    CloseOverlay(SettingWidget);
     ExitMenuWidget->RemoveFromParent();
     ExitMenuWidget = nullptr;
 
@@ -165,7 +204,7 @@ void AMainHUD::CloseExitMenu()
     {
         PC->SetIgnoreMoveInput(false);
         PC->SetIgnoreLookInput(false);
-        RestoreInputAfterExitMenu();
+        RestoreInputMode();
     }
 }
 
@@ -174,13 +213,14 @@ bool AMainHUD::IsExitMenuOpen() const
     return ExitMenuWidget != nullptr;
 }
 
-void AMainHUD::RestoreInputAfterExitMenu()
+void AMainHUD::RestoreInputMode()
 {
     ApplyInputMode(true);
 }
 
 void AMainHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    CloseOverlay(SettingWidget);
     if (ExitMenuWidget)
     {
         ExitMenuWidget->RemoveFromParent();

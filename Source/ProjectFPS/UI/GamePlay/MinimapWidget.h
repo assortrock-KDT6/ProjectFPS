@@ -24,12 +24,13 @@ class PROJECTFPS_API UMinimapWidget : public UUserWidget
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UImage> _MapImage;
 
-	// 중앙 플레이어 마커(코드가 건드리지 않는다.) -> 자기자신이 미니맵에 뜨는 중앙점.
+	// 중앙 플레이어 마커 고정형 미니맵일 떄 시선 방향으로 돌린다.
 	UPROPERTY(meta = (BindWidgetOptional))
 	TObjectPtr<UImage> _PlayerMarker;
 
 	// 지금 연결된 폰. 리스폰으로 바뀌면 다시 연결함.
 	TWeakObjectPtr<APawn> _BoundPawn;
+
 	
 protected:
 	virtual void NativeConstruct() override;
@@ -37,4 +38,7 @@ protected:
 
 	// 폰의 캡쳐를 머티리얼에 연결. Pawn이 null이면 배경만 숨긴다.
 	bool SetupFromPawn(APawn* Pawn);
+
+	// 고정형이면 마커를 시선 방향으로 회전형이면 위쪽으로 맞춘다.
+	void UpdatePlayerMarker();
 };

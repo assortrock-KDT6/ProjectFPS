@@ -16,6 +16,7 @@ void UFPSGameUserSettings::SetToDefaults()
 	_MasterVolume = 1.f;
 	_SFXVolume = 1.f;
 	_MusicVolume = 1.f;
+	_DamageNumberDisplayMode = EDamageNumberDisplayMode::Cumulative;
 }
 
 void UFPSGameUserSettings::SetMouseSensitivity(float Value)
@@ -59,3 +60,25 @@ float UFPSGameUserSettings::GetMusicVolume() const
 {
 	return _MusicVolume;
 }
+
+void UFPSGameUserSettings::SetMinimapRotate(bool bRotate)
+{
+	_bMinimapRotate = bRotate;
+}
+
+bool UFPSGameUserSettings::GetMinimapRotate() const
+{
+	return _bMinimapRotate;
+}
+
+void UFPSGameUserSettings::SetDamageNumberDisplayMode(EDamageNumberDisplayMode Value)
+{
+	_DamageNumberDisplayMode = Value;
+}
+
+EDamageNumberDisplayMode UFPSGameUserSettings::GetDamageNumberDisplayMode() const
+{
+	return _DamageNumberDisplayMode;
+}
+
+

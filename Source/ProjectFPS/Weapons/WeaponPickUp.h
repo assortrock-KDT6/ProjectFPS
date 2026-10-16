@@ -9,6 +9,7 @@
 #include "WeaponPickUp.generated.h"
 
 class USphereComponent;
+class UBoxComponent;
 class UPrimitiveComponent;
 struct FWeaponData;
 
@@ -42,9 +43,13 @@ protected:
 	void OnInteractionSphereEndOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComponent, int32 OtherBodyIndex);
 	
 protected:
-	// 플레이어가 무기의 상호작용할 수 있는 범위 콜라이더 
+	// 기존 Blueprint의 배치와 자식 컴포넌트 위치를 유지하는 기준점.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
 	TObjectPtr<USphereComponent> _InteractionSphere;
+
+	// 실행 시 무기 크기에 맞춰 물리 루트로 사용한다.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
+	TObjectPtr<UBoxComponent> _PhysicsBox;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon PickUp")
 	TObjectPtr<USphereComponent> _PickupSphere;
