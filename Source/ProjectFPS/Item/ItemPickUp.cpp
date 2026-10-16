@@ -128,7 +128,7 @@ void AItemPickUp::BeginPlay()
 
 void AItemPickUp::InitializePickupPhysics()
 {
-	// WeaponPickUp은 별도 구체 루트에서 물리를 처리한다. 자식 메시를 분리하지 않는다.
+	// WeaponPickUp은 별도 충돌 루트에서 물리를 처리한다. 자식 메시를 분리하지 않는다.
 	if (!_Mesh || GetRootComponent() != _Mesh)
 		return;
 

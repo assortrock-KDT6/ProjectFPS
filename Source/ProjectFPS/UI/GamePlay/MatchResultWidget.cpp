@@ -4,15 +4,17 @@
 #include "Components/VerticalBox.h"
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
-#include "Controller/PlayerControllerBase.h"
+#include "Controller/CommonPlayerController.h"
 #include "InputCoreTypes.h"
 void UMatchResultWidget::SetResults(const TArray<FPlayerMatchResult>& Results, double ReturnServerTime, int32 LocalPlayerId)
 {
 	_Results = Results;
+
 	_Results.Sort([](const FPlayerMatchResult& A, const FPlayerMatchResult& B)
 	{
 		return A._Rank == B._Rank ? A._PlayerId < B._PlayerId : A._Rank < B._Rank;
 	});
+
 	_ReturnServerTime = ReturnServerTime;
 	_LocalPlayerId = LocalPlayerId;
 
@@ -45,19 +47,28 @@ void UMatchResultWidget::PopulateResults()
 	{
 		SummaryText->SetText(NSLOCTEXT("MatchResults", "Finished", "경기가 종료되었습니다."));
 	}
-	if (!ResultRowsBox) return;
+
+	if (!ResultRowsBox)
+	{
+		return;
+	}
 	ResultRowsBox->ClearChildren();
 
-	if (!(ResultRowWidgetClass && !ResultRowWidgetClass->HasAnyClassFlags(CLASS_Abstract))) return;
+	if (!(ResultRowWidgetClass && !ResultRowWidgetClass->HasAnyClassFlags(CLASS_Abstract)))
+	{
+		return;
+	}
 
 	for (const FPlayerMatchResult& Result : _Results)
 	{
 		const bool IsLocal = Result._PlayerId == _LocalPlayerId;
+
 		if (auto* Row = CreateWidget<UMatchResultRowWidget>(this, ResultRowWidgetClass))
 		{
 			Row->SetResult(Result, IsLocal);
 			ResultRowsBox->AddChildToVerticalBox(Row);
 		}
+
 		if (IsLocal && SummaryText)
 		{
 			SummaryText->SetText(FText::Format(NSLOCTEXT("MatchResults", "PersonalResult", "나의 순위 {0}위  ·  KILL {1}  ·  DEATH {2}"),
@@ -71,9 +82,16 @@ void UMatchResultWidget::RefreshCountdown()
 	{
 		return;
 	}
+
 	const AGameStateBase* GameState = GetWorld()->GetGameState();
-	if (!GameState) return;
+
+	if (!GameState)
+	{
+		return;
+	}
+
 	const int32 Seconds = FMath::Max(0, FMath::CeilToInt(_ReturnServerTime - GameState->GetServerWorldTimeSeconds()));
+
 	CountdownText->SetText(Seconds > 0
 		? FText::Format(NSLOCTEXT("MatchResults", "Countdown", "{0}초 후 로비로 이동합니다."), FText::AsNumber(Seconds))
 		: NSLOCTEXT("MatchResults", "Returning", "로비로 이동 중…"));
@@ -81,7 +99,11 @@ void UMatchResultWidget::RefreshCountdown()
 
 void UMatchResultWidget::NativeDestruct()
 {
-	if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(_CountdownTimer);
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(_CountdownTimer);
+	}
+
 	Super::NativeDestruct();
 }
 
@@ -90,7 +112,13 @@ FReply UMatchResultWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, con
 	if (Event.GetKey() == EKeys::Escape)
 	{
 		if (!Event.IsRepeat())
-			if (auto* PC = Cast<APlayerControllerBase>(GetOwningPlayer())) PC->ToggleExitMenu();
+		{
+			if (auto* PC = Cast<ACommonPlayerController>(GetOwningPlayer()))
+			{
+				PC->ToggleExitMenu();
+			}
+		}
+
 		return FReply::Handled();
 	}
 	return Super::NativeOnPreviewKeyDown(Geometry, Event);

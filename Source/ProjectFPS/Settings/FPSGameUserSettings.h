@@ -11,6 +11,16 @@
  * 각자 PC의 GameUserSettings.ini에 저장되는 로컬 설정이라 서버로 복제 x
  * 
  */
+
+UENUM(BlueprintType)
+enum class EDamageNumberDisplayMode : uint8
+{
+	Cumulative = 0 UMETA(DisplayName = "누적"),
+	Individual = 1 UMETA(DisplayName = "개별"),
+	Both	   = 2 UMETA(DisplayName = "모두 적용"),
+	Off		   = 3 UMETA(DisplayName = "끄기")	
+};
+
 UCLASS(config = GameUserSettings, configdonotcheckdefaults)
 class PROJECTFPS_API UFPSGameUserSettings : public UGameUserSettings
 {
@@ -33,6 +43,14 @@ protected:
 	UPROPERTY(Config)
 	float _MusicVolume = 1.f;
 
+	// 미니맵 회전 방식 ture (시선 방향에 따라), false (북쪽 고정)
+	UPROPERTY(Config)
+	bool _bMinimapRotate = true;
+
+	// 사용자가 선택한 피해량 표시방식 선택
+	UPROPERTY(Config)
+	EDamageNumberDisplayMode _DamageNumberDisplayMode = EDamageNumberDisplayMode::Cumulative;
+	
 public:
 	// 블루프린트와  C++ 어디서든 현재 설정 객체를 가져온다.
 	UFUNCTION(BlueprintPure, category = "Settings")
@@ -65,4 +83,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Settings")
 	float GetMusicVolume() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Settings")
+	void SetMinimapRotate(bool bRotate);
+
+	UFUNCTION(BlueprintPure, Category = "Settings")
+	bool GetMinimapRotate() const;
+
+
+	void SetDamageNumberDisplayMode(EDamageNumberDisplayMode Value);
+	
+	UFUNCTION(BlueprintPure, Category = "Settings")
+	EDamageNumberDisplayMode GetDamageNumberDisplayMode() const;
 };

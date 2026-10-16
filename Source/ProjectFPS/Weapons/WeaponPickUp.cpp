@@ -4,6 +4,7 @@
 #include "Weapons/WeaponActor.h"
 #include "Character/CharacterPlayer.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Table/TableDatas.h"
 #include "Table/TableSubsystem.h"
@@ -19,12 +20,15 @@ AWeaponPickUp::AWeaponPickUp()
 	_InteractionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("InteractionSphere"));
 	SetRootComponent(_InteractionSphere);
 	
-	// 기존 루트 컴포넌트를 물리 충돌체로 유지해 배치된 Blueprint의 루트/위치를 보존한다.
+	// 에디터에서는 기존 루트를 유지해 Blueprint에 저장된 배치가 바뀌지 않게 한다.
 	_InteractionSphere->SetSphereRadius(25.0f);
-	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Block);
-	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	_InteractionSphere->SetGenerateOverlapEvents(false);
+
+	_PhysicsBox = CreateDefaultSubobject<UBoxComponent>(TEXT("PickupPhysicsBox"));
+	_PhysicsBox->SetupAttachment(_InteractionSphere);
+	_PhysicsBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	_PhysicsBox->SetGenerateOverlapEvents(false);
 
 	// 플레이어 감지 범위는 물리 루트를 따라 움직이되 물리 충돌에는 참여하지 않는다.
 	_PickupSphere = CreateDefaultSubobject<USphereComponent>(TEXT("PickupSphere"));
@@ -40,7 +44,7 @@ AWeaponPickUp::AWeaponPickUp()
 	_Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	_Mesh->SetupAttachment(_InteractionSphere);
 
-	// 무기 Mesh는 외형만 담당하고 상호작용 판정은 Sphere가 담당한다.
+	// 무기 Mesh는 외형만 담당한다.
 	_Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
@@ -116,16 +120,56 @@ void AWeaponPickUp::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 기존 Blueprint의 루트 구체 충돌/축 잠금 오버라이드를 런타임에 바로잡는다.
-	_InteractionSphere->SetSphereRadius(25.0f);
-	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	_InteractionSphere->SetCollisionResponseToAllChannels(ECR_Block);
-	_InteractionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	// 구체로 시뮬레이션하면 무기가 공처럼 계속 구른다. 메시의 회전/크기를 반영한
+	// 상자를 사용해 옆면이 바닥에 닿으면 안정적으로 멈추게 한다.
+	const FTransform PlacementTransform = _InteractionSphere->GetComponentTransform();
+	const FTransform MeshToPlacement = _Mesh->GetComponentTransform().GetRelativeTransform(PlacementTransform);
+	const FBoxSphereBounds MeshBounds = _Mesh->CalcBounds(MeshToPlacement);
+	const FVector BoxCenter = MeshBounds.Origin;
+	const FVector BoxExtent = MeshBounds.BoxExtent.ComponentMax(FVector(1.0f));
+
+	_InteractionSphere->SetSimulatePhysics(false);
+	_InteractionSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	_InteractionSphere->SetGenerateOverlapEvents(false);
-	_InteractionSphere->BodyInstance.bLockTranslation = false;
-	_InteractionSphere->BodyInstance.bLockRotation = false;
-	_InteractionSphere->SetEnableGravity(true);
-	_InteractionSphere->SetSimulatePhysics(HasAuthority());
+	_Mesh->SetSimulatePhysics(false);
+	_Mesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	_PhysicsBox->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+	SetRootComponent(_PhysicsBox);
+	FTransform PhysicsTransform = PlacementTransform;
+	if (HasAuthority())
+	{
+		PhysicsTransform.SetLocation(PlacementTransform.TransformPosition(BoxCenter));
+	}
+	// 클라이언트가 수신한 액터 위치는 이미 물리 상자 중심이므로 다시 이동하지 않는다.
+	_PhysicsBox->SetWorldTransform(PhysicsTransform);
+	_InteractionSphere->AttachToComponent(_PhysicsBox, FAttachmentTransformRules::KeepWorldTransform);
+	_InteractionSphere->SetRelativeTransform(FTransform(-BoxCenter));
+
+	_PhysicsBox->SetBoxExtent(BoxExtent);
+	_PhysicsBox->SetMobility(EComponentMobility::Movable);
+	_PhysicsBox->SetGenerateOverlapEvents(false);
+	_PhysicsBox->SetCollisionObjectType(ECC_PhysicsBody);
+	_PhysicsBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	_PhysicsBox->SetCollisionResponseToAllChannels(ECR_Block);
+	_PhysicsBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+	_PhysicsBox->SetLinearDamping(2.0f);
+	_PhysicsBox->SetAngularDamping(5.0f);
+	_PhysicsBox->SetPhysicsMaxAngularVelocityInDegrees(180.0f);
+	_PhysicsBox->SetEnableGravity(true);
+	_PhysicsBox->SetUseCCD(true);
+	SetReplicateMovement(true);
+	_PhysicsBox->SetSimulatePhysics(HasAuthority());
+	if (HasAuthority())
+	{
+		ForceNetUpdate();
+	}
+	else
+	{
+		// 초기 복제가 BeginPlay보다 먼저 도착한 경우에도 새 루트에 위치/물리를 적용한다.
+		SyncReplicatedPhysicsSimulation();
+		OnRep_ReplicatedMovement();
+	}
 }
 
 // Called every frame
