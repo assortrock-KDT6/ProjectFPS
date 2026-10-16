@@ -87,6 +87,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	if (IsValid(MovementComp))
 	{
 		MovementComp->bOrientRotationToMovement = false;
+		MovementComp->GetNavAgentPropertiesRef().bCanCrouch = true;
 		bUseControllerRotationYaw = true;
 	}
 	
@@ -604,6 +605,11 @@ void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ACharacterPlayer::Jump()
 {
 	Super::Jump();
+	
+	if (true == _bAiming)
+	{
+		SetAiming(false);
+	}
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)
@@ -738,6 +744,7 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Canceled,  this, &ACharacterPlayer::StopFireAction);
+
 	if (true == IsValid(_DefaultInput->_Melee))
 	{
 		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Started,   this, &ACharacterPlayer::MeleeAction);

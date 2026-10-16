@@ -121,7 +121,7 @@ void AMainHUD::ToggleSettings()
         }
         else
         {
-            RestoreInputAfterExitMenu();
+            RestoreInputMode();
         }
         return;
     }
@@ -204,7 +204,7 @@ void AMainHUD::CloseExitMenu()
     {
         PC->SetIgnoreMoveInput(false);
         PC->SetIgnoreLookInput(false);
-        RestoreInputAfterExitMenu();
+        RestoreInputMode();
     }
 }
 
@@ -213,7 +213,7 @@ bool AMainHUD::IsExitMenuOpen() const
     return ExitMenuWidget != nullptr;
 }
 
-void AMainHUD::RestoreInputAfterExitMenu()
+void AMainHUD::RestoreInputMode()
 {
     ApplyInputMode(true);
 }

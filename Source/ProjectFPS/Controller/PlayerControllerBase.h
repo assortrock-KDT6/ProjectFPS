@@ -131,11 +131,11 @@ public:
 	
 	// 서버에서 확정한 피해 정보를 공격자 본인에게 전달
 	UFUNCTION(Client, Reliable)
-	void ClientShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot);
+	void ClientShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot, AActor* Target, FVector HitLocation);
 	
 	// 전달 받은 정보를 사용하는 위젯 연출은 Blueprint에서 구현
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI | Damage")
-	void ShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot);
+	void ShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot, AActor* Target, FVector HitLocation);
 	
 	UFUNCTION(Client, Reliable)
 	void ClientShowMatchResults(const TArray<FPlayerMatchResult>& Results, double ReturnServerTime);

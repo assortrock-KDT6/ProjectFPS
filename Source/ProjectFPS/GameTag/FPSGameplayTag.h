@@ -70,4 +70,7 @@ namespace FPSGameplayTags
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Character_Hit_Health);
 	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Character_Hit_Shield);
 
+	// 총알이 귓가를 스치는 소리
+	UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Weapon_WhizBy);
+
 }

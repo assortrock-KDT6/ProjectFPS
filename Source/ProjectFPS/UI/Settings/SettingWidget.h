@@ -34,6 +34,10 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UComboBoxString> CB_Quality;
 
+	// 피해량 표시 방식
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UComboBoxString> CB_DamageNumberMode;
+	
 	// 조작
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<USlider> SL_MouseSensitivity;
@@ -105,6 +109,9 @@ private:
 	UFUNCTION()
 	void HandleQualityChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
 
+	UFUNCTION()
+	void HandleDamageNumberModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType);
+	
 	UFUNCTION()
 	void HandleMouseSensitivityChanged(float Value);
 

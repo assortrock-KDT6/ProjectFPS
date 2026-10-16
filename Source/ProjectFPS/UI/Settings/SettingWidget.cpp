@@ -89,6 +89,13 @@ void USettingWidget::InitOptions()
 	CB_MinimapMode->ClearOptions();
 	CB_MinimapMode->AddOption(TEXT("회전형"));
 	CB_MinimapMode->AddOption(TEXT("고정형"));
+
+	// EDamageNumberDisplayMode의 값 순서
+	CB_DamageNumberMode->ClearOptions();
+	CB_DamageNumberMode->AddOption(TEXT("누적"));
+	CB_DamageNumberMode->AddOption(TEXT("개별"));
+	CB_DamageNumberMode->AddOption(TEXT("모두 적용"));
+	CB_DamageNumberMode->AddOption(TEXT("끄기"));
 }
 
 void USettingWidget::RefreshFromSettings()
@@ -209,6 +216,25 @@ void USettingWidget::HandleQualityChanged(FString SelectedItem, ESelectInfo::Typ
 	{
 		Settings->SetOverallScalabilityLevel(CB_Quality->GetSelectedIndex());
 	}
+}
+
+void USettingWidget::HandleDamageNumberModeChanged(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+	// 설정값을 화면에 표시하는 과정에서 발생한 변경은 무시
+	if (ESelectInfo::Direct == SelectionType)
+	{
+		return;
+	}
+	
+	UFPSGameUserSettings* Settings = GetSettings();
+	const int32 Index = CB_DamageNumberMode->GetSelectedIndex();
+	
+	if (nullptr == Settings || Index < 0 || Index > static_cast<int32>(EDamageNumberDisplayMode::Off))
+	{
+		return;
+	}
+	
+	Settings->SetDamageNumberDisplayMode(static_cast<EDamageNumberDisplayMode>(Index));
 }
 
 void USettingWidget::HandleMouseSensitivityChanged(float Value)

@@ -169,7 +169,10 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 			WorldLocation = Mesh->GetSocketLocation(TEXT("head"));
 		}
 		
-		Controller->ClientShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot);
+		// 이번 피해 대상의 정상 명중 정보가 있으면 실제 접촉 지점을 사용
+		const FVector HitLocation = Hit && Hit->IsValidBlockingHit() && Hit->GetActor() == Target ? FVector(Hit->ImpactPoint) : WorldLocation;
+
+		Controller->ClientShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot, Target, HitLocation);
 	}
 	
 	// 마지막 타격의 표시 정보를 보낸 뒤 기존 사망 처리를 실행

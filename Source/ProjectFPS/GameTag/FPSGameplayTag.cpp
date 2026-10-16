@@ -61,6 +61,7 @@ namespace FPSGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Character_Hit_Health, "GameplayCue.Character.Hit.Health", "체력 피격 연출 ");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Character_Hit_Shield, "GameplayCue.Character.Hit.Shield", "쉴드 피격 연출 ");
 
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Weapon_WhizBy, "GameplayCue.Weapon.WhizBy", "총알 스치는 소리");
 
 	const TMap<uint8, FGameplayTag> MovementModeTagMap =
 	{
