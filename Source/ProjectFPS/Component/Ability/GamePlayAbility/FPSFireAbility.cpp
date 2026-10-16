@@ -115,7 +115,8 @@ void UFPSFireAbility::FireNextShot()
 		return;
 	}
 
-	const bool Fired = Weapon->Fire(Character->GetAimPoint(Weapon->GetWeaponRange()));
+	const FVector AimPoint = Character->GetAimPoint(Weapon->GetWeaponRange());
+	const bool Fired = Weapon->Fire(AimPoint);
 
 	if (true == Fired)
 	{
@@ -147,6 +148,16 @@ void UFPSFireAbility::FireNextShot()
 		
 		// 어떤 연출을 실행할지 지정하는 태그, 누가 무엇으로 어디서 발생할지에 대한 정보.
 		AbilitySystemComponent->ExecuteGameplayCue(FireCueTag, CueParameters);
+
+		// Near miss 
+		FGameplayCueParameters WhizByParameters;
+		WhizByParameters.Instigator = Character;
+		WhizByParameters.Location = Weapon->GetWeaponMeshComponent()->GetSocketLocation(TEXT("Muzzle"));
+		WhizByParameters.Normal = (AimPoint - WhizByParameters.Location).GetSafeNormal();
+		WhizByParameters.RawMagnitude = Weapon->GetWeaponRange();
+		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_WhizBy, WhizByParameters);
+
+
 		
 
 

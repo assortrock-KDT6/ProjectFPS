@@ -20,8 +20,6 @@ class PROJECTFPS_API AMainHUD : public AHUD
 protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	
-	virtual void RestoreInputAfterExitMenu();
-
 protected:
 
 	// 현재 선택되어 화면에 출력되고 있는 위젯
@@ -38,6 +36,9 @@ protected:
 	TObjectPtr<UExitMenuWidget> ExitMenuWidget;
 
 public:
+	// 컨트롤러 초기화와 메뉴 종료 뒤에도 현재 화면에 맞는 입력 모드를 복원한다.
+	virtual void RestoreInputMode();
+
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleExitMenu();
 
@@ -67,7 +68,7 @@ protected:
 
 	bool IsLocalHUD() const;
 
-protected:
+public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void ToggleSettings();	// 로비, 게임 둘다 상속.
 

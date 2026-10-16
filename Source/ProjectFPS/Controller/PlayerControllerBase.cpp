@@ -19,8 +19,6 @@
 #include "GameMode/FPSGameMode.h"
 #include "UI/GamePlay/MatchResultWidget.h"
 #include "UI/MainHUD.h"
-#include "Components/InputComponent.h"
-#include "InputCoreTypes.h"
 
 APlayerControllerBase::APlayerControllerBase()
 {
@@ -29,6 +27,21 @@ APlayerControllerBase::APlayerControllerBase()
 	static ConstructorHelpers::FClassFinder<UMatchResultWidget> ResultWidget(
 		TEXT("/Game/Blueprints/UI/Widget/GamePlay/WBP_MatchResult"));
 	if (ResultWidget.Succeeded()) _MatchResultWidgetClass = ResultWidget.Class;
+}
+
+void APlayerControllerBase::ClientShowDamageNumber_Implementation(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot, AActor* Target, FVector HitLocation)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	
+	if (ShieldDamage <= 0.f && HealthDamage <= 0.f)
+	{
+		return;
+	}
+	
+	ShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot, Target, HitLocation);
 }
 
 void APlayerControllerBase::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
@@ -118,24 +131,6 @@ void APlayerControllerBase::ClientReturnToMainMenuWithTextReason_Implementation(
 	Super::ClientReturnToMainMenuWithTextReason_Implementation(ReturnReason);
 }
 
-void APlayerControllerBase::SetupInputComponent()
-{
-	Super::SetupInputComponent();
-
-	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ThisClass::ToggleExitMenu);
-}
-
-void APlayerControllerBase::ToggleExitMenu()
-{
-	if (true == IsLocalController())
-	{
-		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
-		{
-			HUD->ToggleExitMenu();
-		}
-	}
-}
-
 bool APlayerControllerBase::RestoreMatchResultInput()
 {
 	if (!IsValid(_MatchResultWidget) || !_MatchResultWidget->IsInViewport())
@@ -168,11 +163,18 @@ void APlayerControllerBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 로비의 UI 입력 모드 잔재 방비 -> 게임 진입 시 게임 입력 모드로 명시
+	// HUD가 먼저 시작된 로비에서도 UI 입력 모드와 커서를 유지한다.
 	if (true == IsLocalController())
 	{
-		SetInputMode(FInputModeGameOnly());
-		SetShowMouseCursor(false);
+		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
+		{
+			HUD->RestoreInputMode();
+		}
+		else
+		{
+			SetInputMode(FInputModeGameOnly());
+			SetShowMouseCursor(false);
+		}
 	}
 
 	RefreshInputMappingContext();
@@ -203,8 +205,15 @@ void APlayerControllerBase::PostSeamlessTravel()
 	}
 	if (IsLocalController())
 	{
-		SetInputMode(FInputModeGameOnly());
-		SetShowMouseCursor(false);
+		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
+		{
+			HUD->RestoreInputMode();
+		}
+		else
+		{
+			SetInputMode(FInputModeGameOnly());
+			SetShowMouseCursor(false);
+		}
 	}
 	RefreshInputMappingContext();
 }

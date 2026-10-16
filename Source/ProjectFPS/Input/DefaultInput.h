@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 #pragma once
 
@@ -46,6 +46,10 @@ protected:
 	
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _Fire;
+
+	// 무기 장착 여부와 관계없이 근접 공격을 요청하는 전용 입력이다.
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _Melee;
 	
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _FireToggle;

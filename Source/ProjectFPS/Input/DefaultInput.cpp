@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 
 #include "Input/DefaultInput.h"
@@ -65,6 +65,12 @@ UDefaultInput::UDefaultInput()
 	if (FireAction.Succeeded())
 	{
 		_Fire = FireAction.Object;
+	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> MeleeAction(TEXT("/Game/Blueprints/Input/Actions/IA_Melee.IA_Melee"));
+	if (true == MeleeAction.Succeeded())
+	{
+		_Melee = MeleeAction.Object;
 	}
 	
 	ConstructorHelpers::FObjectFinder<UInputAction> FireToggleAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_FireToggle.IA_FireToggle'"));
