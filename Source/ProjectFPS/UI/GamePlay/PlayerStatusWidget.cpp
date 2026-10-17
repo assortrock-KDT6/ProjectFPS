@@ -15,6 +15,8 @@
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
 #include "Components/Image.h"
+#include "Components/NativeWidgetHost.h"
+#include "UI/GamePlay/SVitalEndCell.h"
 
 /** _
  * _Gauge는 디자이너에서 설정한 브러시 템플릿이자 기존 퍼센트 기반 API로 유지한다.
@@ -56,6 +58,17 @@ void UPlayerStatusWidget::RefreshVitalSegments(float Current, float Maximum)
 			Cell->SetWidthOverride(_VitalSettings.CellSize.X);
 
 			Cell->SetHeightOverride(_VitalSettings.CellSize.Y);
+
+			if (Index == Count - 1 && Frame && _VitalSettings.EndOuterPoints.Num() >= 3 && _VitalSettings.EndInnerPoints.Num() >= 3)
+			{
+				UNativeWidgetHost* EndCell = Tree->ConstructWidget<UNativeWidgetHost>();
+				EndCell->SetContent(SNew(SVitalEndCell)
+					.Settings(_VitalSettings).BarStyle(Template->GetWidgetStyle()).FrameBrush(Frame->GetBrush())
+					.FillTint(Template->GetFillColorAndOpacity()));
+				Cell->AddChild(EndCell);
+				Segments->AddChildToHorizontalBox(Cell)->SetPadding(FMargin(0.f, 0.f, _VitalSettings.CellGap, 0.f));
+				continue;
+			}
 
 			FWidgetTransform Transform;
 
@@ -106,6 +119,13 @@ void UPlayerStatusWidget::RefreshVitalSegments(float Current, float Maximum)
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
 		USizeBox* Cell = CastChecked<USizeBox>(Segments->GetChildAt(Index));
+
+		if (UNativeWidgetHost* EndCell = Cast<UNativeWidgetHost>(Cell->GetChildAt(0)))
+		{
+			StaticCastSharedPtr<SVitalEndCell>(EndCell->GetContent())->SetPercent(_VitalSettings.Fill(Current, Maximum, Index));
+
+			continue;
+		}
 
 		UOverlay* Layers = CastChecked<UOverlay>(Cell->GetChildAt(0));
 

@@ -45,11 +45,9 @@ private:
 
 	bool _Ready = false;
 	bool _AttachedToEvaluatedMesh = false;
-	bool _FirstPerson = false;
 	float _TargetWeight = 0.f;
 	float _GripWeight = 0.f;
 	float _PrimaryHandRetraction = 0.f;
-	FVector _PrimaryHandOffset = FVector::ZeroVector;
 	// PIE에서 최종 후퇴량을 확인하기 위한 읽기 전용 진단값이다.
 	UPROPERTY(VisibleAnywhere, Transient, Category = "Diagnostics")
 	float _NearRetraction = 0.f;

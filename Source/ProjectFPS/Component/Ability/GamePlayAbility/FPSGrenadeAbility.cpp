@@ -75,6 +75,9 @@ void UFPSGrenadeAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle
 		}
 	}
 
+	// 준비 동작은 기본 속도로 재생한다.
+	// 수류탄 속도 수정
+	AnimInstance->Montage_SetPlayRate(_GrenadeMontageFP, 1.f);
 	AnimInstance->Montage_JumpToSection(TEXT("Ready"), _GrenadeMontageFP);
 	
 	AnimInstance->Montage_Resume(_GrenadeMontageFP);
@@ -158,6 +161,9 @@ void UFPSGrenadeAbility::InputReleased(const FGameplayAbilitySpecHandle Handle,
 		return;
 	}
 	
+	// 입력을 놓으면 투척 구간만 빠르게 재생한다.
+	// 수류탄 속도 수정
+	AnimInstance->Montage_SetPlayRate(_GrenadeMontageFP, 1.5f);
 	AnimInstance->Montage_JumpToSection(TEXT("Throw"), _GrenadeMontageFP);
 	PlayThirdPersonMontage(TEXT("Throw"));
 
@@ -264,6 +270,7 @@ void UFPSGrenadeAbility::PlayThirdPersonMontage(FName Section)
 	}
 	else if (_ThirdPersonMontageStarted && ASC->GetAnimatingAbility() == this && ASC->GetCurrentMontage() == _GrenadeMontageTP)
 	{
+		ASC->CurrentMontageSetPlayRate(Section == TEXT("Throw") ? 1.5f : 1.f); // 수류탄 속도 수정 Throw면 2배 아닌건 1배속
 		ASC->CurrentMontageJumpToSection(Section);
 	}
 	else

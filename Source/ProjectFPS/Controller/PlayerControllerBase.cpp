@@ -388,19 +388,9 @@ void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 		if (true == IsValid(Subsystem))
 		{
-			TSet<UInputMappingContext*> ManagedContexts
+			if (true == IsValid(_PlayerMappingContext))
 			{
-				_PlayerMappingContext.Get(),
-				_ReloadMappingContext.Get(),
-				_MeleeMappingContext.Get()
-			};
-
-			for (UInputMappingContext* Context : ManagedContexts)
-			{
-				if (true == IsValid(Context) && true == Subsystem->HasMappingContext(Context))
-				{
-					Subsystem->RemoveMappingContext(Context);
-				}
+				Subsystem->RemoveMappingContext(_PlayerMappingContext.Get());
 			}
 		}
 	}
@@ -531,35 +521,6 @@ void APlayerControllerBase::ClearDeathCamera(bool RestoreViewTarget)
 	_DeathCamera = nullptr;
 }
 
-void APlayerControllerBase::SetCombatInputMappingContexts(bool EnableReload, bool EnableMelee,
-	int32 ReloadPriority, int32 MeleePriority)
-{
-	if (false == IsLocalController())
-	{
-		return;
-	}
-
-	_ReloadMappingEnabled = EnableReload;
-
-	_MeleeMappingEnabled = EnableMelee;
-
-	SetCombatInputMappingPriorities(ReloadPriority, MeleePriority);
-}
-
-void APlayerControllerBase::SetCombatInputMappingPriorities(int32 ReloadPriority, int32 MeleePriority)
-{
-	if (false == IsLocalController())
-	{
-		return;
-	}
-
-	_ReloadMappingPriority = ReloadPriority;
-
-	_MeleeMappingPriority = MeleePriority;
-
-	RefreshInputMappingContext();
-}
-
 void APlayerControllerBase::RefreshInputMappingContext()
 {
 	if (false == IsLocalController())
@@ -581,42 +542,20 @@ void APlayerControllerBase::RefreshInputMappingContext()
 		return;
 	}
 
-	const bool AllowGameplayInput = false == _DeathCameraActive && NAME_Playing == GetStateName() && true == IsValid(GetPawn());
+	UInputMappingContext* DesiredContext = nullptr;
 
-	const auto UpdateContext = [Subsystem](UInputMappingContext* Context, bool Enabled, int32 Priority)
+	if (false == _DeathCameraActive && NAME_Playing == GetStateName() && true == IsValid(GetPawn()))
 	{
-		if (false == IsValid(Context))
-		{
-			return;
-		}
-
-		int32 AppliedPriority = 0;
-
-		const bool Applied = Subsystem->HasMappingContext(Context, AppliedPriority);
-
-		if (true == Applied && (false == Enabled || AppliedPriority != Priority))
-		{
-			Subsystem->RemoveMappingContext(Context);
-		}
-
-		if (true == Enabled && (false == Applied || AppliedPriority != Priority))
-		{
-			// 매핑 재구성은 프레임 끝에 한 번 처리한다.
-			// 새로 활성화된 Boolean 액션은 누르고 있던 키를 놓은 뒤 다시 입력해야 실행된다.
-			Subsystem->AddMappingContext(Context, Priority);
-		}
-	};
-
-	UpdateContext(_PlayerMappingContext.Get(), AllowGameplayInput, 0);
-
-	// 같은 에셋을 중복 지정해도 기본 매핑의 등록 상태와 우선순위는 변경하지 않는다.
-	if (_ReloadMappingContext != _PlayerMappingContext)
+		DesiredContext = _PlayerMappingContext.Get();
+	}
+	if (IsValid(_PlayerMappingContext) && _PlayerMappingContext.Get() != DesiredContext
+		&& Subsystem->HasMappingContext(_PlayerMappingContext.Get()))
 	{
-		UpdateContext(_ReloadMappingContext.Get(), true == AllowGameplayInput && true == _ReloadMappingEnabled, _ReloadMappingPriority);
+		Subsystem->RemoveMappingContext(_PlayerMappingContext.Get());
 	}
 
-	if (_MeleeMappingContext != _PlayerMappingContext && _MeleeMappingContext != _ReloadMappingContext)
+	if (true == IsValid(DesiredContext) && false == Subsystem->HasMappingContext(DesiredContext))
 	{
-		UpdateContext(_MeleeMappingContext.Get(), true == AllowGameplayInput && true == _MeleeMappingEnabled, _MeleeMappingPriority);
+		Subsystem->AddMappingContext(DesiredContext, 0);
 	}
 }

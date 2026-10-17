@@ -146,17 +146,7 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 	const float ShieldDamage = FMath::Max(CurrentShield - Get_Shield(), 0.f);
 	const float HealthDamage = FMath::Max(CurrentHealth - Get_Health(), 0.f);
 	const bool  bOutOfHealth = CurrentHealth > 0.f && Get_Health() <= 0.f;
-
-	if (ShieldDamage > 0.f)
-	{
-		ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Shield, ShieldDamage);
-	}
-
-	if (HealthDamage > 0.f)
-	{
-		ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Health, HealthDamage);
-	}
-
+	
 	APlayerStateBase* PlayerState = GetDamagePlayerState(Data);
 	APlayerControllerBase* Controller = IsValid(PlayerState) ? Cast<APlayerControllerBase>(PlayerState->GetPlayerController()) : nullptr;
 	

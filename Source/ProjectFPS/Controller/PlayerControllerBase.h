@@ -72,26 +72,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
 	TObjectPtr<UInputMappingContext> _PlayerMappingContext;
 
-	// 기본 입력과 전투 입력에는 서로 다른 매핑 컨텍스트를 지정한다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Combat")
-	TObjectPtr<UInputMappingContext> _ReloadMappingContext;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Combat")
-	TObjectPtr<UInputMappingContext> _MeleeMappingContext;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Combat")
-	int32 _ReloadMappingPriority = 10;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Combat")
-	int32 _MeleeMappingPriority = 20;
-
-	// BP_Player에서 현재 장비와 상태에 따라 전투 입력을 활성화한다.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Combat")
-	bool _ReloadMappingEnabled = false;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Input|Combat")
-	bool _MeleeMappingEnabled = false;
-
 	UPROPERTY(EditDefaultsOnly, Category = "Match|Results")
 	TSubclassOf<UMatchResultWidget> _MatchResultWidgetClass;
 
@@ -141,19 +121,7 @@ public:
 	void EnterDeathSpectating(ACharacterPlayer* DeadCharacter, double DeathEndServerTime,
 		const FVector& CameraLocation, const FRotator& CameraRotation);
 
-	UFUNCTION(BlueprintCallable, Category = "Input|Mapping")
 	void RefreshInputMappingContext();
-
-	// 소유 클라이언트의 컨트롤러에서 호출하며, 같은 키는 우선순위가 높은 매핑을 사용한다.
-	// 설정은 컨트롤러에 저장되어 빙의가 바뀌어도 유지된다.
-	// 전투 매핑을 비활성화해도 다른 컨텍스트에 등록된 동일 액션은 유지된다.
-	UFUNCTION(BlueprintCallable, Category = "Input|Combat")
-	void SetCombatInputMappingContexts(bool EnableReload, bool EnableMelee,
-		int32 ReloadPriority = 10, int32 MeleePriority = 20);
-
-	// 전투 입력의 활성 여부를 유지하면서 우선순위만 변경한다.
-	UFUNCTION(BlueprintCallable, Category = "Input|Combat")
-	void SetCombatInputMappingPriorities(int32 ReloadPriority, int32 MeleePriority);
 
 public:
 	// Commit 건영 : 총알 피해 수치를 UMG로 띄우기

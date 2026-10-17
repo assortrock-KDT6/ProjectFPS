@@ -131,11 +131,6 @@ struct FWeaponData : public FTableRowBase
 	// 지지 손이 닿을 여유를 확보하도록 원본 오른손을 어깨 쪽으로 당기는 거리(cm).
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person", meta = (ClampMin = "0.0", ClampMax = "15.0"))
 	float _ThirdPersonHandRetraction = 0.f;
-
-	// 3인칭 견착 위치 보정(cm). 캐릭터 기준 X는 전방, Y는 오른쪽, Z는 위쪽이다.
-	// 오른팔과 총을 함께 이동하고 왼손은 이동한 총의 그립을 따라간다.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person")
-	FVector _ThirdPersonGripOffset = FVector::ZeroVector;
 	
 	// 내 화면에표시할 1인칭 총기
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | View")
