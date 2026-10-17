@@ -73,4 +73,8 @@ protected:
 
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _Reload;
+
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _CrouchAction;
+
 };
