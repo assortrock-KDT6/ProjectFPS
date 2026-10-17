@@ -612,6 +612,16 @@ void ACharacterPlayer::Jump()
 	}
 }
 
+void ACharacterPlayer::CrouchStarted()
+{
+	Crouch();
+}
+
+void ACharacterPlayer::CrouchEnded()
+{
+	UnCrouch();
+}
+
 void ACharacterPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -641,13 +651,16 @@ void ACharacterPlayer::Tick(float DeltaTime)
 	// 원격 플레이어도 복제된 몸 몽타주로 주먹 자세를 판단하여 무기를 숨긴다.
 	const UFPSMeleeAbility* MeleeDefaults = true == IsValid(_AbilitySystemComponent)
 		? _AbilitySystemComponent->MeleeAbilityClass.GetDefaultObject() : nullptr;
+
 	UAnimInstance* BodyAnim = true == IsValid(GetMesh()) ? GetMesh()->GetAnimInstance() : nullptr;
 	UAnimMontage* BodyMontage = true == IsValid(BodyAnim) ? BodyAnim->GetCurrentActiveMontage() : nullptr;
+
 	const bool HasBodyMeleePose = true == IsValid(MeleeDefaults) && true == MeleeDefaults->Attacks.ContainsByPredicate(
 		[BodyMontage](const FFPSMeleeAttack& Attack)
 		{
 			return true == IsValid(BodyMontage) && Attack.ThirdPersonMontage == BodyMontage;
 		});
+
 	if (true == IsValid(_CurrentWeapon) && true == IsValid(_CurrentWeapon->GetRootComponent()))
 	{
 		const bool Visible = false == IsValid(_CurrentGrenade) && false == HasBodyMeleePose;
@@ -758,7 +771,10 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_EquipSubWeapon, ETriggerEvent::Started, this, &ACharacterPlayer::EquipSubWeaponAction);
 	InputComp->BindAction(_DefaultInput->_Cook,        ETriggerEvent::Started,   this, &ACharacterPlayer::CookAction);
 	InputComp->BindAction(_DefaultInput->_WeaponSlot3, ETriggerEvent::Started,   this, &ACharacterPlayer::EquipGrenadeAction);
-	
+	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Started, this, &ACharacterPlayer::CrouchStarted);
+	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Completed, this, &ACharacterPlayer::CrouchEnded);
+	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Canceled, this, &ACharacterPlayer::CrouchEnded);
+
 	if (IsValid(_AbilitySystemComponent))
 	{
 		InputComp->BindAction(_DefaultInput->_Reload, ETriggerEvent::Started, _AbilitySystemComponent.Get(), &UFPSAbilitySystemComponent::Reload);
@@ -1252,15 +1268,7 @@ void ACharacterPlayer::FireAction(const FInputActionValue& Value)
 {
 	if (IsValid(_AbilitySystemComponent))
 	{
-		// 맨손일 때는 일반 공격 입력을 근접 공격으로 전달한다.
-		if (false == IsValid(_CurrentWeapon) && false == IsValid(_CurrentGrenade))
-		{
-			_AbilitySystemComponent->SetMeleeInput(true);
-		}
-		else
-		{
-			_AbilitySystemComponent->SetFireInput(true);
-		}
+		_AbilitySystemComponent->SetFireInput(true);
 	}
 }
 
@@ -1269,8 +1277,6 @@ void ACharacterPlayer::StopFireAction(const FInputActionValue& value)
 	if (IsValid(_AbilitySystemComponent))
 	{
 		_AbilitySystemComponent->SetFireInput(false);
-		// 맨손 공격으로 전달된 입력도 해제하여 다음 누름을 콤보 입력으로 받을 수 있게 한다.
-		_AbilitySystemComponent->SetMeleeInput(false);
 	}
 }
 
@@ -1286,6 +1292,7 @@ void ACharacterPlayer::StopMeleeAction(const FInputActionValue& Value)
 {
 	if (true == IsValid(_AbilitySystemComponent))
 	{
+		// 맨손 공격으로 전달된 입력도 해제하여 다음 누름을 콤보 입력으로 받을 수 있게 한다.
 		_AbilitySystemComponent->SetMeleeInput(false);
 	}
 }

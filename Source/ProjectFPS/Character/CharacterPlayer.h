@@ -309,6 +309,8 @@ protected:
 
 public:
 	virtual void Jump() override;
+	virtual void CrouchStarted();
+	virtual void CrouchEnded();
 
 public:
 	// 매 프레임 호출한다.
@@ -409,11 +411,11 @@ protected:
 	void StopFireAction(const FInputActionValue& value);
 
 	// 전용 근접 공격 입력은 무기 장착 상태에서도 사용할 수 있다.
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable, Category = "Input | Combat")
 	void MeleeAction(const FInputActionValue& Value);
 
 	// 입력 해제는 현재 공격을 취소하지 않고 눌림 상태만 갱신한다.
-	UFUNCTION()
+	UFUNCTION(BlueprintCallable, Category = "Input | Combat")
 	void StopMeleeAction(const FInputActionValue& Value);
 
 	UFUNCTION()
