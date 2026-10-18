@@ -137,15 +137,13 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 		Set_Health(NewHealth);
 	}
 	
-	// if (NewHealth <= 0.f && CurrentHealth > 0.f)
-	// {
-	// 	_OnOutOfHealth.Broadcast(GetDamagePlayerState(Data));
-	// }
-
 	// 표시 이벤트를 호출하기전에 이번 피해결과를 확정
 	const float ShieldDamage = FMath::Max(CurrentShield - Get_Shield(), 0.f);
 	const float HealthDamage = FMath::Max(CurrentHealth - Get_Health(), 0.f);
 	const bool  bOutOfHealth = CurrentHealth > 0.f && Get_Health() <= 0.f;
+	// Cue/사망 콜백이 공격 액터를 정리하기 전에 치명타의 출처를 복사한다.
+	const FDamageWeaponInfo DamageWeapon = bOutOfHealth
+		? UDamageSourceComponent::ResolveDamageWeapon(Data.EffectSpec.GetContext()) : FDamageWeaponInfo();
 
 	if (ShieldDamage > 0.f)
 	{
@@ -188,7 +186,7 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 	// 마지막 타격의 표시 정보를 보낸 뒤 기존 사망 처리를 실행
 	if (bOutOfHealth)
 	{
-		_OnOutOfHealth.Broadcast(PlayerState);
+		_OnOutOfHealth.Broadcast(PlayerState, DamageWeapon);
 	}
 }
 

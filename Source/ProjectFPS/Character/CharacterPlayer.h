@@ -41,6 +41,7 @@ struct FInputActionValue;
 enum class EAnimMeshType : uint8;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWeaponEquippedChangedSignature, bool, bEquipped);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FSelectedThrowableChangedSignature);
 
 // 조준 원점·방향·시각을 한 복제 상태로 보내 서로 다른 프레임의 값이 섞이지 않게 한다.
 USTRUCT()
@@ -68,6 +69,10 @@ public:
 	// 무기 장착 상태가 변경되면 로컬 UI에 알리기
 	UPROPERTY(BlueprintAssignable, Category = "Weapon")
 	FWeaponEquippedChangedSignature WeaponEquppedChanged;
+
+	// 고른 투척물 종류가 바뀌면 로컬 UI(HUD 수류탄 슬롯)에 알리기
+	UPROPERTY(BlueprintAssignable, Category = "Grenade")
+	FSelectedThrowableChangedSignature _OnSelectedThrowableChanged;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
@@ -132,6 +137,11 @@ protected:
 	// 유효하면 현재 수류탄을 장착한 상태
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentGrenade, VisibleAnywhere, BlueprintReadOnly, Category = "Grenade")
 	TObjectPtr<AGrenadeActor> _CurrentGrenade;
+
+	// 3번 키로 꺼낼 투척물 종류(아이템 TID). 종류 변경 키로 바꾸고, 비어 있으면 인벤토리의 첫 투척물을 쓴다.
+	// 소유자 HUD 표시에만 필요하므로 소유자에게만 복제한다.
+	UPROPERTY(ReplicatedUsing = OnRep_SelectedThrowable, VisibleInstanceOnly, BlueprintReadOnly, Category = "Grenade")
+	FName _SelectedThrowableTID = NAME_None;
 
 	// 메타휴먼의 리타기팅된 Body를 표시용 손의 기준으로 사용하고, 없으면 기본 캐릭터 메시를 사용한다.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "Third Person Grip Mesh Component"))
@@ -256,6 +266,9 @@ public:
 	
 	AGrenadeActor* GetEquippedGrenade() const;
 
+	// 지금 고른 투척물 종류 (HUD 표시용)
+	FName GetSelectedThrowableTID() const;
+
 	UFUNCTION(BlueprintPure, Category = "Grenade | Grip")
 	USkeletalMeshComponent* GetGrenadeGripMesh() const;
 
@@ -272,6 +285,10 @@ public:
 	
 	UFUNCTION(Server, Reliable)
 	void ServerEquipGrenade();
+
+	// 인벤토리의 다음 투척물 종류로 바꾸고, 들고 있었다면 바로 교체한다. (쿠킹 중에는 무시)
+	UFUNCTION(Server, Reliable)
+	void ServerCycleThrowable();
 	
 	bool CanFireFromAbility() const;
 
@@ -402,7 +419,7 @@ protected:
 	void InteractAction(const FInputActionValue& value);
 
 	UFUNCTION()
-	void HandleOutOfHealth(APlayerStateBase* KillerPlayerState);
+	void HandleOutOfHealth(APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon);
 
 	UFUNCTION()
 	void FireAction(const FInputActionValue& Value);
@@ -426,6 +443,18 @@ protected:
 	
 	UFUNCTION()
 	void EquipGrenadeAction(const FInputActionValue& value);
+
+	UFUNCTION()
+	void CycleThrowableAction(const FInputActionValue& value);
+
+	UFUNCTION()
+	void OnRep_SelectedThrowable();
+
+	// 인벤토리에서 CurrentTID 다음 투척물 TID. CurrentTID가 없으면 첫 투척물, 투척물이 없으면 NAME_None
+	FName FindNextThrowableTID(FName CurrentTID) const;
+
+	// 투척물 TID로 생성할 액터 클래스. 테이블의 _ThrowableClass, 비어 있으면 _GrenadeActorClass
+	TSubclassOf<AGrenadeActor> FindThrowableClass(FName TID) const;
 	
 	UFUNCTION()
 	void OnRep_CurrentGrenade();

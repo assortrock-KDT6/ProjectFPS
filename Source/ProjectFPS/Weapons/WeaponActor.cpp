@@ -180,6 +180,10 @@ bool AWeaponActor::Fire(const FVector& AimPoint)
 	Projectile->AddInstanceComponent(DamageSource);
 	DamageSource->SetSourcePlayerState(IsValid(GetInstigator()) ? GetInstigator()->GetPlayerState<APlayerStateBase>() : nullptr);
 	DamageSource->InitializeProjectileDamage(_WeaponAbilityData._Damage);
+	FDamageWeaponInfo DamageWeapon;
+	DamageWeapon.Icon = _WeaponData._Icon;
+	DamageWeapon.WeaponType = _WeaponData._WeaponType;
+	DamageSource->InitializeDamageWeapon(DamageWeapon);
 	DamageSource->RegisterComponent();
 	// Reserve before BeginPlay/overlap callbacks can attempt another shot.
 	_NextAllowedShotTime = GetWorld()->GetTimeSeconds() + GetProjectileInterval();

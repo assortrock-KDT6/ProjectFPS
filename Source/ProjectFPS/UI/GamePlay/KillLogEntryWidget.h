@@ -5,10 +5,12 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "TimerManager.h"
+#include "GameMode/PlayerMatchStats.h"
 #include "KillLogEntryWidget.generated.h"
 
 class	UTextBlock;
 class	UImage;
+class	UBorder;
 class	UWidgetAnimation;
 struct	FPlayerKillLogResult;
 
@@ -26,6 +28,24 @@ protected:
 	virtual void NativeDestruct() override;
 
 private:
+	UPROPERTY(meta = (BindWidgetOptional))
+	TObjectPtr<UBorder> _Background;
+
+	UPROPERTY(EditDefaultsOnly, Category = "KillLog|Colors")
+	FLinearColor _SelfKillColor = FLinearColor(0.025f, 0.18f, 0.65f, 0.8f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "KillLog|Colors")
+	FLinearColor _AllyKillColor = FLinearColor(0.025f, 0.4f, 0.09f, 0.8f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "KillLog|Colors")
+	FLinearColor _EnemyKillColor = FLinearColor(0.65f, 0.035f, 0.035f, 0.8f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "KillLog|Colors")
+	FLinearColor _UnknownKillColor = FLinearColor(0.08f, 0.08f, 0.08f, 0.7f);
+
+	UPROPERTY(Transient)
+	EKillLogRelation _EntryRelation = EKillLogRelation::Unknown;
+
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UTextBlock>		_KillerPlayerName;
 
@@ -53,5 +73,9 @@ private:
 	void HandleFadeOutFinished();
 
 public:
+	UFUNCTION(BlueprintPure, Category = "KillLog")
+	EKillLogRelation GetEntryRelation() const { return _EntryRelation; }
+
+	UFUNCTION(BlueprintCallable, Category = "KillLog")
 	bool SetEntryInformation(const FPlayerKillLogResult& Information);
 };
