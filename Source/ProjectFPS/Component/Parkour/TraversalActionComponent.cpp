@@ -4,6 +4,7 @@
 #include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
 #include "Character/CharacterPlayer.h"
+#include "Animation/AnimInstance.h"
 #include "GameFramework/GameStateBase.h"
 #include "MotionWarpingComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -92,9 +93,22 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 		return;
 	}
 
+	const float BodyDuration = GetEffectiveDuration(*Definition);
+	if (false == FMath::IsFinite(BodyDuration) || BodyDuration <= KINDA_SMALL_NUMBER)
+	{
+		ExitPresentation();
+		return;
+	}
+
 	// Capture the grip before either montage changes the hand pose.
 	AttachWeaponsToRightHand();
-	const float Duration = Owner->PlayAnimMontage(Definition->_Montage, Definition->_PlayRate);
+	// PlayAnimMontage returns the unscaled montage length, not its playback duration.
+	const float PlayedMontageLength = Owner->PlayAnimMontage(Definition->_Montage, Definition->_PlayRate);
+	if (PlayedMontageLength <= 0.f)
+	{
+		ExitPresentation();
+		return;
+	}
 	
 	if (true == Owner->IsLocallyControlled())
 	{
@@ -102,25 +116,21 @@ void UTraversalActionComponent::EnterPresentation(const FTraversalRepState& Stat
 
 		UAnimInstance* FirstPersonAnimInstance = IsValid(FirstPersonMesh) ? FirstPersonMesh->GetAnimInstance() : nullptr;
 		UAnimMontage* ArmsMontage = _FirstPersonMontages.FindRef(State._Variant);
-		if (true == IsValid(FirstPersonAnimInstance) && IsValid(ArmsMontage))
+		if (true == IsValid(FirstPersonAnimInstance) && IsValid(ArmsMontage)
+			&& FMath::IsFinite(ArmsMontage->RateScale) && ArmsMontage->RateScale > KINDA_SMALL_NUMBER)
 		{
-			_ActiveFirstPersonMontage = ArmsMontage;
-			// Match the body timeline even if the retargeted asset has a different RateScale.
-			const float ArmsRate = _ActiveFirstPersonMontage->GetPlayLength()
-				/ FMath::Max(Duration * _ActiveFirstPersonMontage->RateScale, KINDA_SMALL_NUMBER);
-			FirstPersonAnimInstance->Montage_Play(_ActiveFirstPersonMontage, ArmsRate);
+			// Match the body's effective duration, accounting for both montages' rate scales.
+			const float ArmsRate = ArmsMontage->GetPlayLength() / (BodyDuration * ArmsMontage->RateScale);
+			if (FMath::IsFinite(ArmsRate) && ArmsRate > 0.f
+				&& FirstPersonAnimInstance->Montage_Play(ArmsMontage, ArmsRate) > 0.f)
+			{
+				_ActiveFirstPersonMontage = ArmsMontage;
+			}
 		}
 	}
 
-	if (Duration <= 0.f)
-	{
-		ExitPresentation();
-		return;
-	}
-
-
 	UE_LOG(LogTraversal, Log, TEXT("[Presentation] 몽타주 재생: %s, ActionID %u, Role %d, Duration %.3f"),
-		*GetNameSafe(Definition->_Montage), State._ActionID, static_cast<int32>(Owner->GetLocalRole()), Duration);
+		*GetNameSafe(Definition->_Montage), State._ActionID, static_cast<int32>(Owner->GetLocalRole()), BodyDuration);
 
 	_ActiveMontage = Definition->_Montage;
 	_ActivePresentationActionId = State._ActionID;

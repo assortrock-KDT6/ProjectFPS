@@ -1,6 +1,8 @@
 #include "Component/Ability/GamePlayAbility/FPSFireAbility.h"
 #include "Character/CharacterPlayer.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
+#include "Component/Ability/Tasks/FPSAbilityTask_PlayMontage.h"
+#include "Animation/AnimMontage.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Weapons/WeaponActor.h"
 #include "Engine/World.h"
@@ -157,10 +159,7 @@ void UFPSFireAbility::FireNextShot()
 		WhizByParameters.RawMagnitude = Weapon->GetWeaponRange();
 		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_WhizBy, WhizByParameters);
 
-
-		
-
-
+		PlayFireMontage(Weapon);
 	}
 
 	if (false == IsActive())
@@ -175,6 +174,42 @@ void UFPSFireAbility::FireNextShot()
 	}
 
 	GetWorld()->GetTimerManager().SetTimer(_ShotTimer, this, &UFPSFireAbility::FireNextShot,FMath::Max(Weapon->GetProjectileInterval(), 0.001f), false);
+}
+
+void UFPSFireAbility::PlayFireMontage(const AWeaponActor* Weapon)
+{
+	if (false == IsActive() || false == IsValid(Weapon))
+	{
+		return;
+	}
+
+	// 연사 중에는 이전 Task를 정리하고, 이번 탄의 몽타주를 처음부터 재생한다.
+	if (IsValid(_MontageTask))
+	{
+		UFPSAbilityTask_PlayMontage* PreviousTask = _MontageTask;
+		_MontageTask = nullptr;
+		PreviousTask->EndTask();
+	}
+
+	// 이전 몽타주의 정지 콜백에서 Ability가 종료될 수 있다.
+	if (false == IsActive() || false == IsValid(Weapon))
+	{
+		return;
+	}
+
+	const EWeaponType WeaponType = Weapon->GetWeaponData()._WeaponType;
+	const TObjectPtr<UAnimMontage>* FPEntry = _FireMontageFP.Find(WeaponType);
+	const TObjectPtr<UAnimMontage>* TPEntry = _FireMontageTP.Find(WeaponType);
+	UAnimMontage* FPMontage = FPEntry ? FPEntry->Get() : nullptr;
+	UAnimMontage* TPMontage = TPEntry ? TPEntry->Get() : nullptr;
+
+	if (IsValid(FPMontage) || IsValid(TPMontage))
+	{
+		// 단발은 발사 직후 Ability가 정상 종료되므로 몽타주는 끝까지 재생한다.
+		_MontageTask = UFPSAbilityTask_PlayMontage::PlayMontage(
+			this, FPMontage, TPMontage, 1.f, 1.f, false);
+		_MontageTask->ReadyForActivation();
+	}
 }
 
 void UFPSFireAbility::OnBlockedTagChanged(FGameplayTag Tag, int32 Count)
@@ -205,6 +240,14 @@ void UFPSFireAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	_BlockedTagDelegates.Empty();
 
 	_FiringWeapon.Reset();
+
+	UFPSAbilityTask_PlayMontage* MontageTask = _MontageTask;
+	_MontageTask = nullptr;
+	// EndAbility(..., bWasCancelled=true)로 직접 종료되는 경로도 정지한다.
+	if (bWasCancelled && IsValid(MontageTask))
+	{
+		MontageTask->EndTask();
+	}
 
 	if (true == bWasCancelled)
 	{

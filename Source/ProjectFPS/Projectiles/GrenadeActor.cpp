@@ -18,6 +18,8 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Character/CharacterPlayer.h"
+#include "Table/TableSubsystem.h"
+#include "Table/TableDatas.h"
 #include "Net/UnrealNetwork.h"
 
 AGrenadeActor::AGrenadeActor()
@@ -53,6 +55,16 @@ UStaticMeshComponent* AGrenadeActor::GetGrenadeMesh() const
 FName AGrenadeActor::GetTID() const
 {
 	return _TID;
+}
+
+float AGrenadeActor::GetFuseTime() const
+{
+	return _FuseTime;
+}
+
+bool AGrenadeActor::CanCook() const
+{
+	return _bCanCook;
 }
 
 bool AGrenadeActor::Throw(const FVector& Direction)
@@ -93,7 +105,7 @@ bool AGrenadeActor::Throw(const FVector& Direction)
 	// 이미 시작된 타이머가 있으면 남은 시간을 유지
 	if (GetLifeSpan() <= 0.f)
 	{
-		SetLifeSpan(5.f); // 5초뒤에 수명이 끝남 -> 5초뒤에 터진다는 뜻
+		SetLifeSpan(_FuseTime); // 5초뒤에 수명이 끝남 -> 5초뒤에 터진다는 뜻
 	}
 	
 	ForceNetUpdate();
@@ -169,6 +181,15 @@ void AGrenadeActor::BeginPlay()
 		
 		Source->RegisterComponent();
 	}
+
+	// 같은 메시를 쓰는 투척물은 아이템 테이블의 색으로 구분 (각 화면에서 적용)
+	if (UTableSubsystem* Table = UTableSubsystem::Get(this))
+	{
+		if (const FItemData* ItemData = Table->FindTableRow<FItemData>(TEXT("ItemTable"), _TID))
+		{
+			ItemData->ApplyTint(_GrenadeMesh);
+		}
+	}
 }
 
 void AGrenadeActor::MulticastPlayExplosion_Implementation(const FVector& Location)
@@ -241,68 +262,8 @@ void AGrenadeActor::LifeSpanExpired()
 		Character = nullptr;
 	}
 	
-	if (_DamageEffect == nullptr || !FMath::IsFinite(_ExplosionRadius) || _ExplosionRadius <= 0.f || !FMath::IsFinite(_Damage) || _Damage <= 0.f)
-	{
-		Super::LifeSpanExpired();
-		
-		return;
-	}
-	
-	// 수류탄의 폭발범위에 걸친 Pawn을 검색 -> 이때 수류탄을 던진 플레이어도 포함
-	TArray<TEnumAsByte<EObjectTypeQuery>> ObjectTypes;
-	
-	ObjectTypes.Add(UEngineTypes::ConvertToObjectType(ECC_Pawn)); // 이코드는 잘 이해못함 무슨 문법인지 잘 모르겠어요 그래서 노션에 정리해 두었습니다. - 건영
-	
-	TArray<AActor*> ActorsToIgnore;
-	
-	ActorsToIgnore.Add(this);
-	
-	TArray<AActor*> Targets;
-	
-	UKismetSystemLibrary::SphereOverlapActors(this, ExplosionLocation, _ExplosionRadius, ObjectTypes, APawn::StaticClass(), ActorsToIgnore, Targets);
-	
-	const UDamageSourceComponent* Source = FindComponentByClass<UDamageSourceComponent>();
-	
-	APlayerStateBase* FPSPlayerState = IsValid(Source) ? Source->GetSourcePlayerState() : nullptr;
-	
-	// 플레이어끼리도 서로 폭발을 막는 벽으로 취급하지 않기
-	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(GrenadeExplosion), false, this);
-	
-	TraceParams.AddIgnoredActors(Targets);
-	
-	for (AActor* Target : Targets)
-	{
-		if (!IsValid(Target))
-		{
-			continue;
-		}
-		
-		UAbilitySystemComponent* TargetASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Target);
-		
-		if (!IsValid(TargetASC))
-		{
-			continue;
-		}
-		
-		// 폭발 지점부터 대상 중심까지 벽이 막고 있으면 피해를 주지 못함
-		// 중심과 상체 위쪽이 모두 가려졌을 때만 폭발 피해를 차단한다
-		if (GetWorld()->LineTraceTestByChannel(ExplosionLocation, Target->GetActorLocation(), ECC_Visibility, TraceParams) &&
-			GetWorld()->LineTraceTestByChannel(ExplosionLocation,Target->GetActorLocation() + FVector::UpVector * Target->GetSimpleCollisionHalfHeight() * 0.75f, ECC_Visibility, TraceParams))
-		{
-			continue;
-		}
-		
-		FGameplayEffectContextHandle Context(UAbilitySystemGlobals::Get().AllocGameplayEffectContext());
-		
-		Context.AddInstigator(FPSPlayerState, this);
-		Context.AddSourceObject(this);
-		
-		FGameplayEffectSpec Spec(_DamageEffect.GetDefaultObject(), Context, 1.f);
-		
-		Spec.SetSetByCallerMagnitude(FPSGameplayTags::SetByCaller_Damage, _Damage);
-		
-		TargetASC->ApplyGameplayEffectSpecToSelf(Spec);
-	}
+	// 종류마다 다른 폭발 처리 (기본 = 범위 데미지)
+	Detonate(ExplosionLocation);
 
 	// 손에서 폭발한 뒤 살아 있다면 기존 경로로 다음 수류탄을 장착
 	if (IsValid(Character))
@@ -316,7 +277,22 @@ void AGrenadeActor::LifeSpanExpired()
 	}
 	
 	// 피해처리가 끝난 수류탄을 제거
-	Super::LifeSpanExpired();
+	// 발동 과정에서 새 수명을 설정한 투척물은 유지
+	// 일반 수류탄처럼 추가 수명이 없는 경우에는 바로 제거
+	if (GetLifeSpan() <= 0.f)
+	{
+		Super::LifeSpanExpired();	
+	}
+}
+
+void AGrenadeActor::Detonate(const FVector& ExplosionLocation)
+{
+	// 종류별 자식 클래스가 구현한다. (폭탄 = 범위 데미지, 섬광탄 = 섬광, 화염병 = 불 장판)
+}
+
+bool AGrenadeActor::IsThrown() const
+{
+	return _Thrown;
 }
 
 void AGrenadeActor::Tick(float DeltaTime)
