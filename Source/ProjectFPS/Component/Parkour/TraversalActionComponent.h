@@ -13,6 +13,7 @@
  * 공통 추상 기반 클래스
  */
 
+class AController;
 class UHurdleCheckComponent;
 class UMotionWarpingComponent;
 

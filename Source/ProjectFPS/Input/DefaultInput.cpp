@@ -109,6 +109,12 @@ UDefaultInput::UDefaultInput()
 		_WeaponSlot3 = WeaponSlot3Action.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> CycleThrowableAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_CycleThrowable.IA_CycleThrowable'"));
+	if (CycleThrowableAction.Succeeded())
+	{
+		_CycleThrowable = CycleThrowableAction.Object;
+	}
+
 	ConstructorHelpers::FObjectFinder<UInputAction> ReloadAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Reload.IA_Reload'"));
 	if (ReloadAction.Succeeded())
 	{

@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 /*
  *	무기가 WeaponActor 인데 GrenadeActor를 만든 이유는 WeaponActor는 WeaponTable이랑 Weapon이 아니면 그냥 Return 시켜서 터져요
@@ -17,15 +17,18 @@ class UGameplayEffect;
 class UNiagaraSystem;
 class USoundBase;
 
-UCLASS()
+// 모든 투척물의 공통 부모 (장착·투척·쿠킹·신관·폭발 연출·정리). 터질 때 하는 일은 자식 클래스가 Detonate로 정한다.
+UCLASS(Abstract)
 class PROJECTFPS_API AGrenadeActor : public AActor
 {
 	GENERATED_BODY()
 	
 protected:
+	// 바닥·벽과 부딪히는 충돌. 던진 뒤 물리 시뮬레이션의 기준이 된다
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Grenade")
 	TObjectPtr<USphereComponent> _GrenadeCollision;	
 	
+	// 보이는 수류탄 메시. 충돌은 _GrenadeCollision이 담당한다
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Grenade")
 	TObjectPtr<UStaticMeshComponent> _GrenadeMesh;
 	
@@ -40,18 +43,17 @@ protected:
 	// 실제 투척 각도와 예측 라인이 같이 사용할 각도
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Throw", meta = (ClampMin = "0.0", ClampMax = "45.0"))
 	float _ThrowAngle = 20.f;
-	
-	// 폭발 피해를 검색할 반경, 단위는 cm
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Explosion", meta = (ClampMin = "1.0", Units = "cm"))
-	float _ExplosionRadius = 500.f;
-	
-	// 기존 피해 GE에 전달할 수류탄의 피해량
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Explosion", meta = (ClampMin = "0.0"))
-	float _Damage = 150.f;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Explosion")
-	TSubclassOf<UGameplayEffect> _DamageEffect;
-	
+
+	// 신관 시간. 손을 떠난 순간부터 터질 때까지 (쿠킹하면 그만큼 줄어든다)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Throw", meta = (ClampMin = "0.1", Units = "s"))
+	float _FuseTime = 5.f;
+
+	// 쿠킹 가능 여부. 닿으면 터지는 투척물(화염병)은 false
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Throw")
+	bool _bCanCook = true;
+
+	// 폭발 범위·데미지처럼 종류마다 다른 값은 각 자식 클래스가 가진다. (폭탄 = ABombGrenadeActor)
+
 	// BP 클래스 기본값에서 사용할 폭발 이펙트를 지정한다. -> 나이아가라로 변경.
 	UPROPERTY(EditDefaultsOnly, Category = "Grenade | Explosion")
 	TObjectPtr<UNiagaraSystem> _ExplosionEffect = nullptr;
@@ -71,6 +73,10 @@ public:
 	UStaticMeshComponent* GetGrenadeMesh() const;
 
 	FName GetTID() const;
+
+	float GetFuseTime() const;
+
+	bool CanCook() const;
 	
 	// 서버에서 손으로부터 분리하고 초기 속도를 적용
 	bool Throw(const FVector& Direction);
@@ -88,6 +94,12 @@ protected:
 	virtual void BeginPlay() override;
 
 	virtual void LifeSpanExpired() override;
+
+	// 터졌을 때 하는 일. 서버에서만 호출된다. 종류별 자식 클래스가 바꾼다.
+	virtual void Detonate(const FVector& ExplosionLocation);
+
+	// 자식 클래스(화염병)가 던져진 뒤인지 확인할 때 사용
+	bool IsThrown() const;
 	
 public:	
 	virtual void Tick(float DeltaTime) override;

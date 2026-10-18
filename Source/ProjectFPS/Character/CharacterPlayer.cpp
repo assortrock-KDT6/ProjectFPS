@@ -775,6 +775,12 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Completed, this, &ACharacterPlayer::CrouchEnded);
 	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Canceled, this, &ACharacterPlayer::CrouchEnded);
 
+
+	if (IsValid(_DefaultInput->_CycleThrowable))
+	{
+		InputComp->BindAction(_DefaultInput->_CycleThrowable, ETriggerEvent::Started, this, &ACharacterPlayer::CycleThrowableAction);
+	}
+	
 	if (IsValid(_AbilitySystemComponent))
 	{
 		InputComp->BindAction(_DefaultInput->_Reload, ETriggerEvent::Started, _AbilitySystemComponent.Get(), &UFPSAbilitySystemComponent::Reload);
@@ -803,6 +809,7 @@ void ACharacterPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	DOREPLIFETIME(ACharacterPlayer, _CurrentWeapon);
 	DOREPLIFETIME(ACharacterPlayer, _CurrentGrenade);
+	DOREPLIFETIME_CONDITION(ACharacterPlayer, _SelectedThrowableTID, COND_OwnerOnly);
 	DOREPLIFETIME(ACharacterPlayer, _DeathStartServerTime);
 	DOREPLIFETIME_CONDITION(ACharacterPlayer, _ReplicatedWeaponPoseAim, COND_SkipOwner);
 }
@@ -1321,9 +1328,125 @@ void ACharacterPlayer::EquipGrenadeAction(const FInputActionValue& Value)
 	}
 }
 
+void ACharacterPlayer::CycleThrowableAction(const FInputActionValue& Value)
+{
+	if (IsLocallyControlled())
+	{
+		ServerCycleThrowable();
+	}
+}
+
+void ACharacterPlayer::ServerCycleThrowable_Implementation()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// 핀을 뽑은(쿠킹 중) 투척물은 다른 종류로 바꿀 수 없다.
+	if (IsValid(_CurrentGrenade) && _CurrentGrenade->GetLifeSpan() > 0.f)
+	{
+		return;
+	}
+
+	const FName NextTID = FindNextThrowableTID(_SelectedThrowableTID);
+	if (NextTID.IsNone() || NextTID == _SelectedThrowableTID)
+	{
+		return;
+	}
+
+	_SelectedThrowableTID = NextTID;
+
+	// C++ RepNotify는 서버에서 자동 호출되지 않으므로 직접 적용
+	OnRep_SelectedThrowable();
+
+	// 투척물을 들고 있었다면 바로 새 종류로 교체한다.
+	if (IsValid(_CurrentGrenade))
+	{
+		ClearEquippedGrenade();
+		ServerEquipGrenade();
+	}
+
+	ForceNetUpdate();
+}
+
+void ACharacterPlayer::OnRep_SelectedThrowable()
+{
+	_OnSelectedThrowableChanged.Broadcast();
+}
+
+FName ACharacterPlayer::GetSelectedThrowableTID() const
+{
+	return _SelectedThrowableTID;
+}
+
+FName ACharacterPlayer::FindNextThrowableTID(FName CurrentTID) const
+{
+	const APlayerStateBase* FPSPlayerState = GetPlayerState<APlayerStateBase>();
+	const UInventoryComponent* Inventory = nullptr;
+	if (IsValid(FPSPlayerState))
+	{
+		Inventory = FPSPlayerState->GetInventory();
+	}
+
+	const UTableSubsystem* Table = UTableSubsystem::Get(this);
+	if (!IsValid(Inventory) || !IsValid(Table))
+	{
+		return NAME_None;
+	}
+
+	// 인벤토리 순서대로 개수가 남은 투척물 TID를 모은다. (같은 TID가 여러 칸이어도 한 번만)
+	TArray<FName> ThrowableTIDs;
+	for (const FInventorySlot& Item : Inventory->GetItems())
+	{
+		if (Item._Count <= 0)
+		{
+			continue;
+		}
+
+		const FItemData* Row = Table->FindTableRow<FItemData>(TEXT("ItemTable"), Item._TID);
+		if (nullptr == Row || EItemType::Grenade != Row->_ItemType)
+		{
+			continue;
+		}
+
+		ThrowableTIDs.AddUnique(Item._TID);
+	}
+
+	if (ThrowableTIDs.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	// 지금 종류가 목록에 없으면(처음이거나 다 썼으면) 첫 번째부터
+	const int32 CurrentIndex = ThrowableTIDs.IndexOfByKey(CurrentTID);
+	if (INDEX_NONE == CurrentIndex)
+	{
+		return ThrowableTIDs[0];
+	}
+
+	return ThrowableTIDs[(CurrentIndex + 1) % ThrowableTIDs.Num()];
+}
+
+TSubclassOf<AGrenadeActor> ACharacterPlayer::FindThrowableClass(FName TID) const
+{
+	const UTableSubsystem* Table = UTableSubsystem::Get(this);
+	if (IsValid(Table))
+	{
+		const FItemData* Row = Table->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+		if (nullptr != Row && nullptr != Row->_ThrowableClass)
+		{
+			return Row->_ThrowableClass;
+		}
+	}
+
+	// 테이블에 클래스가 없으면 기존 기본 수류탄
+	return _GrenadeActorClass;
+}
+
 void ACharacterPlayer::ServerEquipGrenade_Implementation()
 {
-	if (!HasAuthority() || IsValid(_CurrentGrenade) || nullptr == _GrenadeActorClass || !IsValid(GetWorld()))
+	if (!HasAuthority() || IsValid(_CurrentGrenade) || !IsValid(GetWorld()))
 	{
 		return;
 	}
@@ -1346,16 +1469,8 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 		return;
 	}
 
-	const AGrenadeActor* Defaults = _GrenadeActorClass.GetDefaultObject();
-	
-	if (!IsValid(Defaults) || Defaults->GetTID().IsNone())
-	{
-		return;
-	}
-
-	const FName TID = Defaults->GetTID();
-
-	// 클라이언트의 주장 대신 서버 인벤토리의 실제 수량을 확인한다.
+	// 고른 종류를 서버 인벤토리의 실제 수량으로 확인한다. (클라이언트의 주장 대신)
+	FName TID = _SelectedThrowableTID;
 	bool HasGrenade = false;
 
 	for (const FInventorySlot& Item : Inventory->GetItems())
@@ -1368,7 +1483,33 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 		}
 	}
 
+	// 고른 종류가 없거나 다 썼으면 인벤토리의 첫 투척물로 바꾼다.
 	if (!HasGrenade)
+	{
+		TID = FindNextThrowableTID(NAME_None);
+
+		if (TID.IsNone())
+		{
+			return;
+		}
+	}
+
+	if (TID != _SelectedThrowableTID)
+	{
+		_SelectedThrowableTID = TID;
+
+		OnRep_SelectedThrowable();
+	}
+
+	const TSubclassOf<AGrenadeActor> ThrowableClass = FindThrowableClass(TID);
+	const AGrenadeActor* Defaults = nullptr;
+	if (nullptr != ThrowableClass)
+	{
+		Defaults = ThrowableClass.GetDefaultObject();
+	}
+
+	// BP의 TID와 아이템 TID가 같아야 소비·표시가 맞는다.
+	if (!IsValid(Defaults) || Defaults->GetTID() != TID)
 	{
 		return;
 	}
@@ -1387,7 +1528,7 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 	SpawnParameters.Instigator = this;
 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	AGrenadeActor* Grenade = GetWorld()->SpawnActor<AGrenadeActor>(_GrenadeActorClass, GetActorTransform(), SpawnParameters);
+	AGrenadeActor* Grenade = GetWorld()->SpawnActor<AGrenadeActor>(ThrowableClass, GetActorTransform(), SpawnParameters);
 
 	if (!IsValid(Grenade))
 	{
@@ -1500,6 +1641,15 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 						? _GrenadeViewMaterial.Get() : GrenadeMesh->GetMaterial(Index);
 					_ViewItemMesh->SetMaterial(Index, Material);
 					_ViewItemMesh->CreateAndSetMaterialInstanceDynamic(Index);
+				}
+
+				// 1인칭 전용 머티리얼에도 투척물 종류별 색을 적용
+				if (UTableSubsystem* Table = UTableSubsystem::Get(this))
+				{
+					if (const FItemData* ItemData = Table->FindTableRow<FItemData>(TEXT("ItemTable"), _CurrentGrenade->GetTID()))
+					{
+						ItemData->ApplyTint(_ViewItemMesh);
+					}
 				}
 				_FirstPersonMesh->UpdateFOV();
 			}
@@ -1921,6 +2071,8 @@ void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Mon
 		}
 	}
 	
+	// 수류탄 속도 수정
+	AnimInstance->Montage_SetPlayRate(Montage, Section == TEXT("Throw") ? 1.5f : 1.f);
 	AnimInstance->Montage_JumpToSection(Section, Montage);
 	AnimInstance->Montage_Resume(Montage);
 }
@@ -1961,6 +2113,9 @@ void ACharacterPlayer::ClientPlayGrenadeMontageTP_Implementation(UAnimMontage* M
 	{
 		return;
 	}
+	
+	// 수류탄 속도 수정 
+	AnimInstance->Montage_SetPlayRate(Montage, Section == TEXT("Throw") ? 1.5f : 1.f);
 	AnimInstance->Montage_JumpToSection(Section, Montage);
 	AnimInstance->Montage_Resume(Montage);
 }

@@ -63,6 +63,10 @@ protected:
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _WeaponSlot3;
 
+	// 투척물 종류 변경 (폭탄 / 섬광탄 / 화염병)
+	UPROPERTY(EditAnywhere)
+	TObjectPtr<class UInputAction> _CycleThrowable;
+
 	// 무기 슬롯 교체 (Main, Sub)
 	UPROPERTY(EditAnywhere)
 	TObjectPtr<class UInputAction> _EquipMainWeapon;
