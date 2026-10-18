@@ -41,7 +41,10 @@ void FAnimNode_WeaponGrip::PreUpdate(const UAnimInstance* Instance)
 	}
 
 	const AWeaponActor* Weapon = Owner->GetEquippedWeapon();
-	const USceneComponent* WeaponMesh = true == IsValid(Weapon) ? Weapon->GetWeaponMeshComponent() : nullptr;
+	_FirstPerson = Mesh == Owner->Get_FirstPersonMesh();
+	// 1인칭은 별도의 메시와 그립 축을 사용하며, 클라이언트의 월드 무기 복제보다 먼저 준비될 수 있다.
+	const USceneComponent* WeaponMesh = true == _FirstPerson ? Owner->GetViewWeaponMeshComponent()
+		: (true == IsValid(Weapon) ? Weapon->GetWeaponMeshComponent() : nullptr);
 	if (false == IsValid(WeaponMesh) || false == WeaponMesh->DoesSocketExist(_LeftGripSocket)
 		|| false == WeaponMesh->DoesSocketExist(_RightGripSocket))
 	{
@@ -49,6 +52,10 @@ void FAnimNode_WeaponGrip::PreUpdate(const UAnimInstance* Instance)
 	}
 
 	_AttachedToEvaluatedMesh = WeaponMesh->GetAttachParent() == Mesh;
+	if (true == _FirstPerson && false == _AttachedToEvaluatedMesh)
+	{
+		return;
+	}
 	// 원본 메시의 서버 이동 스코프 안에서는 월드 변환이 아직 이전 프레임 값이다.
 	_MeshWorld = true == Owner->HasAuthority() && Mesh == Owner->GetMesh()
 		? Mesh->GetRelativeTransform() * Owner->GetActorTransform() : Mesh->GetComponentTransform();
@@ -59,6 +66,16 @@ void FAnimNode_WeaponGrip::PreUpdate(const UAnimInstance* Instance)
 		_GripMeshIndex = Mesh->GetBoneIndex(nullptr != Socket ? Socket->BoneName : SocketName);
 		_WeaponInGrip = WeaponMesh->GetRelativeTransform()
 			* (nullptr != Socket ? Socket->GetSocketLocalTransform() : FTransform::Identity);
+		if (true == _FirstPerson)
+		{
+			// 월드 좌표를 읽으면 이전 프레임의 팔 포즈가 섞인다. 소켓을 무기 공간에 캐시하고
+			// Evaluate에서 반동·시선 흔들림까지 적용된 현재 weapon 본과 합성한다.
+			_LeftGrip = WeaponMesh->GetSocketTransform(_LeftGripSocket, RTS_Component);
+			_RightGrip = WeaponMesh->GetSocketTransform(_RightGripSocket, RTS_Component);
+			_TargetWeight = 1.f;
+			_Ready = true;
+			return;
+		}
 		_AimPointWorld = Owner->GetWeaponPoseAimPoint(Weapon->GetWeaponRange());
 		// 초근접에서 총구 수렴을 생략할 때 손만 따로 후퇴하지 않도록 같은 표시용 깊이를 사용한다.
 		const FVector AimOrigin = Owner->GetWeaponAimOrigin();
@@ -76,6 +93,14 @@ void FAnimNode_WeaponGrip::PreUpdate(const UAnimInstance* Instance)
 	_LeftGrip = WeaponMesh->GetSocketTransform(_LeftGripSocket, RTS_Component);
 	_RightGrip = WeaponMesh->GetSocketTransform(_RightGripSocket, RTS_Component);
 	_PrimaryHandRetraction = FMath::Clamp(Weapon->GetWeaponData()._ThirdPersonHandRetraction, 0.f, 15.f);
+
+	// 캐릭터 기준 보정값을 원본 포즈의 컴포넌트 공간으로 변환한다.
+	// 1인칭은 위에서 별도로 반환하며, 표시용 Body는 보정된 월드 총의 그립을 따른다.
+	const FVector GripOffset = Weapon->GetWeaponData()._ThirdPersonGripOffset.GetClampedToMaxSize(15.f);
+
+	_PrimaryHandOffset = _MeshWorld.InverseTransformVectorNoScale(
+		Owner->GetActorTransform().TransformVectorNoScale(GripOffset));
+
 	const UAbilitySystemComponent* Ability = Owner->GetAbilitySystemComponent();
 	_TargetADSWeight = true == IsValid(Ability) && true == Ability->HasMatchingGameplayTag(FPSGameplayTags::Status_ADS) ? 1.f : 0.f;
 	const UAnimInstance* Body = Owner->GetMesh()->GetAnimInstance();
@@ -121,7 +146,10 @@ void FAnimNode_WeaponGrip::UpdateInternal(const FAnimationUpdateContext& Context
 	_DeltaTime = Context.GetDeltaTime();
 	_ADSWeight = FMath::Lerp(_ADSWeight, _TargetADSWeight, 1.f - FMath::Exp(-10.f * _DeltaTime));
 	// 재장전·근접 공격으로 전환할 때 손이 그립에서 자연스럽게 풀리도록 한다.
-	_GripWeight = FMath::FInterpTo(_GripWeight, _TargetWeight, Context.GetDeltaTime(), 20.f);
+	// 1인칭은 이 노드 다음의 OverrideHandIK/Traversal/Grenade/Melee 슬롯이 손을 해제한다.
+	// 발사 몽타주 때문에 그립을 풀거나 무기 교체 직후 이전 손 위치를 보간하지 않는다.
+	_GripWeight = true == _FirstPerson ? _TargetWeight
+		: FMath::FInterpTo(_GripWeight, _TargetWeight, Context.GetDeltaTime(), 20.f);
 	if (false == _Ready || _TargetWeight == 0.f)
 	{
 		_NearRetraction = 0.f;
@@ -170,12 +198,40 @@ void FAnimNode_WeaponGrip::EvaluateSkeletalControl_AnyThread(FComponentSpacePose
 		? _WeaponInGrip * Output.Pose.GetComponentSpaceTransform(Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(_GripMeshIndex)))
 		: _WeaponWorld.GetRelativeTransform(_MeshWorld);
 
+	if (true == _AttachedToEvaluatedMesh && false == _FirstPerson && false == _PrimaryHandOffset.IsNearlyZero())
+	{
+		const FCompactPoseBoneIndex Grip = Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(_GripMeshIndex));
+
+		const FCompactPoseBoneIndex Hand = _RightHand.GetCompactPoseIndex(Bones);
+
+		if (Grip != Hand && true == Bones.BoneIsChildOf(Grip, Hand))
+		{
+			FTransform HandTarget = Output.Pose.GetComponentSpaceTransform(Hand);
+
+			// weapon_r의 오른손 기준 위치와 회전을 유지하여 총만 손에서 밀리지 않게 한다.
+			const FTransform GripInHand = Output.Pose.GetComponentSpaceTransform(Grip).GetRelativeTransform(HandTarget);
+
+			HandTarget.AddToTranslation(_PrimaryHandOffset);
+
+			SolveHand(Output, _RightHand, HandTarget, OutBoneTransforms);
+
+			// 같은 프레임에 보정한 오른팔을 기준으로 총과 왼손 목표를 함께 계산한다.
+			WeaponCS = _WeaponInGrip * GripInHand * OutBoneTransforms.Last().Transform;
+		}
+	}
+
 	if (true == _AttachedToEvaluatedMesh
 		&& Bones.MakeCompactPoseIndex(FMeshPoseBoneIndex(_GripMeshIndex)) == _RightHand.GetCompactPoseIndex(Bones))
 	{
 		const FCompactPoseBoneIndex Hand = _RightHand.GetCompactPoseIndex(Bones);
 		const FCompactPoseBoneIndex Shoulder = Bones.GetParentBoneIndex(Bones.GetParentBoneIndex(Hand));
 		FTransform Target = Output.Pose.GetComponentSpaceTransform(Hand);
+
+		if (false == _FirstPerson)
+		{
+			Target.AddToTranslation(_PrimaryHandOffset);
+		}
+
 		const FVector TowardShoulder = (Output.Pose.GetComponentSpaceTransform(Shoulder).GetLocation()
 			- Target.GetLocation()).GetSafeNormal();
 		Target.AddToTranslation(TowardShoulder * _PrimaryHandRetraction);
@@ -214,7 +270,7 @@ void FAnimNode_WeaponGrip::EvaluateSkeletalControl_AnyThread(FComponentSpacePose
 
 	SolveHand(Output, _LeftHand, _LeftGrip * WeaponCS, OutBoneTransforms);
 	// 표시용 오른손은 리타기팅 후 실제 무기 그립에 다시 맞춘다.
-	if (false == _AttachedToEvaluatedMesh)
+	if (true == _FirstPerson || false == _AttachedToEvaluatedMesh)
 	{
 		SolveHand(Output, _RightHand, _RightGrip * WeaponCS, OutBoneTransforms);
 	}

@@ -494,7 +494,7 @@ void UFPSGrenadeAbility::OnGrenadeCook(FGameplayEventData Payload)
 	AGrenadeActor* Grenade = Character->GetEquippedGrenade();
 	
 	// 이미 쿠킹 중이라면 남은 시간을 다시 5초로 되돌리지 않음
-	if (!IsValid(Grenade) || Grenade->GetLifeSpan() > 0.f)
+	if (!IsValid(Grenade) || Grenade->GetLifeSpan() > 0.f || false == Grenade->CanCook())
 	{
 		return;
 	}
@@ -517,7 +517,7 @@ void UFPSGrenadeAbility::OnGrenadeCook(FGameplayEventData Payload)
 			// 쿠킹이 시작된 수류탄은 이때 한번만 소비
 			if (Inventory->RemoveItem(Index, 1))
 			{
-				Grenade->SetLifeSpan(5.f);
+				Grenade->SetLifeSpan(Grenade->GetFuseTime());
 				
 				// 쿠킹이 시작된 순간에만 소리를 한번 재생
 				Grenade->MulticastPlayCookSound(Grenade->GetActorLocation());

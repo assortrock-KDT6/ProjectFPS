@@ -146,7 +146,19 @@ void AItemPickUp::InitializePickupPhysics()
 	_Mesh->BodyInstance.bLockZTranslation = false;
 	_Mesh->SetConstraintMode(EDOFMode::SixDOF);
 	_Mesh->SetEnableGravity(true);
-	_Mesh->SetSimulatePhysics(HasAuthority() && GetActorEnableCollision() && _Mesh->GetStaticMesh());
+
+	if (HasAuthority())
+	{
+		// 서버가 물리를 계산하고, 위치·속도는 ReplicateMovement로 클라에 보낸다.
+		_Mesh->SetSimulatePhysics(GetActorEnableCollision() && nullptr != _Mesh->GetStaticMesh());
+	}
+	else
+	{
+		// 클라는 서버가 물리 중인지(bRepPhysics)에 맞춰 물리를 켜야 복제된 위치를 따라 떨어진다.
+		// (무조건 끄면 생성된 자리에 멈춰 있음 - WeaponPickUp과 같은 방식)
+		SyncReplicatedPhysicsSimulation();
+	}
+
 	if (_Mesh->IsSimulatingPhysics())
 		_Mesh->WakeAllRigidBodies();
 }
@@ -213,7 +225,12 @@ void AItemPickUp::OnConstruction(const FTransform& Transform)
 	// 테이블 행을으로 메시정보 받아오기.
 	const FItemData* Row = _ItemTable->FindRow<FItemData>(_TID, TEXT(""));
 	if (Row && _Mesh && Row->_WorldMesh)
+	{
 		_Mesh->SetStaticMesh(Row->_WorldMesh);
+
+		// 같은 메시를 쓰는 아이템은 테이블의 색으로 구분
+		Row->ApplyTint(_Mesh);
+	}
 
 }
 
@@ -262,4 +279,7 @@ void AItemPickUp::RefreshMeshFromTable()
 
 	// 메시가 nullptr이면 기존 메시도 비워짐.
 	_Mesh->SetStaticMesh(Row->_WorldMesh);
+
+	// 같은 메시를 쓰는 아이템은 테이블의 색으로 구분
+	Row->ApplyTint(_Mesh);
 }
