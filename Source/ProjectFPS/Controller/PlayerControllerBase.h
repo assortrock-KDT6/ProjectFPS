@@ -12,7 +12,7 @@
   *	[ 플레이어 컨트롤러 ]
   * 
   *	1) 플레이어 컨트롤러는 플레이어에 빙의하는 존재이다.
-  *	2) TeamID를 가지고 있으며, TeamID에 따라 적인지 아군인지 판단한다.
+  *	2) 팀 정보는 복제되는 PlayerStateBase의 GetTeamId/SetTeamId를 사용한다.
   * 
   * 
   *	[캐릭터 컴포넌트 구조]
@@ -32,6 +32,8 @@ class UMatchResultWidget;
 class AFPSGameState;
 class ACharacterPlayer;
 class AFPSDeathCameraActor;
+class UDamageFeedbackWidget;
+class UHitDirectionWidget;
 
 UCLASS()
 class PROJECTFPS_API APlayerControllerBase : public ACommonPlayerController
@@ -66,7 +68,8 @@ private:
 	TWeakObjectPtr<ACharacterPlayer> _DeathCharacter;
 
 protected:
-	UPROPERTY(BlueprintReadWrite)
+	// 기존 BP 직렬화 호환용. 실제 팀 정보는 PlayerStateBase에서 관리한다.
+	UPROPERTY(BlueprintReadWrite, meta = (DeprecatedProperty, DeprecationMessage = "Use PlayerStateBase.GetTeamId/SetTeamId instead."))
 	uint8 _TeamId = 0;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
@@ -103,6 +106,19 @@ protected:
 
 	UPROPERTY(Transient)
 	TObjectPtr<AFPSDeathCameraActor> _DeathCamera;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Damage Feedback")
+	TSubclassOf<UDamageFeedbackWidget> _DamageFeedbackWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDamageFeedbackWidget> _DamageFeedbackWidget;
+
+	// 테두리와 방향 표시에는 각각의 위젯 BP를 지정한다.
+	UPROPERTY(EditDefaultsOnly, Category = "UI|Damage Feedback")
+	TSubclassOf<UHitDirectionWidget> _HitDirectionWidgetClass;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UHitDirectionWidget> _HitDirectionWidget;
 
 public:
 	virtual void ChangeState(FName NewState) override;
@@ -164,6 +180,11 @@ public:
 	// 서버에서 확정한 피해 정보를 공격자 본인에게 전달
 	UFUNCTION(Client, Reliable)
 	void ClientShowDamageNumber(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot, AActor* Target, FVector HitLocation);
+
+	// 피해자 본인에게만 피격 연출을 보낸다. 리스폰 이전 폰의 지연 패킷은 무시한다.
+	// 총알 이외의 피해는 방향을 영벡터로 전달하여 테두리만 갱신한다.
+	UFUNCTION(Client, Unreliable)
+	void ClientShowIncomingDamage(APawn* DamagedPawn, FVector IncomingWorldDirection, float Damage, float SourceDistance = -1.f);
 	
 	// 전달 받은 정보를 사용하는 위젯 연출은 Blueprint에서 구현
 	UFUNCTION(BlueprintImplementableEvent, Category = "UI | Damage")
@@ -191,5 +212,6 @@ private:
 	void UpdateServerTimeSync();
 	void TryFinishDeathCamera();
 	void ClearDeathCamera(bool RestoreViewTarget);
+	void ClearIncomingDamageFeedback();
 
 };

@@ -3,6 +3,8 @@
 
 #include "UI/GamePlay/KillLogEntryWidget.h"
 #include "GameMode/PlayerMatchStats.h"
+#include "GameMode/PlayerStateBase.h"
+#include "Components/Border.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "Engine/Texture2D.h"
@@ -21,7 +23,29 @@ bool UKillLogEntryWidget::SetEntryInformation(const FPlayerKillLogResult& Inform
 	
 	_KillerPlayerName->SetText(FText::FromString(Information._KillerPlayerName));
 	
-	_KillWeaponImage->SetBrushFromTexture(Information._WeaponIcon);
+	// ScaleBox가 텍스처의 원본 비율로 아이콘 영역 안에 맞춘다.
+	_KillWeaponImage->SetBrushFromTexture(Information._WeaponIcon, true);
+	_KillWeaponImage->SetColorAndOpacity(Information._WeaponIconTint);
+	_KillWeaponImage->SetVisibility(IsValid(Information._WeaponIcon)
+		? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+
+	const APlayerStateBase* LocalPlayerState = GetOwningPlayerState<APlayerStateBase>();
+	_EntryRelation = Information.ResolveRelation(
+		IsValid(LocalPlayerState) ? LocalPlayerState->GetPlayerId() : INDEX_NONE,
+		IsValid(LocalPlayerState) ? LocalPlayerState->GetTeamId() : INDEX_NONE);
+
+	FLinearColor Color = _UnknownKillColor;
+	switch (_EntryRelation)
+	{
+	case EKillLogRelation::Self: Color = _SelfKillColor; break;
+	case EKillLogRelation::Ally: Color = _AllyKillColor; break;
+	case EKillLogRelation::Enemy: Color = _EnemyKillColor; break;
+	default: break;
+	}
+	if (_Background)
+	{
+		_Background->SetBrushColor(Color);
+	}
 	
 	return true;
 }

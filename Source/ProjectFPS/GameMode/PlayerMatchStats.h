@@ -37,10 +37,29 @@ struct PROJECTFPS_API FPlayerMatchResult
 	int32 _Rank = 0;
 };
 
+UENUM(BlueprintType)
+enum class EKillLogRelation : uint8
+{
+	Unknown,
+	Self,
+	Ally,
+	Enemy
+};
+
 USTRUCT(BlueprintType)
 struct PROJECTFPS_API FPlayerKillLogResult
 {
 	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	int32 _KillerPlayerId = INDEX_NONE;
+
+	// 킬 당시의 팀/경기 규칙. 이후 팀 변경이나 퇴장에도 기록은 바뀌지 않는다.
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	int32 _KillerTeamId = INDEX_NONE;
+
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	bool _bTeamMatch = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
 	FString _KillerPlayerName;
@@ -51,11 +70,35 @@ struct PROJECTFPS_API FPlayerKillLogResult
 	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
 	UTexture2D* _WeaponIcon = nullptr;
 
+	UPROPERTY(BlueprintReadOnly, Category = "KillLog")
+	FLinearColor _WeaponIconTint = FLinearColor::White;
+
 	UPROPERTY(BlueprintReadOnly, Category = "KillIcon")
 	EWeaponType _KillerWeaponType = EWeaponType::None;
 
 	bool IsValid() const
 	{
 		return false == _KillerPlayerName.IsEmpty() && false == _KilledPlayerName.IsEmpty();
+	}
+
+	EKillLogRelation ResolveRelation(int32 LocalPlayerId, int32 LocalTeamId) const
+	{
+		if (_KillerPlayerId < 0 || LocalPlayerId < 0)
+		{
+			return EKillLogRelation::Unknown;
+		}
+		if (_KillerPlayerId == LocalPlayerId)
+		{
+			return EKillLogRelation::Self;
+		}
+		if (!_bTeamMatch)
+		{
+			return EKillLogRelation::Enemy;
+		}
+		if (_KillerTeamId < 0 || LocalTeamId < 0)
+		{
+			return EKillLogRelation::Unknown;
+		}
+		return _KillerTeamId == LocalTeamId ? EKillLogRelation::Ally : EKillLogRelation::Enemy;
 	}
 };

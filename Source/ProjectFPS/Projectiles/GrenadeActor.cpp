@@ -188,6 +188,17 @@ void AGrenadeActor::BeginPlay()
 		if (const FItemData* ItemData = Table->FindTableRow<FItemData>(TEXT("ItemTable"), _TID))
 		{
 			ItemData->ApplyTint(_GrenadeMesh);
+			if (HasAuthority())
+			{
+				if (UDamageSourceComponent* Source = FindComponentByClass<UDamageSourceComponent>())
+				{
+					FDamageWeaponInfo DamageWeapon;
+					DamageWeapon.Icon = ItemData->_Icon;
+					DamageWeapon.WeaponType = EWeaponType::Grenade;
+					DamageWeapon.IconTint = ItemData->_bUseTint ? ItemData->_TintColor : FLinearColor::White;
+					Source->InitializeDamageWeapon(DamageWeapon);
+				}
+			}
 		}
 	}
 }

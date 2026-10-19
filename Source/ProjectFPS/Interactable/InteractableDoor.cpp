@@ -40,7 +40,7 @@ void AInteractableDoor::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
-	DOREPLIFETIME(AInteractableDoor, _bOpen);
+	DOREPLIFETIME(AInteractableDoor, _OpenState);
 }
 
 void AInteractableDoor::BeginPlay()
@@ -59,28 +59,73 @@ void AInteractableDoor::Interact_Implementation(AActor* Interactor)
 		return;
 	}
 
-	SetOpen(false == _bOpen);
+	SetOpen(false == IsOpen(), Interactor);
 }
 
-void AInteractableDoor::SetOpen(bool bOpen)
+void AInteractableDoor::SetOpen(bool bOpen, AActor* Interactor)
 {
-	if (bOpen == _bOpen)
+	if (bOpen == IsOpen())
 	{
 		return;
 	}
 
-	_bOpen = bOpen;
+	if (true == bOpen)
+	{
+		_OpenState = OpenFlag;
+		if (IsValid(Interactor))
+		{
+			const FVector InteractorLocation = _Root->GetComponentTransform().InverseTransformPosition(Interactor->GetActorLocation());
+			if (ShouldReverseLeaf(_LeftDoorMesh, _LeftClosedTransform, _LeftMotion, InteractorLocation))
+			{
+				_OpenState |= LeftReverseFlag;
+			}
+			if (ShouldReverseLeaf(_RightDoorMesh, _RightClosedTransform, _RightMotion, InteractorLocation))
+			{
+				_OpenState |= RightReverseFlag;
+			}
+		}
+	}
+	else
+	{
+		// 닫을 때는 선택했던 방향을 유지한다.
+		_OpenState &= ~OpenFlag;
+	}
 
 	// 자동 닫힘: 열렸을 때만 예약하고, 닫혔으면 예약을 취소한다.
 	FTimerManager& TimerManager = GetWorldTimerManager();
 	TimerManager.ClearTimer(_AutoCloseTimer);
-	if (true == _bOpen && _AutoCloseDelay > 0.f)
+	if (true == IsOpen() && _AutoCloseDelay > 0.f)
 	{
 		TimerManager.SetTimer(_AutoCloseTimer, this, &AInteractableDoor::CloseByTimer, _AutoCloseDelay, false);
 	}
 
 	// 리슨 서버의 호스트 화면은 OnRep이 불리지 않으므로 직접 처리한다.
 	HandleOpenChanged();
+	ForceNetUpdate();
+}
+
+bool AInteractableDoor::ShouldReverseLeaf(const UStaticMeshComponent* DoorMesh, const FTransform& ClosedTransform,
+	const FDoorLeafMotion& Motion, const FVector& InteractorLocation) const
+{
+	if (nullptr == DoorMesh || nullptr == DoorMesh->GetStaticMesh() || Motion._OpenRotation.IsNearlyZero())
+	{
+		return false;
+	}
+
+	// 메시 원점이 경첩에 있을 수도 있으므로 실제 로컬 바운드의 중심을 사용한다.
+	FVector BoundsMin;
+	FVector BoundsMax;
+	DoorMesh->GetLocalBounds(BoundsMin, BoundsMax);
+	const FVector CenterInHinge = DoorMesh->GetRelativeTransform().TransformPosition((BoundsMin + BoundsMax) * 0.5f);
+	const FVector ClosedCenter = ClosedTransform.TransformPosition(CenterInHinge);
+	const FVector HingeToCenter = ClosedCenter - ClosedTransform.GetLocation();
+
+	// 작은 정/역회전의 차이는 닫힌 문이 처음 움직이는 방향(문 앞뒤의 법선)이다.
+	// Root 로컬에서 계산하므로 액터 회전, 경첩 방향, 메시 배치에 의존하지 않는다.
+	const FQuat ForwardStep = (Motion._OpenRotation * 0.01f).Quaternion();
+	const FQuat ReverseStep = (Motion._OpenRotation * -0.01f).Quaternion();
+	const FVector OpeningDirection = ForwardStep.RotateVector(HingeToCenter) - ReverseStep.RotateVector(HingeToCenter);
+	return FVector::DotProduct(OpeningDirection, InteractorLocation - ClosedCenter) > 0.f;
 }
 
 void AInteractableDoor::CloseByTimer()
@@ -96,7 +141,7 @@ void AInteractableDoor::OnRep_Open()
 void AInteractableDoor::HandleOpenChanged()
 {
 	USoundBase* Sound = nullptr;
-	if (true == _bOpen)
+	if (true == IsOpen())
 	{
 		Sound = _OpenSound;
 	}
@@ -117,17 +162,21 @@ void AInteractableDoor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	float Target = 0.f;
-	if (true == _bOpen)
+	float LeftTarget = 0.f;
+	float RightTarget = 0.f;
+	if (true == IsOpen())
 	{
-		Target = 1.f;
+		LeftTarget = (0 != (_OpenState & LeftReverseFlag)) ? -1.f : 1.f;
+		RightTarget = (0 != (_OpenState & RightReverseFlag)) ? -1.f : 1.f;
 	}
 
-	_OpenAlpha = FMath::FInterpConstantTo(_OpenAlpha, Target, DeltaSeconds, 1.f / _MoveDuration);
+	const float Speed = 1.f / FMath::Max(_MoveDuration, 0.05f);
+	_LeftOpenAlpha = FMath::FInterpConstantTo(_LeftOpenAlpha, LeftTarget, DeltaSeconds, Speed);
+	_RightOpenAlpha = FMath::FInterpConstantTo(_RightOpenAlpha, RightTarget, DeltaSeconds, Speed);
 	ApplyDoorTransform();
 
 	// 끝까지 움직였으면 Tick을 끈다.
-	if (true == FMath::IsNearlyEqual(_OpenAlpha, Target))
+	if (FMath::IsNearlyEqual(_LeftOpenAlpha, LeftTarget) && FMath::IsNearlyEqual(_RightOpenAlpha, RightTarget))
 	{
 		SetActorTickEnabled(false);
 	}
@@ -135,11 +184,8 @@ void AInteractableDoor::Tick(float DeltaSeconds)
 
 void AInteractableDoor::ApplyDoorTransform()
 {
-	// 끝에서 부드럽게 멈추도록 보간 곡선을 준다.
-	const float Eased = FMath::InterpEaseInOut(0.f, 1.f, _OpenAlpha, 2.f);
-
-	ApplyLeafTransform(_LeftHinge, _LeftClosedTransform, _LeftMotion, Eased);
-	ApplyLeafTransform(_RightHinge, _RightClosedTransform, _RightMotion, Eased);
+	ApplyLeafTransform(_LeftHinge, _LeftClosedTransform, _LeftMotion, _LeftOpenAlpha);
+	ApplyLeafTransform(_RightHinge, _RightClosedTransform, _RightMotion, _RightOpenAlpha);
 }
 
 void AInteractableDoor::ApplyLeafTransform(USceneComponent* Hinge, const FTransform& ClosedTransform, const FDoorLeafMotion& Motion, float Alpha)
@@ -150,7 +196,8 @@ void AInteractableDoor::ApplyLeafTransform(USceneComponent* Hinge, const FTransf
 	}
 
 	// 경첩은 자기 위치를 축으로 돌고(여닫이), 이동량만큼 미끄러진다(미닫이·미서기).
-	const FVector Location = ClosedTransform.GetLocation() + Motion._OpenOffset * Alpha;
-	const FQuat Rotation = (Motion._OpenRotation * Alpha).Quaternion() * ClosedTransform.GetRotation();
+	const float Eased = FMath::InterpEaseInOut(0.f, 1.f, FMath::Abs(Alpha), 2.f);
+	const FVector Location = ClosedTransform.GetLocation() + Motion._OpenOffset * Eased;
+	const FQuat Rotation = (Motion._OpenRotation * (FMath::Sign(Alpha) * Eased)).Quaternion() * ClosedTransform.GetRotation();
 	Hinge->SetRelativeLocationAndRotation(Location, Rotation);
 }

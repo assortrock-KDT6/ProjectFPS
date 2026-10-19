@@ -27,11 +27,18 @@ AFireAreaActor::AFireAreaActor()
 	bReplicates = true;
 
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
+	_DamageSource = CreateDefaultSubobject<UDamageSourceComponent>(TEXT("DamageSource"));
 }
 
 void AFireAreaActor::SetSourcePlayerState(APlayerStateBase* PlayerState)
 {
-	_SourcePlayerState = PlayerState;
+	_DamageSource->SetSourcePlayerState(PlayerState);
+}
+
+void AFireAreaActor::InitializeDamageSource(APlayerStateBase* PlayerState, const FDamageWeaponInfo& DamageWeapon)
+{
+	SetSourcePlayerState(PlayerState);
+	_DamageSource->InitializeDamageWeapon(DamageWeapon);
 }
 
 void AFireAreaActor::BeginPlay()
@@ -43,12 +50,6 @@ void AFireAreaActor::BeginPlay()
 	if (true == HasAuthority())
 	{
 		SetLifeSpan(_Duration);
-
-		// 던진 사람이 먼저 죽어도 처치 기록이 남도록 수류탄과 같은 방식으로 보관한다.
-		UDamageSourceComponent* Source = NewObject<UDamageSourceComponent>(this);
-		AddInstanceComponent(Source);
-		Source->SetSourcePlayerState(_SourcePlayerState.Get());
-		Source->RegisterComponent();
 
 		// 깔리는 순간 한 번, 그 뒤로 간격마다 데미지
 		ApplyFireDamage();
@@ -177,7 +178,7 @@ void AFireAreaActor::ApplyFireDamage()
 		}
 
 		FGameplayEffectContextHandle Context(UAbilitySystemGlobals::Get().AllocGameplayEffectContext());
-		Context.AddInstigator(_SourcePlayerState.Get(), this);
+		Context.AddInstigator(_DamageSource->GetSourcePlayerState(), this);
 		Context.AddSourceObject(this);
 
 		FGameplayEffectSpec Spec(_DamageEffect.GetDefaultObject(), Context, 1.f);

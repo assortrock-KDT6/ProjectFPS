@@ -137,15 +137,31 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 		Set_Health(NewHealth);
 	}
 	
-	// if (NewHealth <= 0.f && CurrentHealth > 0.f)
-	// {
-	// 	_OnOutOfHealth.Broadcast(GetDamagePlayerState(Data));
-	// }
-
 	// 표시 이벤트를 호출하기전에 이번 피해결과를 확정
 	const float ShieldDamage = FMath::Max(CurrentShield - Get_Shield(), 0.f);
 	const float HealthDamage = FMath::Max(CurrentHealth - Get_Health(), 0.f);
 	const bool  bOutOfHealth = CurrentHealth > 0.f && Get_Health() <= 0.f;
+	// Cue/사망 콜백이 공격 액터를 정리하기 전에 치명타의 출처를 복사한다.
+	const FDamageWeaponInfo DamageWeapon = bOutOfHealth
+		? UDamageSourceComponent::ResolveDamageWeapon(Data.EffectSpec.GetContext()) : FDamageWeaponInfo();
+
+	// 실드와 체력이 함께 감소해도 피해자 본인에게 피격 연출을 한 번만 보낸다.
+	// 큐와 사망 콜백이 투사체를 정리하기 전에 들어온 방향을 확보한다.
+	APawn* Victim = Cast<APawn>(Data.Target.GetAvatarActor());
+	if (true == IsValid(Victim) && true == Victim->HasAuthority() && (ShieldDamage > 0.f || HealthDamage > 0.f))
+	{
+		APlayerControllerBase* VictimController = Cast<APlayerControllerBase>(Victim->GetController());
+		if (true == IsValid(VictimController))
+		{
+			// 주기형 GE는 총알에서 시작했더라도 지속 피해이므로 방향 표시를 생략한다.
+			const FVector IncomingDirection = Data.EffectSpec.GetPeriod() > 0.f
+				? FVector::ZeroVector : UDamageSourceComponent::ResolveIncomingDirection(Data.EffectSpec.GetContext(), Victim);
+			VictimController->ClientShowIncomingDamage(Victim,
+				IncomingDirection,
+				ShieldDamage + HealthDamage,
+				UDamageSourceComponent::ResolveSourceDistance(Data.EffectSpec.GetContext(), Victim));
+		}
+	}
 
 	if (ShieldDamage > 0.f)
 	{
@@ -188,7 +204,7 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 	// 마지막 타격의 표시 정보를 보낸 뒤 기존 사망 처리를 실행
 	if (bOutOfHealth)
 	{
-		_OnOutOfHealth.Broadcast(PlayerState);
+		_OnOutOfHealth.Broadcast(PlayerState, DamageWeapon);
 	}
 }
 

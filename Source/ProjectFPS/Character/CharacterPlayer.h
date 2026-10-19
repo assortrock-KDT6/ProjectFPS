@@ -419,7 +419,7 @@ protected:
 	void InteractAction(const FInputActionValue& value);
 
 	UFUNCTION()
-	void HandleOutOfHealth(APlayerStateBase* KillerPlayerState);
+	void HandleOutOfHealth(APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon);
 
 	UFUNCTION()
 	void FireAction(const FInputActionValue& Value);

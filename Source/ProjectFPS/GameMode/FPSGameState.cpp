@@ -3,6 +3,16 @@
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
+void AFPSGameState::SetTeamMatch(bool bTeamMatch)
+{
+	if (!HasAuthority() || _bTeamMatch == bTeamMatch)
+	{
+		return;
+	}
+	_bTeamMatch = bTeamMatch;
+	ForceNetUpdate();
+}
+
 double AFPSGameState::GetServerWorldTimeSeconds() const
 {
 	if (HasAuthority() || !_HasServerTimeSync || !GetWorld())
@@ -61,6 +71,7 @@ void AFPSGameState::ApplyServerTimeSample(double EstimatedServerTime, double Rou
 void AFPSGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AFPSGameState, _bTeamMatch);
 
 	DOREPLIFETIME(AFPSGameState, _MatchEndServerTime);
 
