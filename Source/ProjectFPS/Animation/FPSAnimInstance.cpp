@@ -8,9 +8,6 @@
 #include "Character/CharacterPlayer.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 
-#if WITH_EDITOR
-#include "Misc/DataValidation.h"
-#endif // WITH_EDITOR
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(FPSAnimInstance)
 
@@ -34,18 +31,6 @@ void UFPSAnimInstance::NativeUninitializeAnimation()
     Super::NativeUninitializeAnimation();
 }
 
-#if WITH_EDITOR
-EDataValidationResult UFPSAnimInstance::IsDataValid(FDataValidationContext& Context) const
-{
-    Super::IsDataValid(Context);
-
-    _GameplayTagPropertyMap.IsDataValid(this, Context);
-
-    const EDataValidationResult Result = (Context.GetNumErrors() > 0) ? EDataValidationResult::Invalid : EDataValidationResult::Valid;
-
-    return Result;
-}
-#endif // WITH_EDITOR
 
 void UFPSAnimInstance::NativeInitializeAnimation()
 {
@@ -66,13 +51,6 @@ void UFPSAnimInstance::NativeInitializeAnimation()
     }
 
     _OwnerMovement = Cast<UFPSCharacterMovementComponent>(_Owner->GetCharacterMovement());
-    if (false == IsValid(_OwnerMovement))
-    {
-        if (nullptr != GEngine)
-        {
-            GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Yellow, TEXT("캐릭터 Movement Component 캐스트 실패"));
-        }
-    }
 }
 
 void UFPSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)

@@ -12,6 +12,9 @@
 #include "GameMode/FPSGameMode.h"
 #include "GameMode/PlayerStateBase.h"
 #include "GameTag/FPSGameplayTag.h"
+#include "Controller/PlayerControllerBase.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/HitResult.h"
 
 UFPSHealthSet::UFPSHealthSet()
 {
@@ -97,43 +100,111 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 {
 	Super::PostGameplayEffectExecute(Data);
 
-	if (Get_DamageInAttribute() == Data.EvaluatedData.Attribute)
+	if (Get_DamageInAttribute() != Data.EvaluatedData.Attribute)
 	{
-		const float LocalDamageIn = Get_DamageIn();
-		Set_DamageIn(0.f);
+		return;
+	}
+	const float LocalDamageIn = Get_DamageIn();
+	Set_DamageIn(0.f);
 
-		if (LocalDamageIn > 0.f)
+	if (!(LocalDamageIn > 0.f))
+	{
+		return;
+	}
+
+	// 실제 감소량을 구하기 위해 차감 전 값을 보관
+	const float CurrentShield = Get_Shield();
+	const float CurrentHealth = Get_Health();
+	float DamageToApply = LocalDamageIn;
+
+	if (CurrentShield > 0.f)
+	{
+		if (CurrentShield >= DamageToApply)
 		{
-			float CurrentShield = Get_Shield();
-			float CurrentHealth = Get_Health();
-			float DamageToApply = LocalDamageIn;
-
-			if (CurrentShield > 0.f)
-			{
-				if (CurrentShield >= DamageToApply)
-				{
-					Set_Shield(CurrentShield - DamageToApply);
-					DamageToApply = 0.f;
-				}
-				else
-				{
-					DamageToApply -= CurrentShield;
-					Set_Shield(0.f);
-				}
-			}
-
-			if (DamageToApply > 0.f)
-			{
-				const float NewHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.f, Get_MaxHealth());
-				Set_Health(NewHealth);
-				
-				if (NewHealth <= 0.f && CurrentHealth > 0.f)
-				{
-					_OnOutOfHealth.Broadcast(GetDamagePlayerState(Data));
-				}
-
-			}
+			Set_Shield(CurrentShield - DamageToApply);
+			DamageToApply = 0.f;
 		}
+		else 
+		{
+			DamageToApply -= CurrentShield;
+			Set_Shield(0.f);
+		}
+	}
+
+	if (DamageToApply > 0.f)
+	{
+		const float NewHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.f, Get_MaxHealth());
+		Set_Health(NewHealth);
+	}
+	
+	// 표시 이벤트를 호출하기전에 이번 피해결과를 확정
+	const float ShieldDamage = FMath::Max(CurrentShield - Get_Shield(), 0.f);
+	const float HealthDamage = FMath::Max(CurrentHealth - Get_Health(), 0.f);
+	const bool  bOutOfHealth = CurrentHealth > 0.f && Get_Health() <= 0.f;
+	// Cue/사망 콜백이 공격 액터를 정리하기 전에 치명타의 출처를 복사한다.
+	const FDamageWeaponInfo DamageWeapon = bOutOfHealth
+		? UDamageSourceComponent::ResolveDamageWeapon(Data.EffectSpec.GetContext()) : FDamageWeaponInfo();
+
+	// 실드와 체력이 함께 감소해도 피해자 본인에게 피격 연출을 한 번만 보낸다.
+	// 큐와 사망 콜백이 투사체를 정리하기 전에 들어온 방향을 확보한다.
+	APawn* Victim = Cast<APawn>(Data.Target.GetAvatarActor());
+	if (true == IsValid(Victim) && true == Victim->HasAuthority() && (ShieldDamage > 0.f || HealthDamage > 0.f))
+	{
+		APlayerControllerBase* VictimController = Cast<APlayerControllerBase>(Victim->GetController());
+		if (true == IsValid(VictimController))
+		{
+			// 주기형 GE는 총알에서 시작했더라도 지속 피해이므로 방향 표시를 생략한다.
+			const FVector IncomingDirection = Data.EffectSpec.GetPeriod() > 0.f
+				? FVector::ZeroVector : UDamageSourceComponent::ResolveIncomingDirection(Data.EffectSpec.GetContext(), Victim);
+			VictimController->ClientShowIncomingDamage(Victim,
+				IncomingDirection,
+				ShieldDamage + HealthDamage,
+				UDamageSourceComponent::ResolveSourceDistance(Data.EffectSpec.GetContext(), Victim));
+		}
+	}
+
+	if (ShieldDamage > 0.f)
+	{
+		ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Shield, ShieldDamage);
+	}
+
+	if (HealthDamage > 0.f)
+	{
+		ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Health, HealthDamage);
+	}
+
+	APlayerStateBase* PlayerState = GetDamagePlayerState(Data);
+	APlayerControllerBase* Controller = IsValid(PlayerState) ? Cast<APlayerControllerBase>(PlayerState->GetPlayerController()) : nullptr;
+	
+	AActor* Target = Data.Target.GetAvatarActor();
+	
+	if (IsValid(Controller) && IsValid(Target) && (ShieldDamage > 0.f || HealthDamage > 0.f))
+	{
+		const FHitResult* Hit = Data.EffectSpec.GetContext().GetHitResult();
+		const bool bHeadShot  = Hit && Hit->BoneName == FName(TEXT("head"));
+		
+		// 머리 본을 찾지 못하면 대상 충돌 영역의 상단을 사용
+		FVector WorldLocation;
+		FVector BoundsExtent;
+		Target->GetActorBounds(true, WorldLocation, BoundsExtent);
+		WorldLocation.Z += BoundsExtent.Z;
+		
+		const USkeletalMeshComponent* Mesh = Hit ? Cast<USkeletalMeshComponent>(Hit->GetComponent()) : nullptr;
+		if (IsValid(Mesh) && Mesh->DoesSocketExist(TEXT("head")))
+		{
+			WorldLocation = Mesh->GetSocketLocation(TEXT("head"));
+		}
+		
+		// 이번 피해 대상의 정상 명중 정보가 있으면 실제 접촉 지점을 사용
+		const FVector HitLocation = Hit && Hit->IsValidBlockingHit() && Hit->GetActor() == Target ? FVector(Hit->ImpactPoint) : WorldLocation;
+
+		Controller->ClientShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot, Target, HitLocation);
+	}
+	
+	// 마지막 타격의 표시 정보를 보낸 뒤 기존 사망 처리를 실행
+	if (bOutOfHealth)
+	{
+		_OnOutOfHealth.Broadcast(PlayerState, DamageWeapon);
 	}
 }
 
@@ -150,6 +221,80 @@ APlayerStateBase* UFPSHealthSet::GetDamagePlayerState(const FGameplayEffectModCa
 	}
 
 	return PlayerState;
+}
+
+void UFPSHealthSet::ExecuteHitCue(const FGameplayEffectModCallbackData& Data, const FGameplayTag& CueTag, float Damage) const
+{
+	UAbilitySystemComponent* AbilitySystem = GetOwningAbilitySystemComponent();
+	AActor* Avatar = Data.Target.GetAvatarActor();
+
+	if (false == IsValid(AbilitySystem) || false == IsValid(Avatar))
+	{
+		return;
+	}
+
+	const FGameplayEffectContextHandle& Context = Data.EffectSpec.GetContext();
+	AActor* Causer = Context.GetEffectCauser();
+
+	// 가해 액터를 모르면 피격자 중심에서 재생한다.
+	FVector HitLocation = Avatar->GetActorLocation();
+	FVector HitNormal = FVector::UpVector;
+
+	if (true == IsValid(Causer))
+	{
+		const FVector CauserLocation = Causer->GetActorLocation();
+		const FVector CauserVelocity = Causer->GetVelocity();
+		UPrimitiveComponent* Collision = Cast<UPrimitiveComponent>(Avatar->GetRootComponent());
+
+		bool bFoundEntry = false;
+
+		// 총알은 빨라서 판정 시점에 이미 몸을 지나쳐 있을 수 있다.
+		// 날아온 경로를 거슬러 올라가 몸에 처음 들어간 지점을 찾는다.
+		if (false == CauserVelocity.IsNearlyZero() && nullptr != Collision)
+		{
+			const FVector TravelDirection = CauserVelocity.GetSafeNormal();
+
+			// 한 프레임 이동 거리 + 캡슐 두께 여유만큼 뒤에서 시작
+			const float TraceBackDistance = CauserVelocity.Size() * Avatar->GetWorld()->GetDeltaSeconds() + 200.f;
+			const FVector TraceStart = CauserLocation - TravelDirection * TraceBackDistance;
+
+			FHitResult EntryHit;
+			if (Collision->LineTraceComponent(EntryHit, TraceStart, CauserLocation, FCollisionQueryParams::DefaultQueryParam))
+			{
+				HitLocation = EntryHit.ImpactPoint;
+				HitNormal = -TravelDirection; // 쏜 사람 쪽으로 튄다
+				bFoundEntry = true;
+			}
+		}
+
+		// 멈춰 있는 가해 액터(수류탄)이거나 경로를 못 찾았으면, 가해 액터 쪽 몸 표면을 쓴다.
+		if (false == bFoundEntry)
+		{
+			if (nullptr != Collision)
+			{
+				FVector ClosestPoint;
+				if (Collision->GetClosestPointOnCollision(CauserLocation, ClosestPoint) >= 0.f)
+				{
+					HitLocation = ClosestPoint;
+				}
+			}
+
+			const FVector ToCauser = (CauserLocation - Avatar->GetActorLocation()).GetSafeNormal();
+			if (false == ToCauser.IsNearlyZero())
+			{
+				HitNormal = ToCauser;
+			}
+		}
+	}
+
+	FGameplayCueParameters CueParameters;
+	CueParameters.Location = HitLocation;
+	CueParameters.Normal = HitNormal;
+	CueParameters.RawMagnitude = Damage;
+	CueParameters.Instigator = Context.GetInstigator();
+	CueParameters.EffectCauser = Causer;
+
+	AbilitySystem->ExecuteGameplayCue(CueTag, CueParameters);
 }
 
 APlayerStateBase* UFPSHealthSet::FindDamagePlayerState(AActor* DamageSource) const

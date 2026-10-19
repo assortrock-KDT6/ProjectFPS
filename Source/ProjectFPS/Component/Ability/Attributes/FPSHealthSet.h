@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
 #include "Component/Ability/Attributes/FPSAttributeSet.h"
+#include "Weapons/WeaponTypes.h"
 #include "FPSHealthSet.generated.h"
 
 #define ATTRIBUTE_ACCESSORS(ClassName, PropertyName)	\
@@ -15,7 +16,7 @@
 
 class APlayerStateBase;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOutOfHealthDelegate, APlayerStateBase*, KillerPlayerState);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOutOfHealthDelegate, APlayerStateBase*, KillerPlayerState, const FDamageWeaponInfo&, DamageWeapon);
 
 /**
  * 
@@ -95,4 +96,7 @@ protected:
 private:
 	APlayerStateBase* FindDamagePlayerState(AActor* DamageSource) const;
 	APlayerStateBase* GetDamagePlayerState(const FGameplayEffectModCallbackData& Data) const;
+
+	// 추가 : 피해를 준 액터 방향의 피격자 몸 표면에서 피격 GameplayCue를 실행한다. (서버 -> 클라이언트)
+	void ExecuteHitCue(const FGameplayEffectModCallbackData& Data, const FGameplayTag& CueTag, float Damage) const;
 };

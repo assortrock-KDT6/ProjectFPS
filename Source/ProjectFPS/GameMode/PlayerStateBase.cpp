@@ -5,6 +5,7 @@
 #include "Component/Inventory/InventoryComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "GameMode/FPSLobbyGameState.h"
+#include "GameMode/PlayerMatchStats.h"
 #include "Engine/World.h"
 
 APlayerStateBase::APlayerStateBase()
@@ -18,6 +19,42 @@ void APlayerStateBase::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	DOREPLIFETIME(APlayerStateBase, _IsDead);
 	DOREPLIFETIME(APlayerStateBase, _MatchStats);
+	DOREPLIFETIME(APlayerStateBase, _TeamId);
+}
+
+void APlayerStateBase::SetTeamId(int32 TeamId)
+{
+	TeamId = FMath::Max<int32>(INDEX_NONE, TeamId);
+	if (!HasAuthority() || _TeamId == TeamId)
+	{
+		return;
+	}
+	_TeamId = TeamId;
+	ForceNetUpdate();
+	OnRep_TeamId();
+}
+
+void APlayerStateBase::OnRep_TeamId()
+{
+	_OnTeamChanged.Broadcast(_TeamId);
+}
+
+void APlayerStateBase::CopyProperties(APlayerState* PlayerState)
+{
+	Super::CopyProperties(PlayerState);
+	if (APlayerStateBase* Target = Cast<APlayerStateBase>(PlayerState))
+	{
+		Target->SetTeamId(_TeamId);
+	}
+}
+
+void APlayerStateBase::OverrideWith(APlayerState* PlayerState)
+{
+	Super::OverrideWith(PlayerState);
+	if (const APlayerStateBase* Source = Cast<APlayerStateBase>(PlayerState))
+	{
+		SetTeamId(Source->GetTeamId());
+	}
 }
 
 bool APlayerStateBase::IsDead() const

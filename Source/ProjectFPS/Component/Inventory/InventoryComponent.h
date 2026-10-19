@@ -1,10 +1,11 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Common/GameDatas.h"
+#include "Weapons/WeaponTypes.h"
 #include "InventoryComponent.generated.h"
 
 
@@ -27,7 +28,7 @@ private:
 
 	// 장비 슬롯
 	UPROPERTY(ReplicatedUsing = OnRep_Weapons)
-	TArray<FName> _Weapons;
+	TArray<FWeaponSlotData> _Weapons;
 
 	// 손에 장착 중인 무기의 슬롯 번호(없으면 INDEX_NONE). 버릴 슬롯과는 무관.
 	UPROPERTY(Replicated)
@@ -46,10 +47,10 @@ public:
 	bool FindEquipSlot(FName TID, int32& OutSlotIndex, FName& OutReplacedITD) const;
 
 	// FindEquipSlot 결과를 반영 (서버). 슬롯을 채우고 장착 슬롯으로 지정함.
-	bool CommitEquip(FName TID, int32 SlotIndex, bool bNotify);
+	bool CommitEquip(const FWeaponSlotData& Data, int32 SlotIndex, bool bNotify);
 	void NotifyWeaponsChanged() { OnRep_Weapons(); }
 	// 슬롯을 비운다 - 장비 서버전용
-	bool RemoveWeapon(int32 Index);
+	bool RemoveWeapon(int32 Index, bool bNotify = true);
 
 	// 슬롯에서 Count만큼 뺀다. 소모품 서버전용
 	bool RemoveItem(int32 Index, int32 Count);
@@ -70,26 +71,40 @@ protected:
 
 public:
 	const TArray<FInventorySlot>& GetItems() const { return _Items; }
-	const TArray<FName>& GetWeapons() const { return _Weapons; }
+	const TArray<FWeaponSlotData>& GetWeapons() const { return _Weapons; }
 	
 	// 현재 장착한 무기의 슬롯 번호를 반환함.
 	int32 GetEquippedWeaponIndex() const { return _EquippedWeaponIndex; }
 
 	// 지정한 무기 슬롯의 TID 반환. 범위 밖이면 NAME_None 반환.
-	FName GetWeaponTID(int32 Index) const 
+	const FWeaponSlotData* GetWeaponData(int32 Index) const
 	{
 		// 슬롯 번호가 배열 범위 박이면 반환
 		if (false == _Weapons.IsValidIndex(Index))
-			return NAME_None;
+		{
+			return nullptr;
+		}
 
 		// 해당 슬롯의 무기 TID 반환
-		return _Weapons[Index];
+		return &_Weapons[Index];
+	}
+
+	FName GetWeaponTID(int32 Index) const
+	{
+		if (false == _Weapons.IsValidIndex(Index))
+		{
+			return NAME_None;
+		}
+
+		return _Weapons[Index]._WeaponId;
 	}
 	
 	bool IsWeaponSlotFull() const;
 
 	// 장착 슬롯을지정 (서버) 범위 밖이면 INDEX_NONE 처리.
-	void SetEquippedWEaponIndex(int32 Index);
+	void SetEquippedWEaponIndex(int32 Index, bool bNotify = true);
+
+	void SetWeaponSlotData(int32 Index, const FWeaponSlotData& Data);
 
 	// 비어 있지 않은 첫 무기 슬롯 
 	int32 FindFirstWeaponSlot() const;

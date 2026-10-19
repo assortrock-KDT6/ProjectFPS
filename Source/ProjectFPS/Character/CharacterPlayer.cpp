@@ -4,8 +4,11 @@
 #include "Controller/PlayerControllerBase.h"
 #include "Component/Movement/FPSCharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/GameStateBase.h"
+#include "GameFramework/InputSettings.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "EnhancedPlayerInput.h"
 #include "InputMappingContext.h"
 #include "InputActionValue.h"
 #include "InputAction.h"
@@ -21,7 +24,9 @@
 #include "Component/Parkour/VaultComponent.h"
 #include "Component/Interaction/InteractionComponent.h"
 #include "Component/Parkour/MantleComponent.h"
+#include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Ability/Attributes/FPSHealthSet.h"
+#include "Component/Ability/GamePlayAbility/FPSMeleeAbility.h"
 #include "Component/Ability/GamePlayAbility/FPSGrenadeAbility.h"
 #include "UI/GameHUD.h"
 #include "Projectiles/GrenadeActor.h"
@@ -32,10 +37,13 @@
 #include "Component/FOV/ControlShakeComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Animation/WeaponAimSolver.h"
+#include "HAL/IConsoleManager.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
 #include "Net/UnrealNetwork.h"
+#include "Settings/FPSGameUserSettings.h"
 
 
 
@@ -44,13 +52,16 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	// ASC 초기화 시 등록될 체력·실드 AttributeSet을 캐릭터마다 생성한다.
+	_HealthAttribute = CreateDefaultSubobject<UFPSHealthSet>(TEXT("HealthAttributeSet"));
+
 	USkeletalMeshComponent* MeshComp = GetMesh();
 	
 	if (nullptr != MeshComp)
 	{
 		MeshComp->SetRelativeLocation(FVector(0.f, 0.f, -90.f));
 		MeshComp->SetRelativeRotation(FVector(0.f, -90.f, 0.f).Rotation());
-		// The authoritative weapon/muzzle follows this mesh, including on a headless server.
+		// 화면을 렌더링하지 않는 서버에서도 서버 판정용 무기와 총구가 이 메시를 따라가도록 한다.
 		MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	}
 
@@ -76,6 +87,7 @@ ACharacterPlayer::ACharacterPlayer(const FObjectInitializer& ObjectInitializer)
 	if (IsValid(MovementComp))
 	{
 		MovementComp->bOrientRotationToMovement = false;
+		MovementComp->GetNavAgentPropertiesRef().bCanCrouch = true;
 		bUseControllerRotationYaw = true;
 	}
 	
@@ -152,7 +164,7 @@ void ACharacterPlayer::SetAiming(bool bAiming)
 		_ViewWeaponMesh->SetTargetHFOV((_bAiming ? _ViewWeaponData._AimViewFOV : -1.f), 10.f);;
 	}
 	
-	// Both the arms and body AnimBPs map Status.ADS to GameplayTag_IsADS.
+	// 팔과 몸의 애니메이션 블루프린트 모두 Status.ADS를 GameplayTag_IsADS에 연결한다.
 	if (true == HasAuthority())
 	{
 		SetAnimationStateTag(FPSGameplayTags::Status_ADS, _bAiming);
@@ -177,10 +189,17 @@ void ACharacterPlayer::ServerSetAiming_Implementation(bool bAiming)
 
 bool ACharacterPlayer::IsWeaponEquipped() const
 {
-	//return IsValid(_CurrentWeapon);
-	// Commit 건영 : 수류탄 작업중... 현재 이 함수가 총기 크로스헤어와 탄퍼짐 계산에 사용되고 있으니까 총 장착 판정으로 유지시키기
-	//return HasAuthority() ? IsValid(_CurrentWeapon) : IsValid(_ViewWeaponData._ViewMesh);
-	return !IsValid(_CurrentGrenade) && IsValid(_CurrentWeapon) && (HasAuthority() || IsValid(_ViewWeaponData._ViewMesh));
+	if (IsValid(_CurrentGrenade))
+	{
+		return false;
+	}
+
+	// 소유 클라이언트의 장착 RPC는 무기 액터 참조 복제보다 먼저 도착할 수 있다.
+	// 로컬 UI/탄퍼짐은 RPC로 받은 뷰 데이터를 기준으로 판단한다.
+	// 서버와 비소유 프록시는 실제 무기 액터를 기준으로 유지한다.
+	return GetLocalRole() == ROLE_AutonomousProxy
+		? IsValid(_ViewWeaponData._ViewMesh)
+		: IsValid(_CurrentWeapon);
 }
 
 float ACharacterPlayer::GetWeaponSpreadValue() const
@@ -238,12 +257,104 @@ FVector ACharacterPlayer::GetAimPoint(float WeaponRange) const
 
 	QueryParams.AddIgnoredActor(this);
 
-	const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, TraceEnd, ECC_Visibility, QueryParams);
+	//const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, TraceEnd, ECC_Visibility, QueryParams);
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(HitResult, CameraLocation, TraceEnd, ECC_GameTraceChannel1, QueryParams);
 	
 	return bHit ? HitResult.ImpactPoint :TraceEnd;
 }
 
+FRotator ACharacterPlayer::GetWeaponAimRotation() const
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy && true == _bHasReplicatedWeaponPoseAimPoint)
+	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		const double Age = true == IsValid(GameState)
+			? GameState->GetServerWorldTimeSeconds() - _ReplicatedWeaponPoseAim._ServerTime : 0.0;
+		// 관전자 표시만 최대 50ms 예측한다. 패킷 지연이 길어져도 계속 회전시키지 않는다.
+		return WeaponAim::PredictRotation(_ReplicatedWeaponPoseAim._Rotation, _WeaponPoseAngularVelocity, Age);
+	}
+	// GetBaseAimRotation은 로컬 컨트롤러가 있으면 이전 카메라 캐시를 반환할 수 있다.
+	return true == IsValid(GetController()) ? GetControlRotation() : GetBaseAimRotation();
+}
+
+FVector ACharacterPlayer::GetWeaponAimOrigin() const
+{
+	if (GetLocalRole() == ROLE_SimulatedProxy && true == _bHasReplicatedWeaponPoseAimPoint)
+	{
+		return _ReplicatedWeaponPoseAim._Origin;
+	}
+	if (false == IsValid(_CameraComponent) || false == IsValid(_SpringArmComponent))
+	{
+		return GetPawnViewLocation();
+	}
+	// 1인칭 팔의 평가 순서는 투척 노티파이에 필요하므로 바꾸지 않는다.
+	// 현재 입력 회전으로 카메라의 상대 위치를 재구성하여 이전 프레임 회전을 제거한다.
+	const FVector Anchor = _SpringArmComponent->GetComponentLocation();
+	const FQuat ViewDelta = GetWeaponAimRotation().Quaternion() * _CameraComponent->GetComponentQuat().Inverse();
+	return Anchor + ViewDelta.RotateVector(_CameraComponent->GetComponentLocation() - Anchor);
+}
+
+FVector ACharacterPlayer::TraceWeaponAimPoint(const FVector& Start, const FVector& Direction, float WeaponRange) const
+{
+	const FVector End = Start + Direction.GetSafeNormal() * WeaponRange;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(WeaponAim), false, this);
+	FHitResult WorldHit;
+	const bool WorldBlocked = GetWorld()->LineTraceSingleByChannel(WorldHit, Start, End, ECC_Visibility, Params);
+
+	// Pawn 프로필은 Visibility를 무시한다. 카메라가 캐릭터를 겨눠도 뒤쪽 벽을
+	// 조준점으로 삼지 않도록 Pawn 오브젝트를 별도로 검사하되, 앞의 벽을 통과하지 않는다.
+	FCollisionObjectQueryParams PawnObjects;
+	PawnObjects.AddObjectTypesToQuery(ECC_Pawn);
+	FHitResult PawnHit;
+	const bool PawnBlocked = GetWorld()->LineTraceSingleByObjectType(PawnHit, Start, End, PawnObjects, Params);
+	if (true == PawnBlocked && (false == WorldBlocked || PawnHit.Distance < WorldHit.Distance))
+	{
+		return PawnHit.ImpactPoint;
+	}
+	return true == WorldBlocked ? WorldHit.ImpactPoint : End;
+}
+
+FVector ACharacterPlayer::GetWeaponPoseAimPoint(float WeaponRange) const
+{
+	// 관전자도 서버 원점과 표시용 방향으로 가까운 충돌점을 구해 목표 경계의 깊이 변화를 반영한다.
+	return TraceWeaponAimPoint(GetWeaponAimOrigin(), GetWeaponAimRotation().Vector(), WeaponRange);
+}
+
+void ACharacterPlayer::OnRep_WeaponPoseAimPoint()
+{
+	const double Interval = _ReplicatedWeaponPoseAim._ServerTime - _PreviousWeaponPoseServerTime;
+	_WeaponPoseAngularVelocity = FRotator::ZeroRotator;
+	if (true == _bHasReplicatedWeaponPoseAimPoint)
+	{
+		_WeaponPoseAngularVelocity = WeaponAim::AngularVelocity(
+			_PreviousWeaponPoseRotation, _ReplicatedWeaponPoseAim._Rotation, Interval);
+	}
+	_PreviousWeaponPoseRotation = _ReplicatedWeaponPoseAim._Rotation;
+	_PreviousWeaponPoseServerTime = _ReplicatedWeaponPoseAim._ServerTime;
+	_bHasReplicatedWeaponPoseAimPoint = true;
+	const IConsoleVariable* Diagnostics = IConsoleManager::Get().FindConsoleVariable(TEXT("fps.WeaponAim.Diagnostics"));
+	if (nullptr != Diagnostics && Diagnostics->GetInt() != 0)
+	{
+		const AGameStateBase* GameState = GetWorld()->GetGameState();
+		UE_LOG(LogTemp, Display, TEXT("WeaponAimReceive local=%.6f server=%.6f stamp=%.6f interval=%.6f yaw=%.6f velocity=%.6f"),
+			GetWorld()->GetTimeSeconds(), true == IsValid(GameState) ? GameState->GetServerWorldTimeSeconds() : 0.0,
+			_ReplicatedWeaponPoseAim._ServerTime, Interval, _ReplicatedWeaponPoseAim._Rotation.Yaw, _WeaponPoseAngularVelocity.Yaw);
+	}
+}
+
 bool ACharacterPlayer::EquipWeapon(FName WeaponID)
+{
+	AWeaponActor* NewWeapon = PrepareWeapon(WeaponID);
+	if (!IsValid(NewWeapon))
+		return false;
+	SaveCurrentWeaponToInventory();
+	CommitPreparedWeapon(NewWeapon);
+	return true;
+}
+
+// 생성·초기화·부착을 확정 전에 수행해, 교체 준비 실패 시 기존 무기를 보존한다.
+// 반환된 액터는 숨겨진 준비 상태다. 호출부는 확정에 사용하거나 후속 준비 실패 시 Destroy해야 한다.
+AWeaponActor* ACharacterPlayer::PrepareWeapon(FName WeaponID)
 {
 	USkeletalMeshComponent* BodyMesh = GetMesh();
 
@@ -259,7 +370,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 		|| false == IsValid(BodyMesh)
 		|| BodyMesh->GetBoneIndex(WeaponGrip) == INDEX_NONE)
 	{
-		return false;
+		return nullptr;
 	}
 
 	FActorSpawnParameters SpawnParameters;
@@ -271,7 +382,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 
 	if (false == IsValid(NewWeapon))
 	{
-		return false;
+		return nullptr;
 	}
 
 	const bool bInitialized = IWeaponInterface::Execute_InitializeWeapon(NewWeapon, WeaponID);
@@ -279,7 +390,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	if (false == bInitialized)
 	{
 		NewWeapon->Destroy();
-		return false;
+		return nullptr;
 	}
 
 	const FWeaponData& WeaponData = NewWeapon->GetWeaponData();
@@ -287,7 +398,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	if (!IsValid(WeaponData._ViewMesh))
 	{
 		NewWeapon->Destroy();
-		return false;
+		return nullptr;
 	}
 
 	// 다른 플레이어에게 보이는 월드 무기는 소유 캐릭터의 3인칭 손에 부착된 상태로 네트워크 복제한다.
@@ -296,15 +407,35 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	if (false == NewWeapon->AttachToComponent(BodyMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, WeaponGrip))
 	{
 		NewWeapon->Destroy();
-		return false;
+		return nullptr;
 	}
 
 	// 라이플 메시의 총구는 +Y 방향이다. weapon_r 본에서 캐릭터 전방을
 	// 향하도록 돌리고, 메시의 위쪽(+Z)은 그대로 유지한다.
-	NewWeapon->GetRootComponent()->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator(0.f, 90.f, 0.f));
+	const FRotator WeaponRotation(0.f, 90.f, 0.f);
+	const float WeaponScale = FMath::Clamp(WeaponData._ThirdPersonScale, 0.5f, 1.5f);
+	const USceneComponent* WeaponMesh = NewWeapon->GetWeaponMeshComponent();
+	const FVector RightGrip = true == WeaponMesh->DoesSocketExist(TEXT("RightHandGrip"))
+		? WeaponMesh->GetSocketTransform(TEXT("RightHandGrip"), RTS_Component).GetLocation() : FVector::ZeroVector;
+	// 오른손 그립을 축소 중심으로 사용하여 총 크기가 바뀌어도 방아쇠 손이 밀리지 않게 한다.
+	const FVector GripPivotOffset = WeaponRotation.RotateVector(RightGrip * (1.f - WeaponScale));
+	NewWeapon->SetActorRelativeTransform(FTransform(WeaponRotation, GripPivotOffset, FVector(WeaponScale)));
 
+	NewWeapon->SetActorHiddenInGame(true);
+
+	return NewWeapon;
+}
+
+// 줍기와 슬롯 전환이 같은 경로로 공격 중단, 액터 교체, 표시 갱신을 수행하도록 분리했다.
+// 서버에서 무기 준비와 필요한 슬롯 반영이 끝난 뒤 호출한다. 기존 액터를 파괴하므로 잔탄 저장은 먼저 수행해야 한다.
+void ACharacterPlayer::CommitPreparedWeapon(AWeaponActor* NewWeapon)
+{
 	// 무기를 바꾸면서 이전 무기의 연사가 이어지지 않게 한다.
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	_bAiming = false;
 
@@ -316,6 +447,7 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	}
 
 	_CurrentWeapon = NewWeapon;
+	NewWeapon->SetActorHiddenInGame(false);
 	
 	// 새 총 장착이 성공 -> 수류탄 장착을 해제하기
 	if (IsValid(_CurrentGrenade))
@@ -325,29 +457,34 @@ bool ACharacterPlayer::EquipWeapon(FName WeaponID)
 	
 	_bAiming = false;
 
-	// 서버 쪽 기존 애니메이션 이벤트를 유지한다.
-	// 로컬 플레이어의 이벤트는 아래 Client 함수에서 한 번 실행한다.
-	if (!IsLocallyControlled())
-	{
-		OnWeaponEquiped(WeaponData._WeaponType);
-	}
-	
-	//ClientSetViewWeapon(WeaponData._ViewMesh, WeaponData._ViewAnimationInstance);
-	ClientSetViewWeapon(WeaponData);
-	
-	
-	return true;
+	// 복제된 무기를 기준으로 1인칭 표시와 몸의 무기 자세를 함께 갱신한다.
+	// 별도 클라이언트 RPC는 무기 참조나 데이터보다 먼저 도착하여 몸이 맨손 자세로 남을 수 있다.
+	OnRep_CurrentWeapon();
+
+	ForceNetUpdate();
 }
 
 void ACharacterPlayer::ClientSetViewWeapon_Implementation(const FWeaponData& WeaponData)
 {
-	if (false == IsLocallyControlled() || false == IsValid(_ViewWeaponMesh))
+	_ViewWeaponData = WeaponData;
+	_bPendingViewWeaponUpdate = true;
+	ApplyPendingViewWeapon();
+}
+
+void ACharacterPlayer::ApplyPendingViewWeapon()
+{
+	if (!_bPendingViewWeaponUpdate || !IsLocallyControlled() || !IsValid(_ViewWeaponMesh))
 	{
 		return;
 	}
+	_bPendingViewWeaponUpdate = false;
 
-	_ViewWeaponData = WeaponData;
-
+	// 새 무기를 표시하기 전에 이전 총과 손의 반동을 제거
+	if (IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
+	
 	_ViewWeaponMesh->SetAnimInstanceClass(nullptr);
 	
 	_ViewWeaponMesh->SetSkeletalMesh(_ViewWeaponData._ViewMesh);
@@ -361,9 +498,45 @@ void ACharacterPlayer::ClientSetViewWeapon_Implementation(const FWeaponData& Wea
 	SetAiming(false);
 
 	OnRep_CurrentGrenade();
-	// OnWeaponEquiped(_ViewWeaponData._WeaponType);
-	//
-	// WeaponEquppedChanged.Broadcast(IsValid(_ViewWeaponData._ViewMesh));
+}
+
+void ACharacterPlayer::NotifyWeaponEquippedChanged()
+{
+	if (IsLocallyControlled())
+	{
+		WeaponEquppedChanged.Broadcast(IsWeaponEquipped());
+	}
+}
+
+void ACharacterPlayer::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	// 리타기팅 원본과 표시용 손을 평가한 뒤 1인칭 투척 노티파이를 처리한다.
+	// 스켈레탈 메시의 틱은 병렬 포즈 평가까지 끝난 뒤 완료된다.
+	USkeletalMeshComponent* GripMesh = GetGrenadeGripMesh();
+	_FirstPersonMesh->SetFOVFollower(_ViewItemMesh);
+	// 카메라 기준으로 변형되는 1인칭 표시물은 월드 레이 트레이싱에서 제외한다.
+	_ViewItemMesh->SetVisibleInRayTracing(false);
+	if (IsValid(GripMesh) && IsValid(GetMesh()) && GripMesh != GetMesh())
+	{
+		GripMesh->AddTickPrerequisiteComponent(GetMesh());
+	}
+	if (IsValid(_FirstPersonMesh) && IsValid(GripMesh))
+	{
+		_FirstPersonMesh->AddTickPrerequisiteComponent(GripMesh);
+	}
+
+	// 파생 BP에 저장된 None 참조 대신 GAS가 실제 사용하는 체력 세트에 연결한다.
+	// BP BeginPlay에서 피해가 발생하더라도 사망 이벤트를 놓치지 않도록 먼저 바인딩한다.
+	UFPSHealthSet* HealthSet = IsValid(_AbilitySystemComponent)
+		? const_cast<UFPSHealthSet*>(_AbilitySystemComponent->GetSet<UFPSHealthSet>()) : nullptr;
+	_HealthAttribute = HealthSet;
+
+	if (IsValid(HealthSet) && HasAuthority())
+	{
+		HealthSet->_OnOutOfHealth.AddUniqueDynamic(this, &ACharacterPlayer::HandleOutOfHealth);
+	}
 }
 
 void ACharacterPlayer::BeginPlay()
@@ -376,11 +549,9 @@ void ACharacterPlayer::BeginPlay()
 		_TargetCameraFOV = _BaseCameraFOV;
 	}
 
-	UFPSHealthSet* HealAttribute = Cast<UFPSHealthSet>(_HealthAttribute);
-
-	if (true == HasAuthority() && IsValid(HealAttribute))
+	if (true == IsDeathStarted())
 	{
-		HealAttribute->_OnOutOfHealth.AddUniqueDynamic(this, &ACharacterPlayer::HandleOutOfHealth);
+		ApplyDeathPresentation();
 	}
 }
 
@@ -397,7 +568,12 @@ void ACharacterPlayer::BeginPlay()
 
 void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	UpdateGrenadeGripTick(false);
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	if (true == HasAuthority())
 	{
@@ -405,10 +581,7 @@ void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		{
 			_CurrentWeapon->Destroy();
 		}
-		if (true == IsValid(_PendingWeapon))
-		{
-			_PendingWeapon->Destroy();
-		}
+
 		if (true == IsValid(_CurrentGrenade))
 		{
 			_CurrentGrenade->Destroy();
@@ -432,11 +605,70 @@ void ACharacterPlayer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 void ACharacterPlayer::Jump()
 {
 	Super::Jump();
+	
+	if (true == _bAiming)
+	{
+		SetAiming(false);
+	}
+}
+
+void ACharacterPlayer::CrouchStarted()
+{
+	Crouch();
+}
+
+void ACharacterPlayer::CrouchEnded()
+{
+	UnCrouch();
 }
 
 void ACharacterPlayer::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (true == IsDeathStarted())
+	{
+		UCharacterMovementComponent* Movement = GetCharacterMovement();
+		if (IsValid(Movement) && Movement->MovementMode != MOVE_None)
+		{
+			Movement->DisableMovement();
+		}
+		UpdateDeathMontage();
+		return;
+	}
+
+	ApplyPendingViewWeapon();
+
+	// 소유 클라이언트는 자신의 입력으로 즉시 조준하고, 관찰 클라이언트만 서버 값을 받는다.
+	// 이 값은 표시용 포즈에만 사용하며 실제 사격·피해 계산 경로와 분리한다.
+	if (true == HasAuthority() && true == IsValid(_CurrentWeapon) && false == IsValid(_CurrentGrenade))
+	{
+		_ReplicatedWeaponPoseAim._Origin = GetWeaponAimOrigin();
+		_ReplicatedWeaponPoseAim._Rotation = GetWeaponAimRotation();
+		_ReplicatedWeaponPoseAim._ServerTime = GetWorld()->GetTimeSeconds();
+	}
+
+	// 원격 플레이어도 복제된 몸 몽타주로 주먹 자세를 판단하여 무기를 숨긴다.
+	const UFPSMeleeAbility* MeleeDefaults = true == IsValid(_AbilitySystemComponent)
+		? _AbilitySystemComponent->MeleeAbilityClass.GetDefaultObject() : nullptr;
+
+	UAnimInstance* BodyAnim = true == IsValid(GetMesh()) ? GetMesh()->GetAnimInstance() : nullptr;
+	UAnimMontage* BodyMontage = true == IsValid(BodyAnim) ? BodyAnim->GetCurrentActiveMontage() : nullptr;
+
+	const bool HasBodyMeleePose = true == IsValid(MeleeDefaults) && true == MeleeDefaults->Attacks.ContainsByPredicate(
+		[BodyMontage](const FFPSMeleeAttack& Attack)
+		{
+			return true == IsValid(BodyMontage) && Attack.ThirdPersonMontage == BodyMontage;
+		});
+
+	if (true == IsValid(_CurrentWeapon) && true == IsValid(_CurrentWeapon->GetRootComponent()))
+	{
+		const bool Visible = false == IsValid(_CurrentGrenade) && false == HasBodyMeleePose;
+		if (_CurrentWeapon->GetRootComponent()->IsVisible() != Visible)
+		{
+			_CurrentWeapon->GetRootComponent()->SetVisibility(Visible, true);
+		}
+	}
 
 	if (false == IsLocallyControlled() || !IsValid(_CameraComponent))
 	{
@@ -444,6 +676,43 @@ void ACharacterPlayer::Tick(float DeltaTime)
 	}
 	
 	_CameraComponent->SetFieldOfView(FMath::FInterpTo(_CameraComponent->FieldOfView, _TargetCameraFOV, DeltaTime, 10.f));
+	
+	if (IsValid(_ViewWeaponMesh))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = IsValid(_AbilitySystemComponent) ? _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject() : nullptr;
+		
+		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
+		
+		UAnimInstance* AnimInstance = IsValid(_FirstPersonMesh) ? _FirstPersonMesh->GetAnimInstance() : nullptr;
+		
+		const FAnimMontageInstance* MontageInstance = IsValid(Montage) && IsValid(AnimInstance) ? AnimInstance->GetInstanceForMontage(Montage) : nullptr;
+		
+		// 이전 Throw가 끝나면 다음 무기 장착과 Idle 애니메이션 준비
+		if (IsValid(_CurrentGrenade) && IsValid(Montage) && IsValid(AnimInstance) && (MontageInstance == nullptr || (MontageInstance->GetCurrentSection() != FName(TEXT("Throw")) && IsValid(_ViewItemMesh) && _ViewItemMesh->GetStaticMesh() == nullptr)))
+		{
+			OnRep_CurrentGrenade();
+		}
+		
+		// Blend Out 중에도 수류탄 동작이 남아 있으면 총을 그리지 않기
+		const bool HasGrenadePose = IsValid(Montage) && IsValid(AnimInstance) && AnimInstance->GetInstanceForMontage(Montage) != nullptr;
+		
+		// 공격 상태가 해제되어도 팔 몽타주의 블렌딩이 끝날 때까지 1인칭 무기를 숨긴다.
+		const bool HasMeleePose = (true == IsValid(_AbilitySystemComponent)
+			&& true == _AbilitySystemComponent->HasMatchingGameplayTag(FPSGameplayTags::Status_Melee))
+			|| (true == IsValid(MeleeDefaults) && true == MeleeDefaults->Attacks.ContainsByPredicate(
+				[AnimInstance](const FFPSMeleeAttack& Attack)
+				{
+					return true == IsValid(AnimInstance) && true == IsValid(Attack.FirstPersonMontage)
+						&& nullptr != AnimInstance->GetInstanceForMontage(Attack.FirstPersonMontage);
+				}));
+		const bool ShowWeapon = true == IsValid(_CurrentWeapon) && false == IsValid(_CurrentGrenade)
+			&& false == HasGrenadePose && false == HasMeleePose;
+		
+		if (_ViewWeaponMesh->IsVisible() != ShowWeapon)
+		{
+			_ViewWeaponMesh->SetVisibility(ShowWeapon, true);
+		}
+	}
 }
 
 void ACharacterPlayer::CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult)
@@ -488,13 +757,35 @@ void ACharacterPlayer::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Started,   this, &ACharacterPlayer::FireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Completed, this, &ACharacterPlayer::StopFireAction);
 	InputComp->BindAction(_DefaultInput->_Fire,       ETriggerEvent::Canceled,  this, &ACharacterPlayer::StopFireAction);
+
+	if (true == IsValid(_DefaultInput->_Melee))
+	{
+		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Started,   this, &ACharacterPlayer::MeleeAction);
+		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Completed, this, &ACharacterPlayer::StopMeleeAction);
+		InputComp->BindAction(_DefaultInput->_Melee, ETriggerEvent::Canceled,  this, &ACharacterPlayer::StopMeleeAction);
+	}
+
 	InputComp->BindAction(_DefaultInput->_FireToggle, ETriggerEvent::Started,   this, &ACharacterPlayer::FireToggleAction);
 	InputComp->BindAction(_DefaultInput->_DropItem, ETriggerEvent::Started, this, &ACharacterPlayer::DropItemAction);
 	InputComp->BindAction(_DefaultInput->_EquipMainWeapon, ETriggerEvent::Started, this, &ACharacterPlayer::EquipMainWeaponAction);
 	InputComp->BindAction(_DefaultInput->_EquipSubWeapon, ETriggerEvent::Started, this, &ACharacterPlayer::EquipSubWeaponAction);
 	InputComp->BindAction(_DefaultInput->_Cook,        ETriggerEvent::Started,   this, &ACharacterPlayer::CookAction);
 	InputComp->BindAction(_DefaultInput->_WeaponSlot3, ETriggerEvent::Started,   this, &ACharacterPlayer::EquipGrenadeAction);
+	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Started, this, &ACharacterPlayer::CrouchStarted);
+	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Completed, this, &ACharacterPlayer::CrouchEnded);
+	InputComp->BindAction(_DefaultInput->_CrouchAction, ETriggerEvent::Canceled, this, &ACharacterPlayer::CrouchEnded);
+
+
+	if (IsValid(_DefaultInput->_CycleThrowable))
+	{
+		InputComp->BindAction(_DefaultInput->_CycleThrowable, ETriggerEvent::Started, this, &ACharacterPlayer::CycleThrowableAction);
+	}
 	
+	if (IsValid(_AbilitySystemComponent))
+	{
+		InputComp->BindAction(_DefaultInput->_Reload, ETriggerEvent::Started, _AbilitySystemComponent.Get(), &UFPSAbilitySystemComponent::Reload);
+	}
+
 	PlayerController->RefreshInputMappingContext();
 }
 
@@ -518,12 +809,24 @@ void ACharacterPlayer::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 
 	DOREPLIFETIME(ACharacterPlayer, _CurrentWeapon);
 	DOREPLIFETIME(ACharacterPlayer, _CurrentGrenade);
+	DOREPLIFETIME_CONDITION(ACharacterPlayer, _SelectedThrowableTID, COND_OwnerOnly);
+	DOREPLIFETIME(ACharacterPlayer, _DeathStartServerTime);
+	DOREPLIFETIME_CONDITION(ACharacterPlayer, _ReplicatedWeaponPoseAim, COND_SkipOwner);
 }
 
+// 해제 중 다른 총을 암묵적으로 장착하지 않도록 현재 총과 슬롯 정리만 담당한다.
+// 다음 슬롯 자동 장착은 호출부(TryDropWeaponAt)가 결정하며, 수류탄 해제는 별도 경로다.
 void ACharacterPlayer::ClearEquippedWeapon()
 {
+	if (!HasAuthority())
+		return;
+	SaveCurrentWeaponToInventory();
 	// 연사 중이면 끊는다
 	StopAttacking();
+	if (IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->CancelWeaponReload();
+	}
 
 	_bAiming = false;
 
@@ -534,21 +837,156 @@ void ACharacterPlayer::ClearEquippedWeapon()
 		_CurrentWeapon->Destroy();
 	}
 
-	_CurrentWeapon = _PendingWeapon;
+	_CurrentWeapon = nullptr;
+	ClientSetViewWeapon(FWeaponData());
 
-	_PendingWeapon = nullptr;
-
-	if (true == IsValid(_CurrentWeapon))
-	{
-		OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
-	}
-	else
-	{
-		// 빈손 -> 1인칭 뷰 무기도 삭제 -> 액터만 지우면 화면에는 그대로 남음.
-		ClientSetViewWeapon(FWeaponData());
-	}
-	
 	OnRep_CurrentGrenade();
+	APlayerStateBase* PS = GetPlayerState<APlayerStateBase>();
+	if (IsValid(PS) && IsValid(PS->GetInventory()))
+	{
+		PS->GetInventory()->SetEquippedWEaponIndex(INDEX_NONE, false);
+	}
+	ForceNetUpdate();
+}
+
+// 새 무기를 줍거나 전환할 때 기존 액터의 잔탄이 유실되지 않도록 슬롯 저장을 공통화했다.
+// 기존 액터 파괴 및 장착 슬롯 번호 변경 전에 호출한다. 버리기로 슬롯이 이미 제거됐다면 저장하지 않는다.
+void ACharacterPlayer::SaveCurrentWeaponToInventory()
+{
+	if (!HasAuthority() || !IsValid(_CurrentWeapon))
+	{
+		return;
+	}
+	APlayerStateBase* PS = GetPlayerState<APlayerStateBase>();
+
+	UInventoryComponent* Inv = IsValid(PS) ? PS->GetInventory() : nullptr;
+
+	if (!IsValid(Inv))
+	{
+		return;
+	}
+
+	const int32 Index = Inv->GetEquippedWeaponIndex();
+
+	const FWeaponSlotData* Slot = Inv->GetWeaponData(Index);
+
+	if (!Slot || Slot->IsNone())
+	{
+		return;
+	}
+
+	FWeaponSlotData Data = *Slot;
+
+	Data._CurrentAmmo = _CurrentWeapon->GetCurrentAmmo();
+
+	Data._MaxAmmo = _CurrentWeapon->GetMaxAmmo();
+
+	Inv->SetWeaponSlotData(Index, Data);
+}
+
+// 픽업 장착과 인벤토리 확정을 한곳에서 처리해 손의 무기와 슬롯 정보가 어긋나는 것을 방지한다.
+// 새 무기와 밀려날 픽업 준비 -> 기존 잔탄 저장 -> 슬롯 확정 -> 장착 확정 -> 픽업·UI 마무리 순서다.
+// 준비 실패 시 임시 액터만 제거하며, 교체로 떨어지는 무기에도 실제 잔탄을 전달한다.
+bool ACharacterPlayer::TryAcquireWeapon(AWeaponPickUp* Pickup)
+{
+	if (!HasAuthority() || !IsValid(Pickup) || IsDeathStarted())
+	{
+		return false;
+	}
+
+	APlayerStateBase* PS = GetPlayerState<APlayerStateBase>();
+
+	UInventoryComponent* Inv = IsValid(PS) ? PS->GetInventory() : nullptr;
+
+	UTableSubsystem* Table = UTableSubsystem::Get(this);
+
+	if (!IsValid(Inv) || !IsValid(Table))
+	{
+		return false;
+	}
+
+	const FName TID = Pickup->GetTID();
+
+	const FItemData* Row = Table->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+
+	int32 SlotIndex = INDEX_NONE;
+
+	FName ReplacedTID = NAME_None;
+
+	if (!Row || Row->_ItemType != EItemType::Weapon || Row->_WeaponId.IsNone()
+		|| !Inv->FindEquipSlot(TID, SlotIndex, ReplacedTID))
+	{
+		return false;
+	}
+
+	AWeaponActor* NewWeapon = PrepareWeapon(Row->_WeaponId);
+	if (!IsValid(NewWeapon))
+	{
+		return false;
+	}
+
+	NewWeapon->SetCurrentAmmo(Pickup->GetCurrentAmmo());
+
+	// 모든 준비가 성공할 때까지 기존 액터와 슬롯을 유지한다.
+	AWeaponPickUp* DroppedWeapon = nullptr;
+
+	const FTransform DropTransform = Pickup->GetActorTransform();
+
+	if (!ReplacedTID.IsNone())
+	{
+		AItemPickUp* PreparedPickup = AItemPickUp::BeginSpawnFromTID(GetWorld(), ReplacedTID, 1, DropTransform);
+
+		DroppedWeapon = Cast<AWeaponPickUp>(PreparedPickup);
+
+		if (!IsValid(DroppedWeapon))
+		{
+			if (IsValid(PreparedPickup))
+			{
+				PreparedPickup->Destroy();
+			}
+			NewWeapon->Destroy();
+			return false;
+		}
+
+		const FWeaponSlotData* OldSlot = Inv->GetWeaponData(SlotIndex);
+
+		const int32 OldAmmo = SlotIndex == Inv->GetEquippedWeaponIndex() && IsValid(_CurrentWeapon)
+			? _CurrentWeapon->GetCurrentAmmo() : OldSlot->_CurrentAmmo;
+
+		DroppedWeapon->SetCurrentAmmo(OldAmmo);
+	}
+
+	SaveCurrentWeaponToInventory();
+
+	FWeaponSlotData Data;
+
+	Data._WeaponId = TID;
+
+	Data._CurrentAmmo = NewWeapon->GetCurrentAmmo();
+
+	Data._MaxAmmo = NewWeapon->GetMaxAmmo();
+
+	if (!Inv->CommitEquip(Data, SlotIndex, false))
+	{
+		NewWeapon->Destroy();
+		if (IsValid(DroppedWeapon))
+		{
+			DroppedWeapon->Destroy();
+		}
+		return false;
+	}
+
+	CommitPreparedWeapon(NewWeapon);
+
+	if (IsValid(DroppedWeapon))
+	{
+		AItemPickUp::FinishSpawnFromTID(DroppedWeapon, DropTransform);
+	}
+
+	Pickup->Destroy();
+
+	Inv->NotifyWeaponsChanged();
+	return true;
 }
 
 bool ACharacterPlayer::TryEquipSlot(int32 Index)
@@ -568,16 +1006,26 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 		return false;
 
 	// 지점 슬롯에 들어 있는 아이템 TID 확인.
-	const FName TID = Inv->GetWeaponTID(Index);
-	if (TID.IsNone())
+	const FWeaponSlotData* WeaponSlotData = Inv->GetWeaponData(Index);
+
+	if (nullptr == WeaponSlotData)
+	{
 		return false;
+	}
+
+	FName WeaponID = WeaponSlotData->_WeaponId;
+
+	if (WeaponID.IsNone())
+	{
+		return false;
+	}
 
 	UTableSubsystem* Sub = UTableSubsystem::Get(this);
 	if (nullptr == Sub)
 		return false;
 
 	// 아이템 정보에서 무기 ID 확인.
-	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+	const FItemData* Row = Sub->FindTableRow<FItemData>(TEXT("ItemTable"), WeaponID);
 
 	if (nullptr == Row)
 		return false;
@@ -585,12 +1033,19 @@ bool ACharacterPlayer::TryEquipSlot(int32 Index)
 	if (Row->_WeaponId.IsNone())
 		return false;
 
-	// 손에 들 새 무기 액터 준비
-	if (false == EquipWeapon(Row->_WeaponId))
+	AWeaponActor* NewWeapon = PrepareWeapon(Row->_WeaponId);
+	if (!IsValid(NewWeapon))
 		return false;
 
-	// 실제 장착에 맞춰 인벤토리의 장착 슬롯 번호 기록.
-	Inv->SetEquippedWEaponIndex(Index);
+	SaveCurrentWeaponToInventory();
+
+	NewWeapon->SetCurrentAmmo(WeaponSlotData->_CurrentAmmo);
+
+	Inv->SetEquippedWEaponIndex(Index, false);
+
+	CommitPreparedWeapon(NewWeapon);
+
+	Inv->NotifyWeaponsChanged();
 
 	return true;
 
@@ -646,7 +1101,19 @@ bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
 
 	// 인벤 확정 실패시 준비한 픽업 정리.
 	const bool bWasEquipped = (Index == Inv->GetEquippedWeaponIndex());
-	if (false == Inv->RemoveWeapon(Index))
+
+	const FWeaponSlotData* Slot = Inv->GetWeaponData(Index);
+	const int32 CurrentAmmoData = bWasEquipped && IsValid(_CurrentWeapon)
+		? _CurrentWeapon->GetCurrentAmmo() : Slot->_CurrentAmmo;
+	AWeaponPickUp* WeaponPickUp = Cast<AWeaponPickUp>(Pickup);
+	if (!IsValid(WeaponPickUp))
+	{
+		Pickup->Destroy();
+		return false;
+	}
+	WeaponPickUp->SetCurrentAmmo(CurrentAmmoData);
+
+	if (false == Inv->RemoveWeapon(Index, false))
 	{
 		Pickup->Destroy();
 		return false;
@@ -666,6 +1133,8 @@ bool ACharacterPlayer::TryDropWeaponAt(int32 Index)
 
 	// 픽업
 	AItemPickUp::FinishSpawnFromTID(Pickup, Transform);
+
+	Inv->NotifyWeaponsChanged();
 	return true;
 }
 
@@ -716,8 +1185,20 @@ void ACharacterPlayer::MoveLookAction(const FInputActionValue& Value)
 	if (Controller)
 	{
 		// 기본 감도는 유지, 실제 입력에 조준 배율 적용
-		const float Sensitivity = _LookSensitivity * (_bAiming ? _ViewWeaponData._AimSensitivityMultiplier : 1.0f);
+		float Sensitivity = _LookSensitivity;
+
+		const UFPSGameUserSettings* Settings = UFPSGameUserSettings::GetFPSGameUserSettings();
+		if (nullptr != Settings)
+		{
+			Sensitivity *= Settings->GetMouseSensitivity();
+		}
 		
+		// 조준 중이면 무기 테이블의 조준 감도 배율을 추가로 곱한다.
+		if (true == _bAiming)
+		{
+			Sensitivity *= _ViewWeaponData._AimSensitivityMultiplier;
+		}
+
 		AddControllerYawInput(-Aim.X * Sensitivity);
 		
 		AddControllerPitchInput(Aim.Y * Sensitivity);
@@ -806,6 +1287,23 @@ void ACharacterPlayer::StopFireAction(const FInputActionValue& value)
 	}
 }
 
+void ACharacterPlayer::MeleeAction(const FInputActionValue& Value)
+{
+	if (true == IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent->SetMeleeInput(true);
+	}
+}
+
+void ACharacterPlayer::StopMeleeAction(const FInputActionValue& Value)
+{
+	if (true == IsValid(_AbilitySystemComponent))
+	{
+		// 맨손 공격으로 전달된 입력도 해제하여 다음 누름을 콤보 입력으로 받을 수 있게 한다.
+		_AbilitySystemComponent->SetMeleeInput(false);
+	}
+}
+
 void ACharacterPlayer::FireToggleAction(const FInputActionValue& value)
 {
 	if (IsValid(_AbilitySystemComponent))
@@ -830,9 +1328,125 @@ void ACharacterPlayer::EquipGrenadeAction(const FInputActionValue& Value)
 	}
 }
 
+void ACharacterPlayer::CycleThrowableAction(const FInputActionValue& Value)
+{
+	if (IsLocallyControlled())
+	{
+		ServerCycleThrowable();
+	}
+}
+
+void ACharacterPlayer::ServerCycleThrowable_Implementation()
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+
+	// 핀을 뽑은(쿠킹 중) 투척물은 다른 종류로 바꿀 수 없다.
+	if (IsValid(_CurrentGrenade) && _CurrentGrenade->GetLifeSpan() > 0.f)
+	{
+		return;
+	}
+
+	const FName NextTID = FindNextThrowableTID(_SelectedThrowableTID);
+	if (NextTID.IsNone() || NextTID == _SelectedThrowableTID)
+	{
+		return;
+	}
+
+	_SelectedThrowableTID = NextTID;
+
+	// C++ RepNotify는 서버에서 자동 호출되지 않으므로 직접 적용
+	OnRep_SelectedThrowable();
+
+	// 투척물을 들고 있었다면 바로 새 종류로 교체한다.
+	if (IsValid(_CurrentGrenade))
+	{
+		ClearEquippedGrenade();
+		ServerEquipGrenade();
+	}
+
+	ForceNetUpdate();
+}
+
+void ACharacterPlayer::OnRep_SelectedThrowable()
+{
+	_OnSelectedThrowableChanged.Broadcast();
+}
+
+FName ACharacterPlayer::GetSelectedThrowableTID() const
+{
+	return _SelectedThrowableTID;
+}
+
+FName ACharacterPlayer::FindNextThrowableTID(FName CurrentTID) const
+{
+	const APlayerStateBase* FPSPlayerState = GetPlayerState<APlayerStateBase>();
+	const UInventoryComponent* Inventory = nullptr;
+	if (IsValid(FPSPlayerState))
+	{
+		Inventory = FPSPlayerState->GetInventory();
+	}
+
+	const UTableSubsystem* Table = UTableSubsystem::Get(this);
+	if (!IsValid(Inventory) || !IsValid(Table))
+	{
+		return NAME_None;
+	}
+
+	// 인벤토리 순서대로 개수가 남은 투척물 TID를 모은다. (같은 TID가 여러 칸이어도 한 번만)
+	TArray<FName> ThrowableTIDs;
+	for (const FInventorySlot& Item : Inventory->GetItems())
+	{
+		if (Item._Count <= 0)
+		{
+			continue;
+		}
+
+		const FItemData* Row = Table->FindTableRow<FItemData>(TEXT("ItemTable"), Item._TID);
+		if (nullptr == Row || EItemType::Grenade != Row->_ItemType)
+		{
+			continue;
+		}
+
+		ThrowableTIDs.AddUnique(Item._TID);
+	}
+
+	if (ThrowableTIDs.IsEmpty())
+	{
+		return NAME_None;
+	}
+
+	// 지금 종류가 목록에 없으면(처음이거나 다 썼으면) 첫 번째부터
+	const int32 CurrentIndex = ThrowableTIDs.IndexOfByKey(CurrentTID);
+	if (INDEX_NONE == CurrentIndex)
+	{
+		return ThrowableTIDs[0];
+	}
+
+	return ThrowableTIDs[(CurrentIndex + 1) % ThrowableTIDs.Num()];
+}
+
+TSubclassOf<AGrenadeActor> ACharacterPlayer::FindThrowableClass(FName TID) const
+{
+	const UTableSubsystem* Table = UTableSubsystem::Get(this);
+	if (IsValid(Table))
+	{
+		const FItemData* Row = Table->FindTableRow<FItemData>(TEXT("ItemTable"), TID);
+		if (nullptr != Row && nullptr != Row->_ThrowableClass)
+		{
+			return Row->_ThrowableClass;
+		}
+	}
+
+	// 테이블에 클래스가 없으면 기존 기본 수류탄
+	return _GrenadeActorClass;
+}
+
 void ACharacterPlayer::ServerEquipGrenade_Implementation()
 {
-	if (!HasAuthority() || IsValid(_CurrentGrenade) || nullptr == _GrenadeActorClass || !IsValid(GetWorld()))
+	if (!HasAuthority() || IsValid(_CurrentGrenade) || !IsValid(GetWorld()))
 	{
 		return;
 	}
@@ -848,23 +1462,15 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 
 	UTableSubsystem* Table = UTableSubsystem::Get(this);
 	
-	USkeletalMeshComponent* BodyMesh = GetMesh();
+	USkeletalMeshComponent* BodyMesh = GetGrenadeGripMesh();
 
-	if (!IsValid(Inventory) || !IsValid(Table) || !IsValid(BodyMesh)  || BodyMesh->GetBoneIndex(TEXT("hand_r")) == INDEX_NONE)
+	if (!IsValid(Inventory) || !IsValid(Table) || !IsValid(BodyMesh) || !BodyMesh->DoesSocketExist(TEXT("GrenadeGrip")))
 	{
 		return;
 	}
 
-	const AGrenadeActor* Defaults = _GrenadeActorClass.GetDefaultObject();
-	
-	if (!IsValid(Defaults) || Defaults->GetTID().IsNone())
-	{
-		return;
-	}
-
-	const FName TID = Defaults->GetTID();
-
-	// 클라이언트의 주장 대신 서버 인벤토리의 실제 수량을 확인한다.
+	// 고른 종류를 서버 인벤토리의 실제 수량으로 확인한다. (클라이언트의 주장 대신)
+	FName TID = _SelectedThrowableTID;
 	bool HasGrenade = false;
 
 	for (const FInventorySlot& Item : Inventory->GetItems())
@@ -877,7 +1483,33 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 		}
 	}
 
+	// 고른 종류가 없거나 다 썼으면 인벤토리의 첫 투척물로 바꾼다.
 	if (!HasGrenade)
+	{
+		TID = FindNextThrowableTID(NAME_None);
+
+		if (TID.IsNone())
+		{
+			return;
+		}
+	}
+
+	if (TID != _SelectedThrowableTID)
+	{
+		_SelectedThrowableTID = TID;
+
+		OnRep_SelectedThrowable();
+	}
+
+	const TSubclassOf<AGrenadeActor> ThrowableClass = FindThrowableClass(TID);
+	const AGrenadeActor* Defaults = nullptr;
+	if (nullptr != ThrowableClass)
+	{
+		Defaults = ThrowableClass.GetDefaultObject();
+	}
+
+	// BP의 TID와 아이템 TID가 같아야 소비·표시가 맞는다.
+	if (!IsValid(Defaults) || Defaults->GetTID() != TID)
 	{
 		return;
 	}
@@ -896,7 +1528,7 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 	SpawnParameters.Instigator = this;
 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	AGrenadeActor* Grenade = GetWorld()->SpawnActor<AGrenadeActor>(_GrenadeActorClass, GetActorTransform(), SpawnParameters);
+	AGrenadeActor* Grenade = GetWorld()->SpawnActor<AGrenadeActor>(ThrowableClass, GetActorTransform(), SpawnParameters);
 
 	if (!IsValid(Grenade))
 	{
@@ -909,9 +1541,13 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 		
 		return;
 	}
+	FTransform GripOffset = _GrenadeGripOffsetTP;
+	GripOffset.SetScale3D(Grenade->GetActorRelativeScale3D() * GripOffset.GetScale3D());
+	Grenade->SetActorRelativeTransform(GripOffset);
 
 	// 새 수류탄 준비가 성공한 뒤 기존 총의 공격을 중단
 	StopAttacking();
+	_AbilitySystemComponent->CancelWeaponReload();
 	
 	_bAiming = false;
 	
@@ -927,7 +1563,23 @@ void ACharacterPlayer::ServerEquipGrenade_Implementation()
 
 void ACharacterPlayer::OnRep_CurrentGrenade()
 {
+	UpdateGrenadeGripTick(IsValid(_CurrentGrenade) && !IsDeathStarted());
+	if (true == IsDeathStarted())
+	{
+		ApplyDeathPresentation();
+		return;
+	}
+
+	// UI 갱신은 아래 수류탄 연출의 조기 반환 여부와 무관하게 전달한다.
+	NotifyWeaponEquippedChanged();
+
 	const bool HasGrenade = IsValid(_CurrentGrenade);
+	
+	// 수류탄을 든 로컬 플레이어의 총과 손의 반동을 제거한다.
+	if (IsLocallyControlled() && HasGrenade && IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
 	
 	const bool HasWeapon = IsValid(_CurrentWeapon);
 
@@ -937,11 +1589,34 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 		_CurrentWeapon->GetRootComponent()->SetVisibility(!HasGrenade, true);
 	}
 
-	if (IsValid(_ViewWeaponMesh))
-	{
-		_ViewWeaponMesh->SetVisibility(IsLocallyControlled() && HasWeapon && !HasGrenade, true);
-	}
+	// Commit 건영 : 수류탄 무기 전환 버그를 1인칭 총 표시를 Tick()에서 결정으로 해결
+	// if (IsValid(_ViewWeaponMesh))
+	// {
+	// 	_ViewWeaponMesh->SetVisibility(IsLocallyControlled() && HasWeapon && !HasGrenade, true);
+	// }
 
+	if (IsLocallyControlled() && HasGrenade && IsValid(_AbilitySystemComponent) && IsValid(_FirstPersonMesh))
+	{
+		const UFPSGrenadeAbility* GrenadeAbility = _AbilitySystemComponent->GrenadeAbilityClass.GetDefaultObject();
+		
+		UAnimMontage* Montage = IsValid(GrenadeAbility) ? GrenadeAbility->GetGrenadeMontageFP() : nullptr;
+		
+		UAnimInstance* AnimInstance = _FirstPersonMesh->GetAnimInstance();
+		
+		const FAnimMontageInstance* MontageInstance = IsValid(Montage) && IsValid(AnimInstance) ? AnimInstance->GetInstanceForMontage(Montage) : nullptr;
+		
+		// 서버의 재장착이 먼저 도착해도 이전 Throw에 새 수류탄을 표시하지 않음
+		if (MontageInstance && MontageInstance->GetCurrentSection() == FName(TEXT("Throw")))
+		{
+			if (IsValid(_ViewItemMesh))
+			{
+				_ViewItemMesh->SetStaticMesh(nullptr);
+			}
+			
+			return;
+		}
+	}
+	
 	if (IsValid(_ViewItemMesh))
 	{
 		_ViewItemMesh->EmptyOverrideMaterials();
@@ -956,13 +1631,27 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 			{
 				_ViewItemMesh->SetStaticMesh(GrenadeMesh->GetStaticMesh());
 
-				// Blueprint에서 맞춘 메시 원점 보정도 함께 적용한다.
-				_ViewItemMesh->SetRelativeTransform(GrenadeMesh->GetRelativeTransform());
+				// 아이템의 피벗 보정을 유지하고, 1인칭 손 위치 보정은
+				// 3인칭 액터의 부착 위치·회전과 독립적으로 적용한다.
+				_ViewItemMesh->SetRelativeTransform(GrenadeMesh->GetRelativeTransform() * _GrenadeGripOffsetFP);
 
 				for (int32 Index = 0; Index < GrenadeMesh->GetNumMaterials(); ++Index)
 				{
-					_ViewItemMesh->SetMaterial(Index, GrenadeMesh->GetMaterial(Index));
+					UMaterialInterface* Material = Index == 0 && IsValid(_GrenadeViewMaterial)
+						? _GrenadeViewMaterial.Get() : GrenadeMesh->GetMaterial(Index);
+					_ViewItemMesh->SetMaterial(Index, Material);
+					_ViewItemMesh->CreateAndSetMaterialInstanceDynamic(Index);
 				}
+
+				// 1인칭 전용 머티리얼에도 투척물 종류별 색을 적용
+				if (UTableSubsystem* Table = UTableSubsystem::Get(this))
+				{
+					if (const FItemData* ItemData = Table->FindTableRow<FItemData>(TEXT("ItemTable"), _CurrentGrenade->GetTID()))
+					{
+						ItemData->ApplyTint(_ViewItemMesh);
+					}
+				}
+				_FirstPersonMesh->UpdateFOV();
 			}
 		}
 	}
@@ -975,7 +1664,7 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 	}
 	else if (HasWeapon)
 	{
-		WeaponType = IsLocallyControlled() ? _ViewWeaponData._WeaponType : _CurrentWeapon->GetWeaponData()._WeaponType;
+		WeaponType = _CurrentWeapon->GetWeaponData()._WeaponType;
 	}
 
 	OnWeaponEquiped(WeaponType);
@@ -1007,8 +1696,6 @@ void ACharacterPlayer::OnRep_CurrentGrenade()
 	if (IsLocallyControlled())
 	{
 		SetAiming(false);
-		
-		WeaponEquppedChanged.Broadcast(IsWeaponEquipped());
 	}
 	
 	if (IsLocallyControlled() &&
@@ -1097,6 +1784,55 @@ AGrenadeActor* ACharacterPlayer::GetEquippedGrenade() const
 	return _CurrentGrenade.Get();
 }
 
+USkeletalMeshComponent* ACharacterPlayer::GetGrenadeGripMesh() const
+{
+	if (!_GrenadeGripMeshComponentName.IsNone())
+	{
+		TArray<USkeletalMeshComponent*> Meshes;
+		GetComponents(Meshes);
+		for (USkeletalMeshComponent* GripMesh : Meshes)
+		{
+			if (IsValid(GripMesh) && GripMesh->GetFName() == _GrenadeGripMeshComponentName && GripMesh->DoesSocketExist(TEXT("GrenadeGrip")))
+			{
+				return GripMesh;
+			}
+		}
+	}
+	return GetMesh();
+}
+
+FVector ACharacterPlayer::GetGrenadeReleaseLocation() const
+{
+	return IsValid(_CurrentGrenade) ? _CurrentGrenade->GetActorLocation() : GetActorLocation();
+}
+
+void ACharacterPlayer::UpdateGrenadeGripTick(bool Equipped)
+{
+	USkeletalMeshComponent* GripMesh = Equipped ? GetGrenadeGripMesh() : nullptr;
+	if (_GrenadeTickMesh.Get() == GripMesh) return;
+	if (USkeletalMeshComponent* Previous = _GrenadeTickMesh.Get())
+	{
+		Previous->VisibilityBasedAnimTickOption = static_cast<EVisibilityBasedAnimTickOption>(_GrenadeSavedAnimTickOption);
+		Previous->bEnableUpdateRateOptimizations = _GrenadeSavedUpdateRateOptimization;
+		Previous->SetComponentTickEnabled(_GrenadeSavedTickEnabled);
+	}
+	_GrenadeTickMesh = GripMesh;
+	if (IsValid(GripMesh))
+	{
+		_GrenadeSavedAnimTickOption = static_cast<uint8>(GripMesh->VisibilityBasedAnimTickOption);
+		_GrenadeSavedUpdateRateOptimization = GripMesh->bEnableUpdateRateOptimizations;
+		_GrenadeSavedTickEnabled = GripMesh->IsComponentTickEnabled();
+		GripMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		GripMesh->bEnableUpdateRateOptimizations = false;
+		GripMesh->SetComponentTickEnabled(true);
+	}
+}
+
+USceneComponent* ACharacterPlayer::GetViewWeaponMeshComponent() const
+{
+	return _ViewWeaponMesh;
+}
+
 // Commit 건영 : 중복코드 제거
 // void ACharacterPlayer::ServerStartFire_Implementation()
 // {
@@ -1146,15 +1882,48 @@ AGrenadeActor* ACharacterPlayer::GetEquippedGrenade() const
 // 	}
 // }
 
+// 일부는 태그 막는 걸로 처리할 수 있을 것 같음. 
+// Movement 상태때문에 따로 함수로 빼놓음.
 bool ACharacterPlayer::CanFireFromAbility() const
 {
+	if (true == IsDeathStarted())
+	{
+		return false;
+	}
+
 	const UFPSCharacterMovementComponent* Movement = Cast<UFPSCharacterMovementComponent>(GetCharacterMovement());
-	return !IsValid(_CurrentGrenade) 
-		 && IsValid(_CurrentWeapon) 
-		 && IsValid(GetWorld())
-		 && IsValid(Movement) 
-		 && !Movement->GetTraversalState().IsActive() 
-		 && !Movement->IsTraversing();
+
+	if (false == IsValid(GetWorld()))
+	{
+		return false;
+	}
+
+	if (true == IsValid(_CurrentGrenade))
+	{
+		return false;
+	}
+
+	if (false == IsValid(_CurrentWeapon))
+	{
+		return false;
+	}
+
+	if (false == IsValid(Movement))
+	{
+		return false;
+	}
+
+	if (true == Movement->GetTraversalState().IsActive())
+	{
+		return false;
+	}
+
+	if (true == Movement->IsTraversing())
+	{
+		return false;
+	}
+
+	return true;
 }
 
 void ACharacterPlayer::NotifyAbilityWeaponFired(AWeaponActor* Weapon)
@@ -1169,6 +1938,14 @@ void ACharacterPlayer::NotifyAbilityWeaponFired(AWeaponActor* Weapon)
 	
 	GetWorldTimerManager().SetTimer(_FiringTagTimerHandle, this, &ACharacterPlayer::StopFiringPresentation, FMath::Max(0.1f, Weapon->GetProjectileInterval() + 0.05f), false);
 
+	// 서버의 탄 번호를 갱신
+	// 호스트 자신의 총이라면 반동 연출도 처리
+	if (IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->WeaponFired(Weapon->GetWeaponData()._WeaponId);
+	}
+	
+	// 원격 소유 클라이언트에 실제 발사 성공을 알린다.
 	ClientWeaponFired(Weapon->GetWeaponData()._WeaponId);
 }
 
@@ -1190,7 +1967,6 @@ void ACharacterPlayer::StopFiringPresentation()
 
 void ACharacterPlayer::RequestEquipSlot(int32 Index)
 {
-	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 요청 Index=%d"), Index);
 
 	// 인벤, 맵이 열려 있으면 숫자키를 UI가 쓸 수 있으니 막는다.
 	APlayerController* Pc = Cast<APlayerController>(GetController());
@@ -1208,10 +1984,11 @@ void ACharacterPlayer::RequestEquipSlot(int32 Index)
 	UInventoryComponent* Inv = Ps->GetInventory();
 	if (nullptr == Inv)
 		return;
-
-	// 이미 그 슬롯을 들고 있으면 할 일 없음.
-	if (Index == Inv->GetEquippedWeaponIndex())
-		return;
+	
+	//	 서버에서 동일한 조건을 검사하고 있으므로 해당 줄은 주석처리하겠음. 
+	//// 이미 그 슬롯을 들고 있으면 할 일 없음.
+	//if (Index == Inv->GetEquippedWeaponIndex() && IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade))
+	//	return;
 
 	// 빈 슬롯이면 무시. _Weapons는 복제되니 클라에서도 안다.
 	if (Inv->GetWeaponTID(Index).IsNone())
@@ -1222,16 +1999,51 @@ void ACharacterPlayer::RequestEquipSlot(int32 Index)
 
 void ACharacterPlayer::ClientWeaponFired_Implementation(FName WeaponID)
 {
-	if (IsLocallyControlled() && IsValid(_ControlShakeManager)
-		&& IsValid(_AbilitySystemComponent) && _AbilitySystemComponent->CanAttack())
+	// if (IsLocallyControlled() && IsValid(_ControlShakeManager)
+	// 	&& IsValid(_AbilitySystemComponent) && _AbilitySystemComponent->CanAttack())
+	// {
+	// 	_ControlShakeManager->WeaponFired(WeaponID);
+	// }
+	// Commit 건영 : 호스트는 서버의 발사 성공 처리에서 이미 반동을 적용했음
+	if (HasAuthority() || !IsLocallyControlled() || !IsValid(_ControlShakeManager))
 	{
-		_ControlShakeManager->WeaponFired(WeaponID);
+		return;
+	}
+	
+	// 서버가 확정한 발사 결과이므로 현재 공격 가능 여부를 다시 검사하지 않음
+	_ControlShakeManager->WeaponFired(WeaponID);
+}
+
+void ACharacterPlayer::ClientPlayMontage_Implementation(EAnimMeshType Type, UAnimMontage* Montage, float PlayRate)
+{
+	if (true == IsDeathStarted())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* MeshComp = EAnimMeshType::FirstPerson == Type ? Get_FirstPersonMesh() : Get_ThirtPersonMesh();
+	UAnimInstance* AnimInstance = IsValid(MeshComp) ? MeshComp->GetAnimInstance() : nullptr;
+	if (!IsLocallyControlled() || !IsValid(AnimInstance) || !IsValid(Montage)
+		|| !FMath::IsFinite(PlayRate) || PlayRate <= 0.f)
+	{
+		return;
+	}
+	AnimInstance->Montage_Play(Montage, PlayRate, EMontagePlayReturnType::MontageLength, 0.f, false);
+}
+
+void ACharacterPlayer::ClientStopMontage_Implementation(EAnimMeshType Type,UAnimMontage* Montage)
+{
+	USkeletalMeshComponent* MeshComp = EAnimMeshType::FirstPerson == Type ? Get_FirstPersonMesh() : Get_ThirtPersonMesh();
+	UAnimInstance* AnimInstance = IsValid(MeshComp) ? MeshComp->GetAnimInstance() : nullptr;
+	if (IsLocallyControlled() && IsValid(AnimInstance) && IsValid(Montage))
+	{
+		AnimInstance->Montage_Stop(Montage->GetDefaultBlendOutTime(), Montage);
 	}
 }
 
 void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Montage, FName Section)
 {
-	if (false == IsLocallyControlled() || false == IsValid(_FirstPersonMesh) || false == IsValid(Montage))
+	if (true == IsDeathStarted() || false == IsLocallyControlled() || false == IsValid(_FirstPersonMesh) || false == IsValid(Montage))
 	{
 		return;
 	}
@@ -1259,6 +2071,8 @@ void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Mon
 		}
 	}
 	
+	// 수류탄 속도 수정
+	AnimInstance->Montage_SetPlayRate(Montage, Section == TEXT("Throw") ? 1.5f : 1.f);
 	AnimInstance->Montage_JumpToSection(Section, Montage);
 	AnimInstance->Montage_Resume(Montage);
 }
@@ -1282,6 +2096,11 @@ void ACharacterPlayer::ClientStopGrenadeMontage_Implementation(UAnimMontage* Mon
 
 void ACharacterPlayer::ClientPlayGrenadeMontageTP_Implementation(UAnimMontage* Montage, FName Section)
 {
+	if (true == IsDeathStarted())
+	{
+		return;
+	}
+
 	USkeletalMeshComponent* Body = GetMesh();
 	UAnimInstance* AnimInstance = IsValid(Body) ? Body->GetAnimInstance() : nullptr;
 	if (!IsLocallyControlled() || HasAuthority() || !IsValid(AnimInstance) || !IsValid(Montage)
@@ -1294,6 +2113,9 @@ void ACharacterPlayer::ClientPlayGrenadeMontageTP_Implementation(UAnimMontage* M
 	{
 		return;
 	}
+	
+	// 수류탄 속도 수정 
+	AnimInstance->Montage_SetPlayRate(Montage, Section == TEXT("Throw") ? 1.5f : 1.f);
 	AnimInstance->Montage_JumpToSection(Section, Montage);
 	AnimInstance->Montage_Resume(Montage);
 }
@@ -1324,19 +2146,21 @@ void ACharacterPlayer::DropItemAction(const FInputActionValue& value)
 	ServerDropEquippedWeapon();
 }
 
+/**
+ * 이렇게 했을 때 매번 새로운 WeaponActor 가 생성되는 문제가 있음. => 탄환수 보존이 안됨.
+ * Slot 에 현재 탄환수 저장하고 불러오게 해야할 듯.
+ */
 void ACharacterPlayer::EquipMainWeaponAction(const FInputActionValue& value)
 {
-	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Main"));
 	RequestEquipSlot(0);
 }
 
 void ACharacterPlayer::EquipSubWeaponAction(const FInputActionValue& value)
 {
-	// UE_LOG(LogTemp, Warning, TEXT("[Equip] 입력 Sub"));
 	RequestEquipSlot(1);
 }
 
-void ACharacterPlayer::HandleOutOfHealth(APlayerStateBase* KillerPlayerState)
+void ACharacterPlayer::HandleOutOfHealth(APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon)
 {
 	AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
 
@@ -1353,14 +2177,138 @@ void ACharacterPlayer::HandleOutOfHealth(APlayerStateBase* KillerPlayerState)
 	const FGameplayTag DeadTag = FPSGameplayTags::Status_Death_Dead;
 
 	// 중복 사망 처리 방지
-	if (true == _AbilitySystemComponent->HasMatchingGameplayTag(DeadTag))
+	if (true == IsDeathStarted() || true == _AbilitySystemComponent->HasMatchingGameplayTag(DeadTag))
 	{
 		return;
 	}
 
-	SetAnimationStateTag(DeadTag, true);
+	GameMode->HandlePlayerDeath(this, KillerPlayerState, DamageWeapon);
+}
 
-	GameMode->HandlePlayerDeath(this, KillerPlayerState);
+void ACharacterPlayer::BeginDeath()
+{
+	if (false == HasAuthority() || true == IsDeathStarted() || false == IsValid(GetWorld()))
+	{
+		return;
+	}
+
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	_DeathStartServerTime = IsValid(GameState) ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+
+	// Ability 취소 중 추가 피해가 들어와도 재진입하지 않도록 사망 시각부터 기록한다.
+	StopCombat();
+	SetAnimationStateTag(FPSGameplayTags::Status_Death_Dead, true);
+	ApplyDeathPresentation();
+	ForceNetUpdate();
+}
+
+bool ACharacterPlayer::IsDeathStarted() const
+{
+	return _DeathStartServerTime >= 0.0;
+}
+
+void ACharacterPlayer::OnRep_DeathStartServerTime()
+{
+	if (true == IsDeathStarted())
+	{
+		ApplyDeathPresentation();
+	}
+}
+
+void ACharacterPlayer::ApplyDeathPresentation()
+{
+	_bAiming = false;
+	_bPendingViewWeaponUpdate = false;
+	_TargetCameraFOV = _BaseCameraFOV;
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (true == IsValid(Movement))
+	{
+		UFPSCharacterMovementComponent* FPSMovement = Cast<UFPSCharacterMovementComponent>(Movement);
+		if (true == IsValid(FPSMovement))
+		{
+			FPSMovement->NotifyTraversalEnded();
+		}
+		Movement->StopMovementImmediately();
+		Movement->DisableMovement();
+		Movement->SetComponentTickEnabled(false);
+	}
+	SetActorEnableCollision(false);
+
+	TArray<UTraversalActionComponent*> TraversalActions;
+	GetComponents(TraversalActions);
+	for (UTraversalActionComponent* Action : TraversalActions)
+	{
+		if (true == IsValid(Action))
+		{
+			Action->ExitPresentation();
+		}
+	}
+	if (true == IsValid(_ControlShakeManager))
+	{
+		_ControlShakeManager->ClearWeaponRecoil();
+	}
+
+	if (true == IsValid(_FirstPersonMesh))
+	{
+		UAnimInstance* AnimInstance = _FirstPersonMesh->GetAnimInstance();
+		if (true == IsValid(AnimInstance))
+		{
+			AnimInstance->StopAllMontages(0.f);
+		}
+	}
+	// 메시 표시 설정은 생존 중 상태를 유지한다. 별도 Death 카메라에서는
+	// 기존 OwnerNoSee / OnlyOwnerSee 설정으로 전신과 1인칭 메시를 구분한다.
+	UpdateDeathMontage();
+}
+
+void ACharacterPlayer::UpdateDeathMontage()
+{
+	USkeletalMeshComponent* BodyMesh = GetMesh();
+	UAnimInstance* AnimInstance = IsValid(BodyMesh) ? BodyMesh->GetAnimInstance() : nullptr;
+	if (false == IsValid(AnimInstance))
+	{
+		return;
+	}
+
+	// 사망 이후 늦게 도착한 전투 몽타주 복제도 정리한다.
+	for (const FAnimMontageInstance* Instance : AnimInstance->MontageInstances)
+	{
+		if (nullptr != Instance && Instance->IsActive() && Instance->Montage != _DeathMontage)
+		{
+			AnimInstance->StopAllMontages(0.f);
+			break;
+		}
+	}
+	if (false == IsValid(_DeathMontage) || false == IsValid(GetWorld())
+		|| false == FMath::IsFinite(_DeathMontage->GetPlayLength()) || _DeathMontage->GetPlayLength() <= 0.f
+		|| false == FMath::IsFinite(_DeathMontage->RateScale) || _DeathMontage->RateScale <= 0.f
+		|| nullptr != AnimInstance->GetInstanceForMontage(_DeathMontage))
+	{
+		return;
+	}
+
+	const AGameStateBase* GameState = GetWorld()->GetGameState();
+	const double ServerTime = IsValid(GameState) ? GameState->GetServerWorldTimeSeconds() : GetWorld()->GetTimeSeconds();
+	const float Position = FMath::Clamp(static_cast<float>((ServerTime - _DeathStartServerTime) * _DeathMontage->RateScale),
+		0.f, FMath::Max(0.f, _DeathMontage->GetPlayLength() - KINDA_SMALL_NUMBER));
+	if (AnimInstance->Montage_Play(_DeathMontage, 1.f, EMontagePlayReturnType::MontageLength, Position) <= 0.f)
+	{
+		return;
+	}
+	FAnimMontageInstance* Instance = AnimInstance->GetInstanceForMontage(_DeathMontage);
+	if (nullptr != Instance)
+	{
+		// 공유 에셋은 수정하지 않고 이 시체의 재생 인스턴스만 마지막 포즈에 유지한다.
+		Instance->bEnableAutoBlendOut = false;
+		Instance->PushDisableRootMotion();
+		for (int32 Index = 0; Index < _DeathMontage->CompositeSections.Num(); ++Index)
+		{
+			const FName NextSection = _DeathMontage->CompositeSections.IsValidIndex(Index + 1)
+				? _DeathMontage->GetSectionName(Index + 1) : NAME_None;
+			Instance->SetNextSectionName(_DeathMontage->GetSectionName(Index), NextSection);
+		}
+	}
 }
 
 void ACharacterPlayer::StopAttacking()
@@ -1437,11 +2385,16 @@ void ACharacterPlayer::InitializeAfterRespawn()
 
 void ACharacterPlayer::FellOutOfWorld(const UDamageType& DamageType)
 {
+	if (true == IsDeathStarted())
+	{
+		return;
+	}
+
 	const AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
 
 	if (HasAuthority() && IsValid(GameMode) && GameMode->IsCombatAllowed() && IsValid(GetController()))
 	{
-		HandleOutOfHealth(nullptr);
+		HandleOutOfHealth(nullptr, FDamageWeaponInfo());
 		return;
 	}
 	Super::FellOutOfWorld(DamageType);
@@ -1458,8 +2411,10 @@ void ACharacterPlayer::ServerEquipSlot_Implementation(int32 Index)
 		return;
 
 	// 서버 재 검증 
-	if (Index == Inv->GetEquippedWeaponIndex())
+	if (Index == Inv->GetEquippedWeaponIndex() && IsValid(_CurrentWeapon) && !IsValid(_CurrentGrenade))
+	{
 		return;
+	}
 
 	TryEquipSlot(Index);
 
@@ -1490,6 +2445,7 @@ void ACharacterPlayer::ServerDropEquippedWeapon_Implementation()
 		ClearEquippedGrenade();
 		return;
 	}
+
 	TryDropWeaponAt(Inv->GetEquippedWeaponIndex());
 }
 
@@ -1557,19 +2513,85 @@ bool ACharacterPlayer::TryDropItemAt(int32 Index, int32 Count)
 
 void ACharacterPlayer::OnRep_CurrentWeapon()
 {
-	if (false == IsValid(_CurrentWeapon))
+	if (_ObservedWeaponData.Get() != _CurrentWeapon.Get())
 	{
-		// 무기를 버려 빈손이 됐다는 것도 알려야 한다.
-		OnWeaponEquiped(EWeaponType::None);
+		AWeaponActor* Previous = _ObservedWeaponData.Get();
+		if (nullptr != Previous)
+		{
+			Previous->_OnWeaponDataChanged.RemoveDynamic(this, &ACharacterPlayer::OnRep_CurrentWeapon);
+		}
+
+		_ObservedWeaponData = _CurrentWeapon;
+		if (true == IsValid(_CurrentWeapon))
+		{
+			_CurrentWeapon->_OnWeaponDataChanged.AddUniqueDynamic(this, &ACharacterPlayer::OnRep_CurrentWeapon);
+		}
+	}
+
+	// WeaponID가 CurrentWeapon보다 늦게 복제되면 데이터 준비 알림에서 이 경로를 다시 실행한다.
+	if (true == IsLocallyControlled()
+		&& (false == IsValid(_CurrentWeapon) || true == _CurrentWeapon->GetWeaponData().IsValid()))
+	{
+		// ApplyPendingViewWeapon에서 몸의 애니메이션 레이어와 UI도 함께 갱신한다.
+		ClientSetViewWeapon_Implementation(true == IsValid(_CurrentWeapon)
+			? _CurrentWeapon->GetWeaponData() : FWeaponData());
 		return;
 	}
 
-	OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
-	// if (false == IsValid(_CurrentWeapon))
-	// {
-	// 	return;
-	// }
-	//
-	// OnWeaponEquiped(_CurrentWeapon->GetWeaponData()._WeaponType);
+	// 장착 해제도 같은 경로로 UI에 알리고, 수류탄을 든 상태도 함께 반영한다.
 	OnRep_CurrentGrenade();
+}
+
+FVector2D ACharacterPlayer::GetLookInput() const
+{
+	const APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	
+	// 로컬 플레이어의 이 허용된 경우에만 조회
+	if (!IsValid(PlayerController) || !PlayerController->IsLocalController() || PlayerController->IsLookInputIgnored() || !IsValid(_DefaultInput) || !IsValid(_DefaultInput->_MouseLook))
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	const UEnhancedPlayerInput* PlayerInput = Cast<UEnhancedPlayerInput>(PlayerController->PlayerInput);
+	
+	if (!IsValid(PlayerInput))
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	const FInputActionInstance* Action = PlayerInput->FindActionInstanceData(_DefaultInput->_MouseLook);
+	
+	// 기존 MoveLookAction과 동일한 발등 상태의 입력을 사용
+	if (Action == nullptr || Action->GetTriggerEvent() != ETriggerEvent::Triggered)
+	{
+		return FVector2D::ZeroVector;
+	}
+	
+	FVector2D Aim = Action->GetValue().Get<FVector2D>();
+	
+	const float Sensitivity = _LookSensitivity * (_bAiming ? _ViewWeaponData._AimSensitivityMultiplier : 1.0f);
+	
+	// 실제 시선 조작과 같은 부호화 감도를 적용
+	Aim.X *= -Sensitivity;
+	Aim.Y *= Sensitivity;
+	
+	// 컨트롤러의 추가 입력 배율을 반영
+	if (GetDefault<UInputSettings>()->bEnableLegacyInputScales)
+	{
+		PRAGMA_DISABLE_DEPRECATION_WARNINGS
+		Aim.X *= PlayerController->GetDeprecatedInputYawScale();
+		Aim.Y *= PlayerController->GetDeprecatedInputPitchScale();
+		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	}
+	// 위에서 사용한 DEPRECATED API 는 현재 프로젝트가 활성화한 Legacy배율을 읽기 위해서 사용
+	// 경고 억제 범위도 이 두 호출로 제한함
+	
+	// 반등과 카메라 각도 제한이 적용되기 전의 사용자 회전 입력
+	return Aim;
+	
+	/* Commit 건영
+	 * 목적	    : 발사 반동이 섞이지 않은 시선 입력을 제공
+	 * 사용 위치 : AnimBP의 게임 스레드 입력 수집 단계
+	 * 실행 흐름 : 입력 허용 확인 -> 액션 조회 -> 감도 와 컨트롤러 배율 적용 -> 반환
+	 */
 }

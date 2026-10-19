@@ -2,32 +2,121 @@
 
 
 #include "Controller/PlayerControllerBase.h"
+#include "Camera/FPSDeathCameraActor.h"
+#include "Character/CharacterPlayer.h"
 #include "Engine/LocalPlayer.h"
 #include "InputMappingContext.h"
 #include "UObject/ConstructorHelpers.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/SpectatorPawn.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameInstance/FPSOnlineSessionSubsystem.h"
 #include "GameInstance/FPSLoadingSubsystem.h"
 #include "GameMode/FPSGameState.h"
+#include "GameMode/FPSGameMode.h"
 #include "UI/GamePlay/MatchResultWidget.h"
 #include "UI/MainHUD.h"
-#include "Components/InputComponent.h"
-#include "InputCoreTypes.h"
+#include "UI/GamePlay/DamageFeedbackWidget.h"
+#include "UI/GamePlay/HitDirectionWidget.h"
 
 APlayerControllerBase::APlayerControllerBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	_DeathCameraClass = AFPSDeathCameraActor::StaticClass();
 	static ConstructorHelpers::FClassFinder<UMatchResultWidget> ResultWidget(
 		TEXT("/Game/Blueprints/UI/Widget/GamePlay/WBP_MatchResult"));
-	if (ResultWidget.Succeeded()) _MatchResultWidgetClass = ResultWidget.Class;
+	if (ResultWidget.Succeeded())
+	{
+		_MatchResultWidgetClass = ResultWidget.Class;
+	}
+}
+
+void APlayerControllerBase::ClientShowDamageNumber_Implementation(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot, AActor* Target, FVector HitLocation)
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+	
+	if (ShieldDamage <= 0.f && HealthDamage <= 0.f)
+	{
+		return;
+	}
+	
+	ShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot, Target, HitLocation);
+}
+
+void APlayerControllerBase::ClientShowIncomingDamage_Implementation(APawn* DamagedPawn, FVector IncomingWorldDirection, float Damage, float SourceDistance)
+{
+	if (false == IsLocalController() || false == IsValid(DamagedPawn) || DamagedPawn != GetPawn()
+		|| true == _DeathCameraActive || GetStateName() != NAME_Playing || true == _LoadingInputBlocked
+		|| false == FMath::IsFinite(Damage) || Damage <= 0.f
+		|| (true == IsValid(_MatchResultWidget) && true == _MatchResultWidget->IsInViewport()))
+	{
+		return;
+	}
+
+	// BP를 지정한 표시만 생성한다. C++에서 텍스처나 레이아웃을 대신 만들지 않는다.
+	if (false == IsValid(_DamageFeedbackWidget) && true == IsValid(_DamageFeedbackWidgetClass.Get())
+		&& false == _DamageFeedbackWidgetClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		_DamageFeedbackWidget = CreateWidget<UDamageFeedbackWidget>(this, _DamageFeedbackWidgetClass);
+		if (true == IsValid(_DamageFeedbackWidget))
+		{
+			_DamageFeedbackWidget->AddToPlayerScreen(50);
+		}
+	}
+
+	if (true == IsValid(_DamageFeedbackWidget))
+	{
+		_DamageFeedbackWidget->ShowIncomingHit(DamagedPawn, Damage);
+	}
+
+	if (true == IncomingWorldDirection.ContainsNaN() || true == IncomingWorldDirection.GetSafeNormal2D().IsNearlyZero())
+	{
+		return;
+	}
+
+	if (false == IsValid(_HitDirectionWidget) && true == IsValid(_HitDirectionWidgetClass.Get())
+		&& false == _HitDirectionWidgetClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		_HitDirectionWidget = CreateWidget<UHitDirectionWidget>(this, _HitDirectionWidgetClass);
+		if (true == IsValid(_HitDirectionWidget))
+		{
+			_HitDirectionWidget->AddToPlayerScreen(51);
+		}
+	}
+	if (true == IsValid(_HitDirectionWidget))
+	{
+		_HitDirectionWidget->ShowIncomingHit(DamagedPawn, IncomingWorldDirection, Damage, SourceDistance);
+	}
+}
+
+void APlayerControllerBase::ClearIncomingDamageFeedback()
+{
+	if (true == IsValid(_DamageFeedbackWidget))
+	{
+		_DamageFeedbackWidget->ClearFeedback();
+		_DamageFeedbackWidget->RemoveFromParent();
+	}
+	_DamageFeedbackWidget = nullptr;
+
+	if (true == IsValid(_HitDirectionWidget))
+	{
+		_HitDirectionWidget->ClearFeedback();
+		_HitDirectionWidget->RemoveFromParent();
+	}
+	_HitDirectionWidget = nullptr;
 }
 
 void APlayerControllerBase::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
 {
+	ClearIncomingDamageFeedback();
+	ClearDeathCamera(true);
+
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
 
 	if (IsLocalController() && GetGameInstance())
@@ -41,12 +130,12 @@ void APlayerControllerBase::PreClientTravel(const FString& PendingURL, ETravelTy
 
 bool APlayerControllerBase::IsMoveInputIgnored() const
 {
-	return _LoadingInputBlocked || Super::IsMoveInputIgnored();
+	return _LoadingInputBlocked || _DeathCameraActive || Super::IsMoveInputIgnored();
 }
 
 bool APlayerControllerBase::IsLookInputIgnored() const
 {
-	return _LoadingInputBlocked || Super::IsLookInputIgnored();
+	return _LoadingInputBlocked || _DeathCameraActive || Super::IsLookInputIgnored();
 }
 
 void APlayerControllerBase::SetLoadingInputBlocked(bool Blocked)
@@ -61,14 +150,16 @@ void APlayerControllerBase::ClientShowMatchResults_Implementation(const TArray<F
 		return;
 	}
 
+	ClearDeathCamera(true);
+	ClearIncomingDamageFeedback();
+
 	if (IsValid(_MatchResultWidget))
 	{
 		_MatchResultWidget->RemoveFromParent();
 	}
 
 	_MatchResultWidget = nullptr;
-	if (ensureMsgf(_MatchResultWidgetClass && !_MatchResultWidgetClass->HasAnyClassFlags(CLASS_Abstract),
-		TEXT("Player controller must specify a Match Result Widget Blueprint.")))
+	if (_MatchResultWidgetClass && !_MatchResultWidgetClass->HasAnyClassFlags(CLASS_Abstract))
 	{
 		_MatchResultWidget = CreateWidget<UMatchResultWidget>(this, _MatchResultWidgetClass);
 	}
@@ -94,6 +185,8 @@ void APlayerControllerBase::ClientShowMatchResults_Implementation(const TArray<F
 
 void APlayerControllerBase::ClientReturnToMainMenuWithTextReason_Implementation(const FText& ReturnReason)
 {
+	ClearDeathCamera(true);
+
 	UGameInstance* Instance = GetGameInstance();
 
 	UFPSOnlineSessionSubsystem* Sessions = Instance ? Instance->GetSubsystem<UFPSOnlineSessionSubsystem>() : nullptr;
@@ -106,24 +199,6 @@ void APlayerControllerBase::ClientReturnToMainMenuWithTextReason_Implementation(
 	}
 
 	Super::ClientReturnToMainMenuWithTextReason_Implementation(ReturnReason);
-}
-
-void APlayerControllerBase::SetupInputComponent()
-{
-	Super::SetupInputComponent();
-
-	InputComponent->BindKey(EKeys::Escape, IE_Pressed, this, &ThisClass::ToggleExitMenu);
-}
-
-void APlayerControllerBase::ToggleExitMenu()
-{
-	if (true == IsLocalController())
-	{
-		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
-		{
-			HUD->ToggleExitMenu();
-		}
-	}
 }
 
 bool APlayerControllerBase::RestoreMatchResultInput()
@@ -149,6 +224,10 @@ bool APlayerControllerBase::RestoreMatchResultInput()
 void APlayerControllerBase::ChangeState(FName NewState)
 {
 	Super::ChangeState(NewState);
+	if (NewState != NAME_Playing)
+	{
+		ClearIncomingDamageFeedback();
+	}
 
 	// 엔진의 Pawn/관전자 전환이 끝난 뒤 입력을 맞춘다.
 	RefreshInputMappingContext();
@@ -158,11 +237,18 @@ void APlayerControllerBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// 로비의 UI 입력 모드 잔재 방비 -> 게임 진입 시 게임 입력 모드로 명시
+	// HUD가 먼저 시작된 로비에서도 UI 입력 모드와 커서를 유지한다.
 	if (true == IsLocalController())
 	{
-		SetInputMode(FInputModeGameOnly());
-		SetShowMouseCursor(false);
+		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
+		{
+			HUD->RestoreInputMode();
+		}
+		else
+		{
+			SetInputMode(FInputModeGameOnly());
+			SetShowMouseCursor(false);
+		}
 	}
 
 	RefreshInputMappingContext();
@@ -172,10 +258,14 @@ void APlayerControllerBase::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 	UpdateServerTimeSync();
+	TryFinishDeathCamera();
 }
 
 void APlayerControllerBase::PostSeamlessTravel()
 {
+	ClearIncomingDamageFeedback();
+	ClearDeathCamera(true);
+
 	Super::PostSeamlessTravel();
 
 	// 유지된 Controller에는 BeginPlay가 다시 호출되지 않는다.
@@ -190,8 +280,15 @@ void APlayerControllerBase::PostSeamlessTravel()
 	}
 	if (IsLocalController())
 	{
-		SetInputMode(FInputModeGameOnly());
-		SetShowMouseCursor(false);
+		if (auto* HUD = Cast<AMainHUD>(GetHUD()))
+		{
+			HUD->RestoreInputMode();
+		}
+		else
+		{
+			SetInputMode(FInputModeGameOnly());
+			SetShowMouseCursor(false);
+		}
 	}
 	RefreshInputMappingContext();
 }
@@ -292,6 +389,8 @@ void APlayerControllerBase::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
 
+	TryFinishDeathCamera();
+
 	RefreshInputMappingContext();
 }
 
@@ -306,11 +405,46 @@ void APlayerControllerBase::OnRep_Pawn()
 {
 	Super::OnRep_Pawn();
 
+	TryFinishDeathCamera();
+
 	RefreshInputMappingContext();
+}
+
+void APlayerControllerBase::ClientRestart_Implementation(APawn* NewPawn)
+{
+	Super::ClientRestart_Implementation(NewPawn);
+
+	// ClientRestart는 엔진 입력 차단을 초기화하므로 사망 차단은 별도 bool로 유지한다.
+	TryFinishDeathCamera();
+	RefreshInputMappingContext();
+}
+
+void APlayerControllerBase::ServerAcknowledgePossession_Implementation(APawn* InPawn)
+{
+	Super::ServerAcknowledgePossession_Implementation(InPawn);
+
+	AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
+	if (true == IsValid(GameMode))
+	{
+		GameMode->HandlePlayerRespawnReady(this);
+	}
+}
+
+void APlayerControllerBase::AutoManageActiveCameraTarget(AActor* SuggestedTarget)
+{
+	if (true == _DeathCameraActive)
+	{
+		return;
+	}
+
+	Super::AutoManageActiveCameraTarget(SuggestedTarget);
 }
 
 void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearIncomingDamageFeedback();
+	ClearDeathCamera(false);
+
 	_PendingServerTimeRequests.Empty();
 	
 	_TimeSyncGameState.Reset();
@@ -330,9 +464,19 @@ void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 		if (true == IsValid(Subsystem))
 		{
-			if (true == IsValid(_PlayerMappingContext))
+			TSet<UInputMappingContext*> ManagedContexts
 			{
-				Subsystem->RemoveMappingContext(_PlayerMappingContext.Get());
+				_PlayerMappingContext.Get(),
+				_ReloadMappingContext.Get(),
+				_MeleeMappingContext.Get()
+			};
+
+			for (UInputMappingContext* Context : ManagedContexts)
+			{
+				if (true == IsValid(Context) && true == Subsystem->HasMappingContext(Context))
+				{
+					Subsystem->RemoveMappingContext(Context);
+				}
 			}
 		}
 	}
@@ -340,7 +484,8 @@ void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void APlayerControllerBase::EnterDeathSpectating(const FVector& CameraLocation, const FRotator& CameraRotation)
+void APlayerControllerBase::EnterDeathSpectating(ACharacterPlayer* DeadCharacter, double DeathEndServerTime,
+	const FVector& CameraLocation, const FRotator& CameraRotation)
 {
 	if (false == HasAuthority())
 	{
@@ -350,6 +495,8 @@ void APlayerControllerBase::EnterDeathSpectating(const FVector& CameraLocation, 
 	SetSpawnLocation(CameraLocation);
 
 	SetControlRotation(CameraRotation);
+	_DeathCharacter = DeadCharacter;
+	_DeathCameraActive = true;
 
 	// 참가자 자격은 유지하고 리스폰을 기다리는 동안만 관전한다.
 	if (true == IsValid(PlayerState))
@@ -363,11 +510,21 @@ void APlayerControllerBase::EnterDeathSpectating(const FVector& CameraLocation, 
 
 	bPlayerIsWaiting = true;
 
-	ClientEnterDeathSpectating(CameraLocation, CameraRotation);
+	ClientEnterDeathSpectating(DeadCharacter, DeathEndServerTime, CameraLocation, CameraRotation);
 }
 
-void APlayerControllerBase::ClientEnterDeathSpectating_Implementation(const FVector& CameraLocation, const FRotator& CameraRotation)
+void APlayerControllerBase::ClientEnterDeathSpectating_Implementation(ACharacterPlayer* DeadCharacter, double DeathEndServerTime,
+	const FVector& CameraLocation, const FRotator& CameraRotation)
 {
+	if (false == IsLocalController())
+	{
+		return;
+	}
+
+	ClearDeathCamera(false);
+	_DeathCharacter = DeadCharacter;
+	_DeathCameraActive = true;
+
 	SetSpawnLocation(CameraLocation);
 
 	SetControlRotation(CameraRotation);
@@ -375,6 +532,108 @@ void APlayerControllerBase::ClientEnterDeathSpectating_Implementation(const FVec
 	ChangeState(NAME_Spectating);
 
 	bPlayerIsWaiting = true;
+
+	if (true == IsValid(GetWorld()))
+	{
+		UClass* CameraClass = _DeathCameraClass.Get();
+		if (false == IsValid(CameraClass) || CameraClass->HasAnyClassFlags(CLASS_Abstract))
+		{
+			CameraClass = AFPSDeathCameraActor::StaticClass();
+		}
+
+		FActorSpawnParameters SpawnParameters;
+		SpawnParameters.Owner = this;
+		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		_DeathCamera = GetWorld()->SpawnActor<AFPSDeathCameraActor>(CameraClass, CameraLocation, CameraRotation, SpawnParameters);
+		if (true == IsValid(_DeathCamera))
+		{
+			_DeathCamera->SetReplicates(false);
+			_DeathCamera->InitializeDeathCamera(DeadCharacter, DeathEndServerTime, CameraLocation, CameraRotation);
+			SetViewTargetWithBlend(_DeathCamera, _DeathCamera->GetBlendTime(), VTBlend_Cubic, 0.f, true);
+		}
+	}
+
+	RefreshInputMappingContext();
+}
+
+void APlayerControllerBase::TryFinishDeathCamera()
+{
+	if (false == _DeathCameraActive)
+	{
+		return;
+	}
+
+	APawn* CurrentPawn = GetPawn();
+	const ACharacterPlayer* CurrentCharacter = Cast<ACharacterPlayer>(CurrentPawn);
+	// Pawn 복제와 ClientRestart의 순서가 달라도 사망한 기존 Pawn으로 복귀하지 않는다.
+	if (NAME_Playing == GetStateName() && IsValid(CurrentPawn) && CurrentPawn != _DeathCharacter.Get()
+		&& CurrentPawn->GetController() == this && (nullptr == CurrentCharacter || false == CurrentCharacter->IsDeathStarted()))
+	{
+		ClearDeathCamera(true);
+		RefreshInputMappingContext();
+		return;
+	}
+
+	// 관전자 생성/해제 등 엔진의 직접 ViewTarget 변경도 보정한다.
+	// GetViewTarget은 블렌드 중인 목표를 반환하므로 정상 블렌드를 다시 시작하지 않는다.
+	if (IsLocalController() && IsValid(_DeathCamera) && GetViewTarget() != _DeathCamera.Get())
+	{
+		SetViewTarget(_DeathCamera);
+	}
+}
+
+void APlayerControllerBase::ClearDeathCamera(bool RestoreViewTarget)
+{
+	const bool HadDeathCamera = _DeathCameraActive || IsValid(_DeathCamera);
+	ACharacterPlayer* DeadCharacter = _DeathCharacter.Get();
+	_DeathCameraActive = false;
+	_DeathCharacter.Reset();
+
+	if (HadDeathCamera && RestoreViewTarget)
+	{
+		APawn* ViewPawn = GetPawn();
+		const ACharacterPlayer* ViewCharacter = Cast<ACharacterPlayer>(ViewPawn);
+		if (!IsValid(ViewPawn) || ViewPawn == DeadCharacter || (IsValid(ViewCharacter) && ViewCharacter->IsDeathStarted()))
+		{
+			ViewPawn = GetSpectatorPawn();
+		}
+		SetViewTarget(IsValid(ViewPawn) ? static_cast<AActor*>(ViewPawn) : this);
+	}
+
+	if (true == IsValid(_DeathCamera))
+	{
+		_DeathCamera->Destroy();
+	}
+	_DeathCamera = nullptr;
+}
+
+void APlayerControllerBase::SetCombatInputMappingContexts(bool EnableReload, bool EnableMelee,
+	int32 ReloadPriority, int32 MeleePriority)
+{
+	if (false == IsLocalController())
+	{
+		return;
+	}
+
+	_ReloadMappingEnabled = EnableReload;
+
+	_MeleeMappingEnabled = EnableMelee;
+
+	SetCombatInputMappingPriorities(ReloadPriority, MeleePriority);
+}
+
+void APlayerControllerBase::SetCombatInputMappingPriorities(int32 ReloadPriority, int32 MeleePriority)
+{
+	if (false == IsLocalController())
+	{
+		return;
+	}
+
+	_ReloadMappingPriority = ReloadPriority;
+
+	_MeleeMappingPriority = MeleePriority;
+
+	RefreshInputMappingContext();
 }
 
 void APlayerControllerBase::RefreshInputMappingContext()
@@ -398,20 +657,42 @@ void APlayerControllerBase::RefreshInputMappingContext()
 		return;
 	}
 
-	UInputMappingContext* DesiredContext = nullptr;
+	const bool AllowGameplayInput = false == _DeathCameraActive && NAME_Playing == GetStateName() && true == IsValid(GetPawn());
 
-	if (NAME_Playing == GetStateName() && true == IsValid(GetPawn()))
+	const auto UpdateContext = [Subsystem](UInputMappingContext* Context, bool Enabled, int32 Priority)
 	{
-		DesiredContext = _PlayerMappingContext.Get();
-	}
-	if (IsValid(_PlayerMappingContext) && _PlayerMappingContext.Get() != DesiredContext
-		&& Subsystem->HasMappingContext(_PlayerMappingContext.Get()))
+		if (false == IsValid(Context))
+		{
+			return;
+		}
+
+		int32 AppliedPriority = 0;
+
+		const bool Applied = Subsystem->HasMappingContext(Context, AppliedPriority);
+
+		if (true == Applied && (false == Enabled || AppliedPriority != Priority))
+		{
+			Subsystem->RemoveMappingContext(Context);
+		}
+
+		if (true == Enabled && (false == Applied || AppliedPriority != Priority))
+		{
+			// 매핑 재구성은 프레임 끝에 한 번 처리한다.
+			// 새로 활성화된 Boolean 액션은 누르고 있던 키를 놓은 뒤 다시 입력해야 실행된다.
+			Subsystem->AddMappingContext(Context, Priority);
+		}
+	};
+
+	UpdateContext(_PlayerMappingContext.Get(), AllowGameplayInput, 0);
+
+	// 같은 에셋을 중복 지정해도 기본 매핑의 등록 상태와 우선순위는 변경하지 않는다.
+	if (_ReloadMappingContext != _PlayerMappingContext)
 	{
-		Subsystem->RemoveMappingContext(_PlayerMappingContext.Get());
+		UpdateContext(_ReloadMappingContext.Get(), true == AllowGameplayInput && true == _ReloadMappingEnabled, _ReloadMappingPriority);
 	}
 
-	if (true == IsValid(DesiredContext) && false == Subsystem->HasMappingContext(DesiredContext))
+	if (_MeleeMappingContext != _PlayerMappingContext && _MeleeMappingContext != _ReloadMappingContext)
 	{
-		Subsystem->AddMappingContext(DesiredContext, 0);
+		UpdateContext(_MeleeMappingContext.Get(), true == AllowGameplayInput && true == _MeleeMappingEnabled, _MeleeMappingPriority);
 	}
 }

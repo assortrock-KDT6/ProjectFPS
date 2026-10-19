@@ -6,6 +6,7 @@
 #include "UObject/Object.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/DataTable.h"
+#include "GameplayTagContainer.h"
 #include "WeaponTypes.generated.h"
 
 /**
@@ -15,12 +16,8 @@
 
 class USkeletalMesh;
 class UAnimInstance;
+class UTexture2D;
 
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class PROJECTFPS_API UWeaponTypes : public UObject
-{
-	GENERATED_BODY()
-};
 
 
 // FPS 무기 분류
@@ -34,6 +31,22 @@ enum class EWeaponType : uint8
 	Sniper		UMETA(DisplayName = "Sniper"),
 	Grenade     UMETA(DisplayName = "Grenade"),
 	Smoke       UMETA(DisplayName = "Smoke")
+};
+
+// 공격을 생성할 때 복사한다. 이후 장착 무기 변경/파괴에 영향을 받지 않는다.
+USTRUCT(BlueprintType)
+struct PROJECTFPS_API FDamageWeaponInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	TObjectPtr<UTexture2D> Icon = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	EWeaponType WeaponType = EWeaponType::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	FLinearColor IconTint = FLinearColor::White;
 };
 
 // 사용할 무기의 따른 총알(Projectile) 타입
@@ -127,6 +140,19 @@ struct FWeaponData : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon", meta = (DisPlayName = "WeaponInfomation | StaticMesh"))
 	TObjectPtr<UStaticMesh> _StaticMesh = nullptr;
+
+	// 장착된 3인칭 총기에만 적용한다. 1인칭 메시와 월드 픽업 크기는 유지한다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person", meta = (ClampMin = "0.5", ClampMax = "1.5"))
+	float _ThirdPersonScale = 1.f;
+
+	// 지지 손이 닿을 여유를 확보하도록 원본 오른손을 어깨 쪽으로 당기는 거리(cm).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person", meta = (ClampMin = "0.0", ClampMax = "15.0"))
+	float _ThirdPersonHandRetraction = 0.f;
+
+	// 3인칭 견착 위치 보정(cm). 캐릭터 기준 X는 전방, Y는 오른쪽, Z는 위쪽이다.
+	// 오른팔과 총을 함께 이동하고 왼손은 이동한 총의 그립을 따라간다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Third Person")
+	FVector _ThirdPersonGripOffset = FVector::ZeroVector;
 	
 	// 내 화면에표시할 1인칭 총기
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | View")
@@ -135,7 +161,7 @@ struct FWeaponData : public FTableRowBase
 	// 해당 총기 SkeletalMesh의 호환되는 애니메이션 블루프린트
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon| View")
 	TSubclassOf<UAnimInstance> _ViewAnimationInstance;
-	
+
 	// 줌 가능 여부
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon | Aim")
 	bool _CanAim = false;
@@ -169,6 +195,10 @@ struct FWeaponData : public FTableRowBase
 		return	_WeaponId != NAME_None && _WeaponAbilId != NAME_None && _WeaponType != EWeaponType::None
 				&& _StaticMesh != nullptr && _ViewMesh != nullptr /*&& _ViewAnimationInstance != nullptr && _Icon != nullptr*/;
 	}
+
+	// 발사 연출 GameplayCue 태그 (무기별 발사음), 비우면 공통 연출 GameplayCue.Weapom.Fire 만 재생한다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Cue", meta = (Categories = "GameplayCue.Weapon.Fire"))
+	FGameplayTag _FireCueTag;
 };
 
 // todo : 나중에 GAS 로 변동값 옮기기
@@ -206,4 +236,24 @@ struct FWeaponAbilityDataTable : public FTableRowBase
 		                                                                     ClampMin    = "0" , ClampMax = "30", 
 																			 UIMin       = "0" , UIMax    = "30"))
 	uint8 _BulletCount = 30;
+};
+
+USTRUCT(BlueprintType)
+struct FWeaponSlotData  
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName _WeaponId = NAME_None;
+
+	UPROPERTY()
+	int _CurrentAmmo = 0;
+
+	UPROPERTY()
+	int _MaxAmmo	 = 0;
+
+	bool IsNone() const
+	{
+		return _WeaponId == NAME_None;
+	}
 };

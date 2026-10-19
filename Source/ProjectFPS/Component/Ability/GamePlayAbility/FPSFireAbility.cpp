@@ -1,6 +1,8 @@
 #include "Component/Ability/GamePlayAbility/FPSFireAbility.h"
 #include "Character/CharacterPlayer.h"
 #include "Component/Ability/FPSAbilitySystemComponent.h"
+#include "Component/Ability/Tasks/FPSAbilityTask_PlayMontage.h"
+#include "Animation/AnimMontage.h"
 #include "GameTag/FPSGameplayTag.h"
 #include "Weapons/WeaponActor.h"
 #include "Engine/World.h"
@@ -24,10 +26,40 @@ bool UFPSFireAbility::CanActivateAbility(const FGameplayAbilitySpecHandle Handle
 
 	const AWeaponActor* Weapon = IsValid(Character) ? Character->GetEquippedWeapon() : nullptr;
 
-	return true == IsValid(Weapon) && true == Character->CanFireFromAbility()
-		&& Weapon->SupportsFireMode(Weapon->GetFireMode()) && Weapon->GetProjectileInterval() > 0.f
-		&& Weapon->GetRemainingFireInterval() <= 0.
-		&& Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
+	if (false == IsValid(Weapon))
+	{
+		return false;
+	}
+
+	if (false == Character->CanFireFromAbility())
+	{
+		return false;
+	}
+
+	if (false == Weapon->SupportsFireMode(Weapon->GetFireMode()))
+	{
+		return false;
+	}
+
+	if (Weapon->GetProjectileInterval() <= 0.f)
+	{
+		return false;
+	}
+
+	// commit 건영 : 발사 직후 버튼을 놓았다가 빠르게 다시 누르며느 계속 누르고 있어도 사격이 재개되지 않을 수 있는데
+	//				남은 발사 간격 때문에 사격 능력 자체가 시작되지 않는게 원인 발사간격은 존 FireNextShot()에서 기다리도록 구현되어있음
+	//				따라서 이 조건을 제거해도 제한보다 빠르게 발사되진 않음
+	// if (Weapon->GetRemainingFireInterval() > 0.f)
+	// {
+	// 	return false;
+	// }
+
+	if (Weapon->GetCurrentAmmo() <= 0)
+	{
+		return false;
+	}
+
+	return Super::CanActivateAbility(Handle, ActorInfo, SourceTags, TargetTags, OptionalRelevantTags);
 }
 
 void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
@@ -51,6 +83,7 @@ void UFPSFireAbility::ActivateAbility(const FGameplayAbilitySpecHandle Handle,
 	{
 		_BlockedTagDelegates.Add(Tag, AbilitySystemComponent->RegisterGameplayTagEvent(Tag).AddUObject(this, &UFPSFireAbility::OnBlockedTagChanged));
 	}
+
 	FireNextShot();
 }
 
@@ -69,7 +102,7 @@ void UFPSFireAbility::FireNextShot()
 
 	if (false == IsValid(Character) || false == IsValid(Weapon) || false == IsValid(AbilitySystemComponent) || false == AbilitySystemComponent->CanAttack()
 		|| true == AbilitySystemComponent->HasAnyMatchingGameplayTags(ActivationBlockedTags) || false == Character->CanFireFromAbility()
-		|| Character->GetEquippedWeapon() != Weapon || Weapon->GetOwner() != Character)
+		|| Character->GetEquippedWeapon() != Weapon || Weapon->GetOwner() != Character || Weapon->GetCurrentAmmo() <= 0)
 	{
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 		return;
@@ -78,13 +111,14 @@ void UFPSFireAbility::FireNextShot()
 	// Timers may wake slightly early; retain the weapon's interval across activations.
 	const double Remaining = Weapon->GetRemainingFireInterval();
 
-	if (Remaining > 0.)
+	if (Remaining > 0.0)
 	{
 		GetWorld()->GetTimerManager().SetTimer(_ShotTimer, this, &UFPSFireAbility::FireNextShot, FMath::Max(static_cast<float>(Remaining), 0.001f), false);
 		return;
 	}
 
-	const bool Fired = Weapon->Fire(Character->GetAimPoint(Weapon->GetWeaponRange()));
+	const FVector AimPoint = Character->GetAimPoint(Weapon->GetWeaponRange());
+	const bool Fired = Weapon->Fire(AimPoint);
 
 	if (true == Fired)
 	{
@@ -107,11 +141,25 @@ void UFPSFireAbility::FireNextShot()
 		// 넘기면 나이아가라가 그 값을 소켓 기준 상대 오프셋으로 써서 총구에서 멀리 밀려난다.
 		CueParameters.TargetAttachComponent = Weapon->GetWeaponMeshComponent();
 
+		// 무기 데이터에 지정된 발사 연출 태그. 비어 있으면 공통 연출로 대체한다.
+		FGameplayTag FireCueTag = Weapon->GetWeaponData()._FireCueTag;
+		if (false == FireCueTag.IsValid())
+		{
+			FireCueTag = FPSGameplayTags::GameplayCue_Weapon_Fire;
+		}
+		
 		// 어떤 연출을 실행할지 지정하는 태그, 누가 무엇으로 어디서 발생할지에 대한 정보.
-		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_Fire, CueParameters);
+		AbilitySystemComponent->ExecuteGameplayCue(FireCueTag, CueParameters);
 
+		// Near miss 
+		FGameplayCueParameters WhizByParameters;
+		WhizByParameters.Instigator = Character;
+		WhizByParameters.Location = Weapon->GetWeaponMeshComponent()->GetSocketLocation(TEXT("Muzzle"));
+		WhizByParameters.Normal = (AimPoint - WhizByParameters.Location).GetSafeNormal();
+		WhizByParameters.RawMagnitude = Weapon->GetWeaponRange();
+		AbilitySystemComponent->ExecuteGameplayCue(FPSGameplayTags::GameplayCue_Weapon_WhizBy, WhizByParameters);
 
-
+		PlayFireMontage(Weapon);
 	}
 
 	if (false == IsActive())
@@ -126,6 +174,42 @@ void UFPSFireAbility::FireNextShot()
 	}
 
 	GetWorld()->GetTimerManager().SetTimer(_ShotTimer, this, &UFPSFireAbility::FireNextShot,FMath::Max(Weapon->GetProjectileInterval(), 0.001f), false);
+}
+
+void UFPSFireAbility::PlayFireMontage(const AWeaponActor* Weapon)
+{
+	if (false == IsActive() || false == IsValid(Weapon))
+	{
+		return;
+	}
+
+	// 연사 중에는 이전 Task를 정리하고, 이번 탄의 몽타주를 처음부터 재생한다.
+	if (IsValid(_MontageTask))
+	{
+		UFPSAbilityTask_PlayMontage* PreviousTask = _MontageTask;
+		_MontageTask = nullptr;
+		PreviousTask->EndTask();
+	}
+
+	// 이전 몽타주의 정지 콜백에서 Ability가 종료될 수 있다.
+	if (false == IsActive() || false == IsValid(Weapon))
+	{
+		return;
+	}
+
+	const EWeaponType WeaponType = Weapon->GetWeaponData()._WeaponType;
+	const TObjectPtr<UAnimMontage>* FPEntry = _FireMontageFP.Find(WeaponType);
+	const TObjectPtr<UAnimMontage>* TPEntry = _FireMontageTP.Find(WeaponType);
+	UAnimMontage* FPMontage = FPEntry ? FPEntry->Get() : nullptr;
+	UAnimMontage* TPMontage = TPEntry ? TPEntry->Get() : nullptr;
+
+	if (IsValid(FPMontage) || IsValid(TPMontage))
+	{
+		// 단발은 발사 직후 Ability가 정상 종료되므로 몽타주는 끝까지 재생한다.
+		_MontageTask = UFPSAbilityTask_PlayMontage::PlayMontage(
+			this, FPMontage, TPMontage, 1.f, 1.f, false);
+		_MontageTask->ReadyForActivation();
+	}
 }
 
 void UFPSFireAbility::OnBlockedTagChanged(FGameplayTag Tag, int32 Count)
@@ -156,6 +240,14 @@ void UFPSFireAbility::EndAbility(const FGameplayAbilitySpecHandle Handle,
 	_BlockedTagDelegates.Empty();
 
 	_FiringWeapon.Reset();
+
+	UFPSAbilityTask_PlayMontage* MontageTask = _MontageTask;
+	_MontageTask = nullptr;
+	// EndAbility(..., bWasCancelled=true)로 직접 종료되는 경로도 정지한다.
+	if (bWasCancelled && IsValid(MontageTask))
+	{
+		MontageTask->EndTask();
+	}
 
 	if (true == bWasCancelled)
 	{

@@ -1,10 +1,11 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 #pragma once
 
 #include "Character/CharacterBase.h"
 #include "TimerManager.h"				// 총알 연사를 구현하기 위해서 넣었습니다. - 건영 
 #include "Weapons/WeaponTypes.h"
+#include "Engine/NetSerialization.h"
 #include "CharacterPlayer.generated.h"
 
 
@@ -37,8 +38,26 @@ class AItemPickUp;
 class APlayerStateBase;
 struct FInputActionValue;
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWeaponEquippedChangedSignature, bool, bEquipped);
+enum class EAnimMeshType : uint8;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FWeaponEquippedChangedSignature, bool, bEquipped);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FSelectedThrowableChangedSignature);
+
+// 조준 원점·방향·시각을 한 복제 상태로 보내 서로 다른 프레임의 값이 섞이지 않게 한다.
+USTRUCT()
+struct FWeaponPoseAimState
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FVector_NetQuantize100 _Origin = FVector::ZeroVector;
+
+	UPROPERTY()
+	FRotator _Rotation = FRotator::ZeroRotator;
+
+	UPROPERTY()
+	double _ServerTime = 0.0;
+};
 
 UCLASS()
 class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
@@ -46,6 +65,14 @@ class PROJECTFPS_API ACharacterPlayer : public ACharacterBase
 	GENERATED_BODY()
 public:
 	ACharacterPlayer(const FObjectInitializer& ObjectInitializer);
+
+	// 무기 장착 상태가 변경되면 로컬 UI에 알리기
+	UPROPERTY(BlueprintAssignable, Category = "Weapon")
+	FWeaponEquippedChangedSignature WeaponEquppedChanged;
+
+	// 고른 투척물 종류가 바뀌면 로컬 UI(HUD 수류탄 슬롯)에 알리기
+	UPROPERTY(BlueprintAssignable, Category = "Grenade")
+	FSelectedThrowableChangedSignature _OnSelectedThrowableChanged;
 
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
@@ -59,10 +86,6 @@ protected:
 	// UFUNCTION(BlueprintCallable, Category = "Aim")
 	// void SetAiming(bool bAiming);
 	
-	// 무기 장착 상태가 변경되면 로컬 UI에 알리기
-	UPROPERTY(BlueprintAssignable, Category = "Weapon")
-	FWeaponEquippedChangedSignature WeaponEquppedChanged;
-	
 	// UI가 생성될 때 현재 무기 장착 상태를 확인하기
 	UFUNCTION(BlueprintPure, Category = "Weapon")
 	bool IsWeaponEquipped() const;
@@ -71,6 +94,10 @@ protected:
 	UFUNCTION(BlueprintPure, Category = "Weapon | Spread")
 	float GetWeaponSpreadValue() const;
 	
+	// AnimBP 에서 사용할 순수 시선 입력을 조회하는 조회용 함수
+	UFUNCTION(BlueprintPure, Category = "Input")
+	FVector2D GetLookInput() const;
+	// AnimBP 용 시선 입력 조회 인터페이스를 선언 -> 실제 입력은 EnhancedInput 에서 읽으며 캐릭터에 따로 저장하지 않음
 	
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -110,10 +137,30 @@ protected:
 	// 유효하면 현재 수류탄을 장착한 상태
 	UPROPERTY(ReplicatedUsing = OnRep_CurrentGrenade, VisibleAnywhere, BlueprintReadOnly, Category = "Grenade")
 	TObjectPtr<AGrenadeActor> _CurrentGrenade;
+
+	// 3번 키로 꺼낼 투척물 종류(아이템 TID). 종류 변경 키로 바꾸고, 비어 있으면 인벤토리의 첫 투척물을 쓴다.
+	// 소유자 HUD 표시에만 필요하므로 소유자에게만 복제한다.
+	UPROPERTY(ReplicatedUsing = OnRep_SelectedThrowable, VisibleInstanceOnly, BlueprintReadOnly, Category = "Grenade")
+	FName _SelectedThrowableTID = NAME_None;
+
+	// 메타휴먼의 리타기팅된 Body를 표시용 손의 기준으로 사용하고, 없으면 기본 캐릭터 메시를 사용한다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "Third Person Grip Mesh Component"))
+	FName _GrenadeGripMeshComponentName = TEXT("Body");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "First Person Grip Offset"))
+	FTransform _GrenadeGripOffsetFP = FTransform::Identity;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip", meta = (DisplayName = "Third Person Grip Offset"))
+	FTransform _GrenadeGripOffsetTP = FTransform::Identity;
+
+	// 팔과 같은 화면 보정을 사용하는 1인칭 전용 수류탄 머티리얼이다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade | Grip")
+	TObjectPtr<class UMaterialInterface> _GrenadeViewMaterial;
 	
 	// 현재 상호작용 범위 안에 있는 월드 무기
 	UPROPERTY()
 	TObjectPtr<AWeaponPickUp> _NearbyWeaponPickUp;
+
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Parkour")
 	TObjectPtr<class UHurdleCheckComponent> _HurdleCheckComponent;
@@ -130,10 +177,6 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "FPS | AbilitySystem | Attribute")
 	TObjectPtr<class UFPSAttributeSet> _HealthAttribute;
 
-	// 준비만 되고 아직 확정 되지 않은 무기
-	UPROPERTY()
-	TObjectPtr<AWeaponActor> _PendingWeapon;
-
 	// 버릴 때 캐릭터 기준으로 떨어질 범위
 	UPROPERTY(EditDefaultsOnly, Category = "Weapon")
 	float _DropForwardOffset = 100.f;
@@ -141,7 +184,32 @@ protected:
 	// 빙의 해제 직후 도착하는 피해에도 원래 플레이어를 식별한다.
 	TWeakObjectPtr<APlayerStateBase> _CombatPlayerState;
 
+	// 미지정이어도 사망 대기와 카메라는 동작한다.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Death")
+	TObjectPtr<UAnimMontage> _DeathMontage;
+
 private:
+	// 관찰 클라이언트는 서버 조준 원점을 사용하여 비소유 카메라의 위치 차이를 배제한다.
+	UPROPERTY(ReplicatedUsing = OnRep_WeaponPoseAimPoint)
+	FWeaponPoseAimState _ReplicatedWeaponPoseAim;
+
+	bool _bHasReplicatedWeaponPoseAimPoint = false;
+	FRotator _WeaponPoseAngularVelocity = FRotator::ZeroRotator;
+	FRotator _PreviousWeaponPoseRotation = FRotator::ZeroRotator;
+	double _PreviousWeaponPoseServerTime = 0.0;
+
+	UFUNCTION()
+	void OnRep_WeaponPoseAimPoint();
+
+	UPROPERTY(ReplicatedUsing = OnRep_DeathStartServerTime)
+	double _DeathStartServerTime = -1.0;
+
+	UFUNCTION()
+	void OnRep_DeathStartServerTime();
+
+	void ApplyDeathPresentation();
+	void UpdateDeathMontage();
+
 	// 현재 플레이어가 조준을 유지하는지
 	UPROPERTY(BlueprintReadOnly, Category = "Aim", meta = (AllowPrivateAccess = "true"))
 	bool _bAiming = false;
@@ -149,6 +217,11 @@ private:
 	// 로컬 화면에서 사용할 현재 무기 설정
 	UPROPERTY(BlueprintReadOnly, Category = "Weapon", meta = (AllowPrivateAccess = "true"))
 	FWeaponData _ViewWeaponData;
+
+	// 소유권 초기화보다 먼저 받은 RPC 데이터도 로컬 준비 후 적용한다.
+	bool _bPendingViewWeaponUpdate = false;
+	void ApplyPendingViewWeapon();
+	void NotifyWeaponEquippedChanged();
 
 	// 시작 시 카메라에 설정된 기본 FOV 와 현재 목표 FOV
 	float _BaseCameraFOV = 90.f;
@@ -172,16 +245,50 @@ public:
 	// 카메라 중앙이 가리키는 월드 위치를 구하기
 	FVector GetAimPoint(float WeaponRange) const;
 
+	// 애니메이션은 조준점 중앙을 향하도록 하며, 무작위 탄퍼짐이 자세에 영향을 주지 않게 한다.
+	FVector GetWeaponPoseAimPoint(float WeaponRange) const;
+
+	// 포즈 평가보다 나중에 갱신되는 카메라 캐시 대신 현재 시점 입력을 사용한다.
+	FRotator GetWeaponAimRotation() const;
+	FVector GetWeaponAimOrigin() const;
+
+	// 벽 가림과 캐릭터 충돌을 함께 검사하는 공통 조준 트레이스다.
+	FVector TraceWeaponAimPoint(const FVector& Start, const FVector& Direction, float WeaponRange) const;
+
 	// 실제 무기는 3인칭 오른손에 장착하고, 로컬 표시용 무기는 별도로 설정한다.
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool EquipWeapon(FName WeaponID);
 
+	// 픽업 장착과 인벤토리 확정을 한곳에서 처리해 손의 무기와 슬롯 정보가 어긋나는 것을 방지한다.
+	bool TryAcquireWeapon(AWeaponPickUp* Pickup);
+
 	AWeaponActor* GetEquippedWeapon() const;
 	
 	AGrenadeActor* GetEquippedGrenade() const;
+
+	// 지금 고른 투척물 종류 (HUD 표시용)
+	FName GetSelectedThrowableTID() const;
+
+	UFUNCTION(BlueprintPure, Category = "Grenade | Grip")
+	USkeletalMeshComponent* GetGrenadeGripMesh() const;
+
+	// 궤적 미리보기와 실제 투척은 손에 든 수류탄 액터의 월드 위치를 시작점으로 사용한다.
+	UFUNCTION(BlueprintPure, Category = "Grenade | Throw")
+	FVector GetGrenadeReleaseLocation() const;
+
+	// 1인칭 GameplayCue를 뷰 무기 총구에 붙이기 위해 1인칭 무기 메시를 반환한다.
+	UFUNCTION(BlueprintPure, Category = "First Person")
+	USceneComponent* GetViewWeaponMeshComponent() const;
 	
 	// 투척할 액터는 보존하고 장착 참조와 표시만 정리
 	void ClearGrenadeReference(AGrenadeActor* Grenade);
+	
+	UFUNCTION(Server, Reliable)
+	void ServerEquipGrenade();
+
+	// 인벤토리의 다음 투척물 종류로 바꾸고, 들고 있었다면 바로 교체한다. (쿠킹 중에는 무시)
+	UFUNCTION(Server, Reliable)
+	void ServerCycleThrowable();
 	
 	bool CanFireFromAbility() const;
 
@@ -199,8 +306,18 @@ public:
 	// 등록된 WeaponPickUp의 범위에서 벗어나면 해제된다.
 	void ClearNearbyWeaponPickUp(AWeaponPickUp* WeaponPickUp);
 
+private:
+	// 생성·초기화·부착을 확정 전에 수행해, 교체 준비 실패 시 기존 무기를 보존한다.
+	AWeaponActor* PrepareWeapon(FName WeaponID);
+	// 줍기와 슬롯 전환이 같은 경로로 공격 중단, 액터 교체, 표시 갱신을 수행하도록 분리했다.
+	void CommitPreparedWeapon(AWeaponActor* NewWeapon);
+	// 새 무기를 줍거나 전환할 때 기존 액터의 잔탄이 유실되지 않도록 슬롯 저장을 공통화했다.
+	void SaveCurrentWeaponToInventory();
+
 protected:
-	// Called when the game starts or when spawned
+	virtual void PostInitializeComponents() override;
+
+	// 게임이 시작되거나 액터가 생성될 때 호출한다.
 	virtual void BeginPlay() override;
 	
 	// virtual void OnRep_PlayerState() override;
@@ -209,15 +326,17 @@ protected:
 
 public:
 	virtual void Jump() override;
+	virtual void CrouchStarted();
+	virtual void CrouchEnded();
 
 public:
-	// Called every frame
+	// 매 프레임 호출한다.
 	virtual void Tick(float DeltaTime) override;
 
 	// Commit 건영 : AActor에 있는 함수인데 NearClip을 적용하기위해서 재정의해서 사용합니다.
 	virtual void CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult) override;
 	
-	// Called to bind functionality to input
+	// 입력에 동작을 바인딩할 때 호출한다.
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	virtual void PossessedBy(AController* Newcontroller) override;
@@ -238,6 +357,12 @@ public:
 
 public:
 	void StopCombat();
+
+	// GameMode가 서버에서 한 번 시작하고, 사망 시각을 클라이언트에 복제한다.
+	void BeginDeath();
+
+	UFUNCTION(BlueprintPure, Category = "Death")
+	bool IsDeathStarted() const;
 	
 	void StopAttacking();
 	
@@ -249,6 +374,15 @@ public:
 	USkeletalMeshComponent* Get_FirstPersonMesh() const;
 	USkeletalMeshComponent* Get_ThirtPersonMesh() const;
 	USkeletalMeshComponent* Get_ViewWeaponMesh() const;
+
+	// AbilityTask의 소유 클라이언트 표시 경로. 비소유 클라이언트의 3인칭은 GAS로 복제한다.
+	UFUNCTION(Client, Reliable)
+	void ClientPlayMontage(EAnimMeshType Type, UAnimMontage* Montage, float PlayRate);
+	void ClientPlayMontage_Implementation(EAnimMeshType Type, UAnimMontage* Montage, float PlayRate);
+
+	UFUNCTION(Client, Reliable)
+	void ClientStopMontage(EAnimMeshType Type, UAnimMontage* Montage);
+	void ClientStopMontage_Implementation(EAnimMeshType Type, UAnimMontage* Montage);
 
 	// 소유 플레이어의 1인칭 팔에서 재생하거나 지정 섹션으로 전환한다
 	UFUNCTION(Client, Reliable)
@@ -285,13 +419,21 @@ protected:
 	void InteractAction(const FInputActionValue& value);
 
 	UFUNCTION()
-	void HandleOutOfHealth(APlayerStateBase* KillerPlayerState);
+	void HandleOutOfHealth(APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon);
 
 	UFUNCTION()
 	void FireAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void StopFireAction(const FInputActionValue& value);
+
+	// 전용 근접 공격 입력은 무기 장착 상태에서도 사용할 수 있다.
+	UFUNCTION(BlueprintCallable, Category = "Input | Combat")
+	void MeleeAction(const FInputActionValue& Value);
+
+	// 입력 해제는 현재 공격을 취소하지 않고 눌림 상태만 갱신한다.
+	UFUNCTION(BlueprintCallable, Category = "Input | Combat")
+	void StopMeleeAction(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void FireToggleAction(const FInputActionValue& value);
@@ -301,15 +443,30 @@ protected:
 	
 	UFUNCTION()
 	void EquipGrenadeAction(const FInputActionValue& value);
-	
-	UFUNCTION(Server, Reliable)
-	void ServerEquipGrenade();
+
+	UFUNCTION()
+	void CycleThrowableAction(const FInputActionValue& value);
+
+	UFUNCTION()
+	void OnRep_SelectedThrowable();
+
+	// 인벤토리에서 CurrentTID 다음 투척물 TID. CurrentTID가 없으면 첫 투척물, 투척물이 없으면 NAME_None
+	FName FindNextThrowableTID(FName CurrentTID) const;
+
+	// 투척물 TID로 생성할 액터 클래스. 테이블의 _ThrowableClass, 비어 있으면 _GrenadeActorClass
+	TSubclassOf<AGrenadeActor> FindThrowableClass(FName TID) const;
 	
 	UFUNCTION()
 	void OnRep_CurrentGrenade();
 	
 	// 서버에서 장착을 해제하고 표시를 갱신
 	void ClearEquippedGrenade();
+
+	void UpdateGrenadeGripTick(bool Equipped);
+	TWeakObjectPtr<USkeletalMeshComponent> _GrenadeTickMesh;
+	uint8 _GrenadeSavedAnimTickOption = 0;
+	bool _GrenadeSavedUpdateRateOptimization = false;
+	bool _GrenadeSavedTickEnabled = false;
 	
 	// Commit 건영 : 현재 발사 시작과 종료요청은 ASC의 SetFireInput() 경로가 담당한다.
 	// UFUNCTION(Server, Reliable)
@@ -371,10 +528,12 @@ public:
 
 	UFUNCTION()
 	void OnRep_CurrentWeapon();
-	
+
 	// 두 입력이 공유하는 사전 검사 통과하면 서버에 요청함.
 	void RequestEquipSlot(int32 Index);
 
+private:
+	TWeakObjectPtr<AWeaponActor> _ObservedWeaponData;
 
 
 

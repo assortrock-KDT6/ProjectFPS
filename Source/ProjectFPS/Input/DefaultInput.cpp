@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 
 
 #include "Input/DefaultInput.h"
@@ -66,6 +66,12 @@ UDefaultInput::UDefaultInput()
 	{
 		_Fire = FireAction.Object;
 	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> MeleeAction(TEXT("/Game/Blueprints/Input/Actions/IA_Melee.IA_Melee"));
+	if (true == MeleeAction.Succeeded())
+	{
+		_Melee = MeleeAction.Object;
+	}
 	
 	ConstructorHelpers::FObjectFinder<UInputAction> FireToggleAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_FireToggle.IA_FireToggle'"));
 	if (FireToggleAction.Succeeded())
@@ -103,4 +109,21 @@ UDefaultInput::UDefaultInput()
 		_WeaponSlot3 = WeaponSlot3Action.Object;
 	}
 
+	ConstructorHelpers::FObjectFinder<UInputAction> CycleThrowableAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_CycleThrowable.IA_CycleThrowable'"));
+	if (CycleThrowableAction.Succeeded())
+	{
+		_CycleThrowable = CycleThrowableAction.Object;
+	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> ReloadAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Reload.IA_Reload'"));
+	if (ReloadAction.Succeeded())
+	{
+		_Reload = ReloadAction.Object;
+	}
+
+	ConstructorHelpers::FObjectFinder<UInputAction> CrouchAction(TEXT("/Script/EnhancedInput.InputAction'/Game/Blueprints/Input/Actions/IA_Crouch.IA_Crouch'"));
+	if (CrouchAction.Succeeded())
+	{
+		_CrouchAction = CrouchAction.Object;
+	}
 }

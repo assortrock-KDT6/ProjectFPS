@@ -2,10 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "Component/Ability/GamePlayAbility/FPSCombatAbility.h"
+#include "Weapons/WeaponTypes.h"
 #include "TimerManager.h"
 #include "FPSFireAbility.generated.h"
 
 class AWeaponActor;
+class UAnimMontage;
+class UFPSAbilityTask_PlayMontage;
 
 // Server-authoritative firing session bound to the weapon equipped at activation.
 UCLASS(Blueprintable)
@@ -14,14 +17,28 @@ class PROJECTFPS_API UFPSFireAbility : public UFPSCombatAbility
 	GENERATED_BODY()
 
 	UFPSFireAbility();
+
+protected:
+	// GA_Fire의 클래스 기본값에서 무기 종류별로 지정한다.
+	UPROPERTY(EditDefaultsOnly, Category = "Fire | Animation")
+	TMap<EWeaponType, TObjectPtr<UAnimMontage>> _FireMontageFP;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Fire | Animation")
+	TMap<EWeaponType, TObjectPtr<UAnimMontage>> _FireMontageTP;
+
 private:
 	TWeakObjectPtr<AWeaponActor> _FiringWeapon;
+
+	UPROPERTY()
+	TObjectPtr<UFPSAbilityTask_PlayMontage> _MontageTask;
 
 	FTimerHandle _ShotTimer;
 
 	TMap<FGameplayTag, FDelegateHandle> _BlockedTagDelegates;
 
 	void FireNextShot();
+
+	void PlayFireMontage(const AWeaponActor* Weapon);
 
 	void OnBlockedTagChanged(FGameplayTag Tag, int32 Count);
 

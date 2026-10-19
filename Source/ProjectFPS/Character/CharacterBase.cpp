@@ -21,6 +21,17 @@ void ACharacterBase::BeginPlay()
 	RefreshMovementTags();
 }
 
+void ACharacterBase::PostInitializeComponents()
+{
+	Super::PostInitializeComponents();
+
+	// 기존 블루프린트의 컴포넌트 참조가 비어 있으면 빙의와 GAS 초기화 전에 복구한다.
+	if (false == IsValid(_AbilitySystemComponent))
+	{
+		_AbilitySystemComponent = FindComponentByClass<UFPSAbilitySystemComponent>();
+	}
+}
+
 void ACharacterBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);

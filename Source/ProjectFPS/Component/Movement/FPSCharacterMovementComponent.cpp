@@ -2,8 +2,10 @@
 
 
 #include "Component/Movement/FPSCharacterMovementComponent.h"
+#include "Character/CharacterPlayer.h"
 #include "Component/Parkour/TraversalActionComponent.h"
 #include "Component/Parkour/HurdleCheckComponent.h"
+#include "GameMode/FPSGameState.h"
 
 #include "Components/CapsuleComponent.h"
 
@@ -326,8 +328,6 @@ bool UFPSCharacterMovementComponent::TryBuildTraversalCandidate(FTraversalCandid
 	FTraversalBaseQuery BaseQuery;
 	if (false == HurdleCheckComponent->BuildBaseQuery(BaseQuery))
 	{
-		UE_LOG(LogTraversal, Verbose,
-			TEXT("[Traversal] 탈락: BuildBaseQuery 실패. 앞면/윗면 트레이스가 안 잡혔거나 서로 다른 장애물이다. Vault/Mantle 둘 다 시도조차 못 한다."));
 		return false;
 	}
 
@@ -348,20 +348,15 @@ bool UFPSCharacterMovementComponent::TryBuildTraversalCandidate(FTraversalCandid
 		}
 	);
 
-	UE_LOG(LogTraversal, Verbose, TEXT("[Traversal] BaseQuery 성공. 장애물 높이 %.1f, 후보 컴포넌트 %d개 (우선순위 내림차순)."),
-		BaseQuery._ObstacleHeight, Actions.Num());
 
 	for (const UTraversalActionComponent* Action : Actions)
 	{
 		if (true == IsValid(Action) && true == Action->BuildCandidate(BaseQuery, OutCandidate))
 		{
-			UE_LOG(LogTraversal, Verbose, TEXT("[Traversal] 선택됨: %s (우선순위 %d). 이 뒤의 컴포넌트는 시도하지 않는다."),
-				*Action->GetName(), Action->GetPriority());
 			return true;
 		}
 	}
 
-	UE_LOG(LogTraversal, Verbose, TEXT("[Traversal] 모든 후보 실패. 파쿠르 입력이 무시된다."));
 	return false;
 }
 
@@ -519,9 +514,11 @@ void UFPSCharacterMovementComponent::RefreshTraversalPresentation()
 	 */
 	const bool IsCompletedAutonomousAction = ROLE_AutonomousProxy == CharacterOwner->GetLocalRole() && _TraversalState._ActionID == _CompletedAutonomousActionId;
 	const bool HasReachedWatchdogEnd = _TraversalState.IsActive() && GetServerTimeSeconds() >= _TraversalState._ServerStartTimeSeconds + _TraversalState._Duration + _TraversalEndWatchdogDelay;
+	const ACharacterPlayer* Player = Cast<ACharacterPlayer>(CharacterOwner);
+	const bool IsDead = IsValid(Player) && Player->IsDeathStarted();
 
-	/* 상태가 끝났거나 Notify 종료가 처리됐거나 watchdog에 도달한 경우에만 표현을 종료한다. */
-	if (false == _TraversalState.IsActive() || true == IsCompletedAutonomousAction || true == HasReachedWatchdogEnd)
+	/* 사망 뒤 늦게 도착한 예약도 파쿠르 몽타주와 입력 잠금을 되살리지 않는다. */
+	if (true == IsDead || false == _TraversalState.IsActive() || true == IsCompletedAutonomousAction || true == HasReachedWatchdogEnd)
 	{
 		if (true == _ActivePresentationComponent.IsValid())
 		{
@@ -576,13 +573,15 @@ float UFPSCharacterMovementComponent::GetServerTimeSeconds() const
 	if (true == IsValid(GameState))
 	{
 		float ServerTimeSeconds = GameState->GetServerWorldTimeSeconds();
+		const AFPSGameState* FPSGameState = Cast<AFPSGameState>(GameState);
+		const bool HasSynchronizedServerTime = IsValid(FPSGameState) && FPSGameState->HasSynchronizedServerTime();
 
 		/**
-		 * GameState의 클라이언트 서버 시각은 전송 시간만큼 뒤에 있다. 실시간 Ping을 여기서
-		 * 다시 읽으면 서버가 예약할 때의 값과 달라져 액션마다 시작 위상이 튄다. 서버가 해당
-		 * 액션을 만들 때 확정해 복제한 편도 지연 추정값만 사용한다.
+		 * 동기화된 서버 시각에는 이미 지연 보정이 포함되어 있으므로 추가 보정하지 않는다.
+		 * 동기화 전에는 서버가 해당 액션을 만들 때 확정해 복제한 편도 지연 추정값만 사용한다.
 		 */
-		if (nullptr != CharacterOwner && ROLE_AutonomousProxy == CharacterOwner->GetLocalRole())
+		if (false == HasSynchronizedServerTime
+			&& nullptr != CharacterOwner && ROLE_AutonomousProxy == CharacterOwner->GetLocalRole())
 		{
 			ServerTimeSeconds += FMath::Max(0.f, _TraversalState._EstimatedOneWaySeconds);
 		}
@@ -606,6 +605,12 @@ float UFPSCharacterMovementComponent::GetServerTimeSeconds() const
 
 bool UFPSCharacterMovementComponent::TryEnterPendingTraversal()
 {
+	const ACharacterPlayer* Player = Cast<ACharacterPlayer>(CharacterOwner);
+	if (true == IsValid(Player) && true == Player->IsDeathStarted())
+	{
+		return false;
+	}
+
 	if (nullptr == CharacterOwner || false == _TraversalState.IsActive() || true == IsTraversing()
 		|| _TraversalState._ActionID == _CompletedAutonomousActionId)
 	{

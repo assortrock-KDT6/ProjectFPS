@@ -71,6 +71,22 @@ struct FItemData  : public  FTableRowBase
 	// 지정한 BP의 기본 설정과 기능을 적용하여 월드에 생성함.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	TSubclassOf<class AItemPickUp> _PickUpClass;	// 부모클래스 일 경우 자식클래스도 포함됨.
+
+	// 투척물(_ItemType = Grenade)일 때 손에 들 때 생성할 액터 클래스 (폭탄 / 섬광탄 / 화염병 BP)
+	// 비어 있으면 캐릭터의 기본 수류탄 클래스를 사용한다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	TSubclassOf<class AGrenadeActor> _ThrowableClass;
+
+	// 같은 메시를 쓰는 아이템을 색으로 구분할지 여부 (끄면 머티리얼 원래 색)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (InlineEditConditionToggle))
+	bool _bUseTint = false;
+
+	// 메시 머티리얼의 색(Team.WeaponTint)을 이 값으로 바꾼다. 픽업·손에 든 모습·던진 모습·HUD 아이콘에 같이 적용
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (EditCondition = "_bUseTint"))
+	FLinearColor _TintColor = FLinearColor::White;
+
+	// _bUseTint가 켜져 있으면 메시의 모든 머티리얼에 색을 적용한다.
+	void ApplyTint(class UMeshComponent* Mesh) const;
 };
 
 

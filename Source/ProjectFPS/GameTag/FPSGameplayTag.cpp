@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// 프로젝트 설정의 설명 페이지에 저작권 정보를 입력하세요.
 #include "FPSGameplayTag.h"
 
 #include "Common/GameDefines.h"
@@ -7,6 +7,13 @@
 
 namespace FPSGameplayTags
 {
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat_Melee, "Ability.Combat.Melee", "근접 콤보 공격 능력");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Melee, "Event.Melee", "근접 공격 몽타주 이벤트 분류");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Melee_HitStart, "Event.Melee.HitStart", "서버 타격 판정 시작");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Melee_HitEnd, "Event.Melee.HitEnd", "서버 타격 판정 종료");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Melee_ComboOpen, "Event.Melee.ComboOpen", "콤보 전환 구간 시작");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Melee_ComboClose, "Event.Melee.ComboClose", "추가 콤보 입력 예약 종료");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat_Reload, "Ability.Combat.Reload", "Weapon reload ability");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat,		 					"Ability.Combat",						"공격 어빌리티 분류");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Combat_Fire,  					"Ability.Combat.Fire",  				"Weapon firing ability");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Event_Grenade_Cook,	 					"Event.Grenade.Cook",   				"수류탄 쿠킹 시작 요청");
@@ -49,6 +56,12 @@ namespace FPSGameplayTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Movement_Mode_Mantle,					"Movement.Mode.Mantle", 				" ");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Weapon_Fire, "GameplayCue.Weapon.Fire", "무기 발사음");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Weapon_Impact, "GameplayCue.Weapon.Impact", "총알 탄착 연출");
+	
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Character_Hit_Health, "GameplayCue.Character.Hit.Health", "체력 피격 연출 ");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Character_Hit_Shield, "GameplayCue.Character.Hit.Shield", "쉴드 피격 연출 ");
+
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Weapon_WhizBy, "GameplayCue.Weapon.WhizBy", "총알 스치는 소리");
 
 	const TMap<uint8, FGameplayTag> MovementModeTagMap =
 	{

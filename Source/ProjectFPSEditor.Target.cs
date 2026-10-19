@@ -10,6 +10,6 @@ public class ProjectFPSEditorTarget : TargetRules
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V6;
 
-		ExtraModuleNames.AddRange( new string[] { "ProjectFPS" } );
+		ExtraModuleNames.AddRange( new string[] { "ProjectFPS", "ProjectFPSAnimGraph" } );
 	}
 }

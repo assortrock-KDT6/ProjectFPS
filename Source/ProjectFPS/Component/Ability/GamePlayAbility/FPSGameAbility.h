@@ -13,5 +13,4 @@ UCLASS()
 class PROJECTFPS_API UFPSGameAbility : public UGameplayAbility
 {
 	GENERATED_BODY()
-	
 };
