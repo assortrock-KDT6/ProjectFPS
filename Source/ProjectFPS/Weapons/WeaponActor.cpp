@@ -179,7 +179,7 @@ bool AWeaponActor::Fire(const FVector& AimPoint)
 	UDamageSourceComponent* DamageSource = NewObject<UDamageSourceComponent>(Projectile);
 	Projectile->AddInstanceComponent(DamageSource);
 	DamageSource->SetSourcePlayerState(IsValid(GetInstigator()) ? GetInstigator()->GetPlayerState<APlayerStateBase>() : nullptr);
-	DamageSource->InitializeProjectileDamage(_WeaponAbilityData._Damage);
+	DamageSource->InitializeProjectileDamage(_WeaponAbilityData._Damage, FireDirection);
 	FDamageWeaponInfo DamageWeapon;
 	DamageWeapon.Icon = _WeaponData._Icon;
 	DamageWeapon.WeaponType = _WeaponData._WeaponType;

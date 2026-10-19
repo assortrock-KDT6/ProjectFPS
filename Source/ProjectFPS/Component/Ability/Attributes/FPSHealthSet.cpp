@@ -145,6 +145,24 @@ void UFPSHealthSet::PostGameplayEffectExecute(const FGameplayEffectModCallbackDa
 	const FDamageWeaponInfo DamageWeapon = bOutOfHealth
 		? UDamageSourceComponent::ResolveDamageWeapon(Data.EffectSpec.GetContext()) : FDamageWeaponInfo();
 
+	// 실드와 체력이 함께 감소해도 피해자 본인에게 피격 연출을 한 번만 보낸다.
+	// 큐와 사망 콜백이 투사체를 정리하기 전에 들어온 방향을 확보한다.
+	APawn* Victim = Cast<APawn>(Data.Target.GetAvatarActor());
+	if (true == IsValid(Victim) && true == Victim->HasAuthority() && (ShieldDamage > 0.f || HealthDamage > 0.f))
+	{
+		APlayerControllerBase* VictimController = Cast<APlayerControllerBase>(Victim->GetController());
+		if (true == IsValid(VictimController))
+		{
+			// 주기형 GE는 총알에서 시작했더라도 지속 피해이므로 방향 표시를 생략한다.
+			const FVector IncomingDirection = Data.EffectSpec.GetPeriod() > 0.f
+				? FVector::ZeroVector : UDamageSourceComponent::ResolveIncomingDirection(Data.EffectSpec.GetContext(), Victim);
+			VictimController->ClientShowIncomingDamage(Victim,
+				IncomingDirection,
+				ShieldDamage + HealthDamage,
+				UDamageSourceComponent::ResolveSourceDistance(Data.EffectSpec.GetContext(), Victim));
+		}
+	}
+
 	if (ShieldDamage > 0.f)
 	{
 		ExecuteHitCue(Data, FPSGameplayTags::GameplayCue_Character_Hit_Shield, ShieldDamage);

@@ -19,6 +19,8 @@
 #include "GameMode/FPSGameMode.h"
 #include "UI/GamePlay/MatchResultWidget.h"
 #include "UI/MainHUD.h"
+#include "UI/GamePlay/DamageFeedbackWidget.h"
+#include "UI/GamePlay/HitDirectionWidget.h"
 
 APlayerControllerBase::APlayerControllerBase()
 {
@@ -26,7 +28,10 @@ APlayerControllerBase::APlayerControllerBase()
 	_DeathCameraClass = AFPSDeathCameraActor::StaticClass();
 	static ConstructorHelpers::FClassFinder<UMatchResultWidget> ResultWidget(
 		TEXT("/Game/Blueprints/UI/Widget/GamePlay/WBP_MatchResult"));
-	if (ResultWidget.Succeeded()) _MatchResultWidgetClass = ResultWidget.Class;
+	if (ResultWidget.Succeeded())
+	{
+		_MatchResultWidgetClass = ResultWidget.Class;
+	}
 }
 
 void APlayerControllerBase::ClientShowDamageNumber_Implementation(FVector WorldLocation, float ShieldDamage, float HealthDamage, bool bHeadShot, AActor* Target, FVector HitLocation)
@@ -44,8 +49,72 @@ void APlayerControllerBase::ClientShowDamageNumber_Implementation(FVector WorldL
 	ShowDamageNumber(WorldLocation, ShieldDamage, HealthDamage, bHeadShot, Target, HitLocation);
 }
 
+void APlayerControllerBase::ClientShowIncomingDamage_Implementation(APawn* DamagedPawn, FVector IncomingWorldDirection, float Damage, float SourceDistance)
+{
+	if (false == IsLocalController() || false == IsValid(DamagedPawn) || DamagedPawn != GetPawn()
+		|| true == _DeathCameraActive || GetStateName() != NAME_Playing || true == _LoadingInputBlocked
+		|| false == FMath::IsFinite(Damage) || Damage <= 0.f
+		|| (true == IsValid(_MatchResultWidget) && true == _MatchResultWidget->IsInViewport()))
+	{
+		return;
+	}
+
+	// BP를 지정한 표시만 생성한다. C++에서 텍스처나 레이아웃을 대신 만들지 않는다.
+	if (false == IsValid(_DamageFeedbackWidget) && true == IsValid(_DamageFeedbackWidgetClass.Get())
+		&& false == _DamageFeedbackWidgetClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		_DamageFeedbackWidget = CreateWidget<UDamageFeedbackWidget>(this, _DamageFeedbackWidgetClass);
+		if (true == IsValid(_DamageFeedbackWidget))
+		{
+			_DamageFeedbackWidget->AddToPlayerScreen(50);
+		}
+	}
+
+	if (true == IsValid(_DamageFeedbackWidget))
+	{
+		_DamageFeedbackWidget->ShowIncomingHit(DamagedPawn, Damage);
+	}
+
+	if (true == IncomingWorldDirection.ContainsNaN() || true == IncomingWorldDirection.GetSafeNormal2D().IsNearlyZero())
+	{
+		return;
+	}
+
+	if (false == IsValid(_HitDirectionWidget) && true == IsValid(_HitDirectionWidgetClass.Get())
+		&& false == _HitDirectionWidgetClass->HasAnyClassFlags(CLASS_Abstract))
+	{
+		_HitDirectionWidget = CreateWidget<UHitDirectionWidget>(this, _HitDirectionWidgetClass);
+		if (true == IsValid(_HitDirectionWidget))
+		{
+			_HitDirectionWidget->AddToPlayerScreen(51);
+		}
+	}
+	if (true == IsValid(_HitDirectionWidget))
+	{
+		_HitDirectionWidget->ShowIncomingHit(DamagedPawn, IncomingWorldDirection, Damage, SourceDistance);
+	}
+}
+
+void APlayerControllerBase::ClearIncomingDamageFeedback()
+{
+	if (true == IsValid(_DamageFeedbackWidget))
+	{
+		_DamageFeedbackWidget->ClearFeedback();
+		_DamageFeedbackWidget->RemoveFromParent();
+	}
+	_DamageFeedbackWidget = nullptr;
+
+	if (true == IsValid(_HitDirectionWidget))
+	{
+		_HitDirectionWidget->ClearFeedback();
+		_HitDirectionWidget->RemoveFromParent();
+	}
+	_HitDirectionWidget = nullptr;
+}
+
 void APlayerControllerBase::PreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel)
 {
+	ClearIncomingDamageFeedback();
 	ClearDeathCamera(true);
 
 	Super::PreClientTravel(PendingURL, TravelType, bIsSeamlessTravel);
@@ -82,6 +151,7 @@ void APlayerControllerBase::ClientShowMatchResults_Implementation(const TArray<F
 	}
 
 	ClearDeathCamera(true);
+	ClearIncomingDamageFeedback();
 
 	if (IsValid(_MatchResultWidget))
 	{
@@ -154,6 +224,10 @@ bool APlayerControllerBase::RestoreMatchResultInput()
 void APlayerControllerBase::ChangeState(FName NewState)
 {
 	Super::ChangeState(NewState);
+	if (NewState != NAME_Playing)
+	{
+		ClearIncomingDamageFeedback();
+	}
 
 	// 엔진의 Pawn/관전자 전환이 끝난 뒤 입력을 맞춘다.
 	RefreshInputMappingContext();
@@ -189,6 +263,7 @@ void APlayerControllerBase::PlayerTick(float DeltaTime)
 
 void APlayerControllerBase::PostSeamlessTravel()
 {
+	ClearIncomingDamageFeedback();
 	ClearDeathCamera(true);
 
 	Super::PostSeamlessTravel();
@@ -367,6 +442,7 @@ void APlayerControllerBase::AutoManageActiveCameraTarget(AActor* SuggestedTarget
 
 void APlayerControllerBase::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	ClearIncomingDamageFeedback();
 	ClearDeathCamera(false);
 
 	_PendingServerTimeRequests.Empty();
