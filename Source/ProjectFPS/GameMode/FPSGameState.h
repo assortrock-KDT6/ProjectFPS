@@ -21,6 +21,9 @@ public:
 	FOnKillLoggedDelegate	_OnKillLogged;
 
 private:
+	UPROPERTY(Replicated)
+	bool _bTeamMatch = false;
+
 	UPROPERTY(ReplicatedUsing = OnRep_MatchInformation)
 	float _MatchDurationSeconds = 0.f;
 
@@ -62,6 +65,12 @@ private:
 
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	UFUNCTION(BlueprintPure, Category = "Match|Team")
+	bool IsTeamMatch() const { return _bTeamMatch; }
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Match|Team")
+	void SetTeamMatch(bool bTeamMatch);
 
 	virtual double GetServerWorldTimeSeconds() const override;
 

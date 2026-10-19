@@ -3,7 +3,6 @@
 #include "GameMode/FPSGameState.h"
 #include "Pawn/FPSSpectatorPawn.h"
 #include "Character/CharacterPlayer.h"
-#include "Weapons/WeaponActor.h"
 #include "Weapons/WeaponTypes.h"
 #include "Table/TableSubsystem.h"
 #include "Table/TableDatas.h"
@@ -27,6 +26,15 @@ void AFPSGameMode::InitGame(const FString& MapName, const FString& Options, FStr
 {
 	Super::InitGame(MapName, Options, ErrorMessage);
 	_ExpectedPlayerCount = FMath::Max(1, UGameplayStatics::GetIntOption(Options, TEXT("ExpectedPlayers"), _ExpectedPlayerCount));
+}
+
+void AFPSGameMode::InitGameState()
+{
+	Super::InitGameState();
+	if (AFPSGameState* FPSGameState = GetGameState<AFPSGameState>())
+	{
+		FPSGameState->SetTeamMatch(_bTeamMatch);
+	}
 }
 
 void AFPSGameMode::HandleMatchIsWaitingToStart()
@@ -213,7 +221,7 @@ bool AFPSGameMode::IsCombatAllowed() const
 	return IsMatchInProgress() && IsValid(FPSGameState) && FPSGameState->GetRemainingMatchTime() > 0.f;
 }
 
-void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerStateBase* KillerPlayerState)
+void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon)
 {
 	if (false == HasAuthority() || false == IsCombatAllowed() || false == IsValid(DeadCharacter))
 	{
@@ -247,20 +255,15 @@ void AFPSGameMode::HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerSta
 		 */
 
 		FPlayerKillLogResult KillLogResult;
+		KillLogResult._KillerPlayerId = KillerPlayerState->GetPlayerId();
+		KillLogResult._KillerTeamId = KillerPlayerState->GetTeamId();
+		KillLogResult._bTeamMatch = FPSGameState->IsTeamMatch();
 		KillLogResult._KillerPlayerName = KillerPlayerState->GetPlayerName();
 		KillLogResult._KilledPlayerName = DeadPlayerState->GetPlayerName();
 
-		ACharacterPlayer* KillerPlayer = Cast<ACharacterPlayer>(KillerPlayerState->GetPawn());
-		if (nullptr != KillerPlayer)
-		{
-			// TODO :	죽은 원인이 수류탄 일 수 있지만 우선 테스트용으로 EquippedWeapon으로 한다.
-			//			제대로 하려면 플레이어가 죽는 순간에 죽는 원인(무기)를 저장해줘야함.
-			AWeaponActor* KillerWeapon = Cast<AWeaponActor>(KillerPlayer->GetEquippedWeapon());
-			if (nullptr != KillerWeapon)
-			{
-				KillLogResult._WeaponIcon = KillerWeapon->GetWeaponData()._Icon;
-			}
-		}
+		KillLogResult._WeaponIcon = DamageWeapon.Icon;
+		KillLogResult._KillerWeaponType = DamageWeapon.WeaponType;
+		KillLogResult._WeaponIconTint = DamageWeapon.IconTint;
 
 		// TODO KillLog Widget 
 		FPSGameState->MultiCastKillLogged(KillLogResult);

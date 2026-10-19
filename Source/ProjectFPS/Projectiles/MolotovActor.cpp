@@ -82,6 +82,7 @@ void AMolotovActor::Detonate(const FVector& ExplosionLocation)
 		return;
 	}
 
-	FireArea->SetSourcePlayerState(SourcePlayerState);
+	// BeginPlay의 첫 피해부터 투척자와 화염병 이미지가 모두 확정되어 있어야 한다.
+	FireArea->InitializeDamageSource(SourcePlayerState, Source ? Source->GetDamageWeapon() : FDamageWeaponInfo());
 	FireArea->FinishSpawning(FTransform(FireLocation));
 }
