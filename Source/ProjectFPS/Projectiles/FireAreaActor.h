@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Weapons/WeaponTypes.h"
 #include "FireAreaActor.generated.h"
 
 class APlayerStateBase;
@@ -11,6 +12,7 @@ class UGameplayEffect;
 class UNiagaraSystem;
 class UNiagaraComponent;
 class USoundBase;
+class UDamageSourceComponent;
 
 // 화염병이 깨진 자리에 깔리는 불 장판. 작게 깔렸다가 점점 넓어진다.
 // 서버가 일정 간격으로 범위 안의 폰에게 데미지를 주고, 각 화면은 불 이펙트·소리를 재생한다.
@@ -65,8 +67,9 @@ protected:
 	TObjectPtr<USoundBase> _FireLoopSound = nullptr;
 
 private:
-	// 처치 기록에 사용할 화염병을 던진 사람
-	TWeakObjectPtr<APlayerStateBase> _SourcePlayerState;
+	// 화염병이 사라져도 투척자와 피해 무기 정보를 함께 보존한다.
+	UPROPERTY(VisibleAnywhere, Category = "Fire")
+	TObjectPtr<UDamageSourceComponent> _DamageSource;
 
 	// 서버에서 데미지를 반복해서 주는 타이머
 	FTimerHandle _DamageTimerHandle;
@@ -83,6 +86,7 @@ public:
 
 	// 생성 직후(FinishSpawning 전에) 서버가 넘겨준다.
 	void SetSourcePlayerState(APlayerStateBase* PlayerState);
+	void InitializeDamageSource(APlayerStateBase* PlayerState, const FDamageWeaponInfo& DamageWeapon);
 
 protected:
 	virtual void BeginPlay() override;

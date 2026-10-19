@@ -74,11 +74,17 @@ protected:
 	TObjectPtr<USoundBase> _CloseSound;
 
 private:
-	UPROPERTY(ReplicatedUsing = OnRep_Open)
-	bool _bOpen = false;
+	// 열림과 양쪽 문짝의 방향을 한 값으로 복제한다.
+	static constexpr uint8 OpenFlag = 1 << 0;
+	static constexpr uint8 LeftReverseFlag = 1 << 1;
+	static constexpr uint8 RightReverseFlag = 1 << 2;
 
-	// 0 = 닫힘, 1 = 열림. 각 화면에서 따로 보간한다.
-	float _OpenAlpha = 0.f;
+	UPROPERTY(ReplicatedUsing = OnRep_Open)
+	uint8 _OpenState = 0;
+
+	// 0 = 닫힘, +1/-1 = 양쪽 방향으로 열림. 방향 변경도 연속적으로 보간한다.
+	float _LeftOpenAlpha = 0.f;
+	float _RightOpenAlpha = 0.f;
 
 	// 에디터에 배치한 닫힌 상태의 경첩 위치
 	FTransform _LeftClosedTransform;
@@ -104,7 +110,13 @@ private:
 	void OnRep_Open();
 
 	// 서버: 열림 상태를 바꾸고 복제한다.
-	void SetOpen(bool bOpen);
+	void SetOpen(bool bOpen, AActor* Interactor = nullptr);
+
+	bool IsOpen() const { return 0 != (_OpenState & OpenFlag); }
+
+	// 닫힌 문짝의 회전 접선과 캐릭터 위치를 비교해 캐릭터 반대쪽을 선택한다.
+	bool ShouldReverseLeaf(const UStaticMeshComponent* DoorMesh, const FTransform& ClosedTransform,
+		const FDoorLeafMotion& Motion, const FVector& InteractorLocation) const;
 
 	// 서버: 자동 닫힘 타이머가 호출한다.
 	void CloseByTimer();
@@ -114,6 +126,6 @@ private:
 
 	void ApplyDoorTransform();
 
-	// 문짝 한 장을 열림 정도(0~1)만큼 움직인다.
+	// 문짝 한 장을 방향을 포함한 열림 정도(-1~1)만큼 움직인다.
 	void ApplyLeafTransform(USceneComponent* Hinge, const FTransform& ClosedTransform, const FDoorLeafMotion& Motion, float Alpha);
 };

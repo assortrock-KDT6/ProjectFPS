@@ -16,6 +16,7 @@
 
 class USkeletalMesh;
 class UAnimInstance;
+class UTexture2D;
 
 
 
@@ -30,6 +31,22 @@ enum class EWeaponType : uint8
 	Sniper		UMETA(DisplayName = "Sniper"),
 	Grenade     UMETA(DisplayName = "Grenade"),
 	Smoke       UMETA(DisplayName = "Smoke")
+};
+
+// 공격을 생성할 때 복사한다. 이후 장착 무기 변경/파괴에 영향을 받지 않는다.
+USTRUCT(BlueprintType)
+struct PROJECTFPS_API FDamageWeaponInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	TObjectPtr<UTexture2D> Icon = nullptr;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	EWeaponType WeaponType = EWeaponType::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Damage")
+	FLinearColor IconTint = FLinearColor::White;
 };
 
 // 사용할 무기의 따른 총알(Projectile) 타입

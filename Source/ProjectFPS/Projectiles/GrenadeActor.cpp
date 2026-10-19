@@ -188,6 +188,17 @@ void AGrenadeActor::BeginPlay()
 		if (const FItemData* ItemData = Table->FindTableRow<FItemData>(TEXT("ItemTable"), _TID))
 		{
 			ItemData->ApplyTint(_GrenadeMesh);
+			if (HasAuthority())
+			{
+				if (UDamageSourceComponent* Source = FindComponentByClass<UDamageSourceComponent>())
+				{
+					FDamageWeaponInfo DamageWeapon;
+					DamageWeapon.Icon = ItemData->_Icon;
+					DamageWeapon.WeaponType = EWeaponType::Grenade;
+					DamageWeapon.IconTint = ItemData->_bUseTint ? ItemData->_TintColor : FLinearColor::White;
+					Source->InitializeDamageWeapon(DamageWeapon);
+				}
+			}
 		}
 	}
 }
@@ -277,7 +288,12 @@ void AGrenadeActor::LifeSpanExpired()
 	}
 	
 	// 피해처리가 끝난 수류탄을 제거
-	Super::LifeSpanExpired();
+	// 발동 과정에서 새 수명을 설정한 투척물은 유지
+	// 일반 수류탄처럼 추가 수명이 없는 경우에는 바로 제거
+	if (GetLifeSpan() <= 0.f)
+	{
+		Super::LifeSpanExpired();	
+	}
 }
 
 void AGrenadeActor::Detonate(const FVector& ExplosionLocation)

@@ -2071,6 +2071,8 @@ void ACharacterPlayer::ClientPlayGrenadeMontage_Implementation(UAnimMontage* Mon
 		}
 	}
 	
+	// 수류탄 속도 수정
+	AnimInstance->Montage_SetPlayRate(Montage, Section == TEXT("Throw") ? 1.5f : 1.f);
 	AnimInstance->Montage_JumpToSection(Section, Montage);
 	AnimInstance->Montage_Resume(Montage);
 }
@@ -2111,6 +2113,9 @@ void ACharacterPlayer::ClientPlayGrenadeMontageTP_Implementation(UAnimMontage* M
 	{
 		return;
 	}
+	
+	// 수류탄 속도 수정 
+	AnimInstance->Montage_SetPlayRate(Montage, Section == TEXT("Throw") ? 1.5f : 1.f);
 	AnimInstance->Montage_JumpToSection(Section, Montage);
 	AnimInstance->Montage_Resume(Montage);
 }
@@ -2155,7 +2160,7 @@ void ACharacterPlayer::EquipSubWeaponAction(const FInputActionValue& value)
 	RequestEquipSlot(1);
 }
 
-void ACharacterPlayer::HandleOutOfHealth(APlayerStateBase* KillerPlayerState)
+void ACharacterPlayer::HandleOutOfHealth(APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon)
 {
 	AFPSGameMode* GameMode = GetWorld()->GetAuthGameMode<AFPSGameMode>();
 
@@ -2177,7 +2182,7 @@ void ACharacterPlayer::HandleOutOfHealth(APlayerStateBase* KillerPlayerState)
 		return;
 	}
 
-	GameMode->HandlePlayerDeath(this, KillerPlayerState);
+	GameMode->HandlePlayerDeath(this, KillerPlayerState, DamageWeapon);
 }
 
 void ACharacterPlayer::BeginDeath()
@@ -2389,7 +2394,7 @@ void ACharacterPlayer::FellOutOfWorld(const UDamageType& DamageType)
 
 	if (HasAuthority() && IsValid(GameMode) && GameMode->IsCombatAllowed() && IsValid(GetController()))
 	{
-		HandleOutOfHealth(nullptr);
+		HandleOutOfHealth(nullptr, FDamageWeaponInfo());
 		return;
 	}
 	Super::FellOutOfWorld(DamageType);

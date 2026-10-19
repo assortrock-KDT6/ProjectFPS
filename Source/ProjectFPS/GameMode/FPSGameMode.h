@@ -7,6 +7,7 @@
 
 class ACharacterPlayer;
 class APlayerStateBase;
+struct FDamageWeaponInfo;
 
 /** 제한시간 동안 사망한 참가자가 계속 리스폰하는 개인 데스매치. */
 UCLASS()
@@ -31,6 +32,7 @@ private:
 
 public:
 	virtual void InitGame(const FString& MapName, const FString& Options, FString& ErrorMessage) override;
+	virtual void InitGameState() override;
 
 	virtual void StartMatch() override;
 
@@ -57,10 +59,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Match")
 	bool IsCombatAllowed() const;
 
-	void HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerStateBase* KillerPlayerState);
+	void HandlePlayerDeath(ACharacterPlayer* DeadCharacter, APlayerStateBase* KillerPlayerState, const FDamageWeaponInfo& DamageWeapon);
 
 	void HandlePlayerRespawnReady(APlayerController* PlayerController);
 protected:
+	// 팀 배정은 서버에서 PlayerState.SetTeamId로 수행한다. 기본값은 개인전.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match|Team")
+	bool _bTeamMatch = false;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Match", meta = (ClampMin = "1.0", Units = "s"))
 	float _MatchDurationSeconds = 300.f;
 

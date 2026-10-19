@@ -12,7 +12,7 @@
   *	[ 플레이어 컨트롤러 ]
   * 
   *	1) 플레이어 컨트롤러는 플레이어에 빙의하는 존재이다.
-  *	2) TeamID를 가지고 있으며, TeamID에 따라 적인지 아군인지 판단한다.
+  *	2) 팀 정보는 복제되는 PlayerStateBase의 GetTeamId/SetTeamId를 사용한다.
   * 
   * 
   *	[캐릭터 컴포넌트 구조]
@@ -66,7 +66,8 @@ private:
 	TWeakObjectPtr<ACharacterPlayer> _DeathCharacter;
 
 protected:
-	UPROPERTY(BlueprintReadWrite)
+	// 기존 BP 직렬화 호환용. 실제 팀 정보는 PlayerStateBase에서 관리한다.
+	UPROPERTY(BlueprintReadWrite, meta = (DeprecatedProperty, DeprecationMessage = "Use PlayerStateBase.GetTeamId/SetTeamId instead."))
 	uint8 _TeamId = 0;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")

@@ -9,6 +9,7 @@
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FPlayerMatchStatsChanged);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerDeathStateChanged, bool, IsDead);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FPlayerTeamChanged, int32, TeamId);
 
 struct FPlayerKillLogResult;
 
@@ -25,6 +26,8 @@ public:
     virtual void SetPlayerName(const FString& Name) override;
     virtual void OnRep_PlayerName() override;
     virtual void OnRep_bIsInactive() override;
+	virtual void CopyProperties(APlayerState* PlayerState) override;
+	virtual void OverrideWith(APlayerState* PlayerState) override;
 
 
 public:
@@ -33,6 +36,9 @@ public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Match")
 	FPlayerDeathStateChanged _OnDeathStateChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Team")
+	FPlayerTeamChanged _OnTeamChanged;
 
 private:
 	// 인벤 컴포넌트 부착
@@ -44,6 +50,10 @@ private:
 
 	UPROPERTY(ReplicatedUsing = OnRep_MatchStats)
 	FPlayerMatchStats _MatchStats;
+
+	// 0 이상은 유효한 팀, INDEX_NONE(-1)은 미배정. 모든 클라이언트에 복제한다.
+	UPROPERTY(ReplicatedUsing = OnRep_TeamId)
+	int32 _TeamId = INDEX_NONE;
 	
 public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
@@ -65,6 +75,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Match")
 	bool IsDead() const;
 
+	UFUNCTION(BlueprintPure, Category = "Team")
+	int32 GetTeamId() const { return _TeamId; }
+
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Team")
+	void SetTeamId(int32 TeamId);
+
 protected:
 	/**
 	 * Dead 변수가 바뀌었을 때 호출되는 이벤트성 멤버함수.
@@ -74,6 +90,9 @@ protected:
 
 	UFUNCTION()
 	void OnRep_MatchStats();
+
+	UFUNCTION()
+	void OnRep_TeamId();
 
 public:
 	void AddKillScore();

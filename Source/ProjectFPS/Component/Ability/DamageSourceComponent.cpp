@@ -4,6 +4,40 @@
 #include "AbilitySystemComponent.h"
 #include "GameFramework/Pawn.h"
 
+void UDamageSourceComponent::InitializeDamageWeapon(const FDamageWeaponInfo& WeaponInfo)
+{
+	if (!IsValid(GetOwner()) || !GetOwner()->HasAuthority() || _WeaponInfoInitialized)
+	{
+		return;
+	}
+	_DamageWeapon = WeaponInfo;
+	_WeaponInfoInitialized = true;
+}
+
+FDamageWeaponInfo UDamageSourceComponent::ResolveDamageWeapon(const FGameplayEffectContextHandle& Context)
+{
+	if (const AActor* Causer = Context.GetEffectCauser(); IsValid(Causer))
+	{
+		if (const UDamageSourceComponent* Source = Causer->FindComponentByClass<UDamageSourceComponent>())
+		{
+			return Source->GetDamageWeapon();
+		}
+	}
+	if (const UDamageSourceComponent* Source = Cast<UDamageSourceComponent>(Context.GetSourceObject()))
+	{
+		return Source->GetDamageWeapon();
+	}
+	if (const AActor* SourceActor = Cast<AActor>(Context.GetSourceObject()); IsValid(SourceActor))
+	{
+		if (const UDamageSourceComponent* Source = SourceActor->FindComponentByClass<UDamageSourceComponent>())
+		{
+			return Source->GetDamageWeapon();
+		}
+	}
+	// 근접/환경 피해 등 출처가 없는 공격에 현재 장착 무기를 대신 표시하지 않는다.
+	return FDamageWeaponInfo();
+}
+
 void UDamageSourceComponent::SetSourcePlayerState(APlayerStateBase* PlayerState)
 {
 	if (IsValid(GetOwner()) && GetOwner()->HasAuthority())
